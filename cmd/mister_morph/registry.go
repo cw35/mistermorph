@@ -11,7 +11,9 @@ import (
 func registryFromViper() *tools.Registry {
 	r := tools.NewRegistry()
 	r.Register(builtin.NewEchoTool())
-	r.Register(builtin.NewReadFileTool(256 * 1024))
+
+	viper.SetDefault("tools.read_file.max_bytes", 256*1024)
+	viper.SetDefault("tools.read_file.deny_paths", []string{"config.yaml"})
 
 	viper.SetDefault("tools.write_file.enabled", true)
 	viper.SetDefault("tools.write_file.confirm", false)
@@ -21,6 +23,7 @@ func registryFromViper() *tools.Registry {
 	viper.SetDefault("tools.bash.confirm", false)
 	viper.SetDefault("tools.bash.timeout", 30*time.Second)
 	viper.SetDefault("tools.bash.max_output_bytes", 256*1024)
+	viper.SetDefault("tools.bash.deny_paths", []string{"config.yaml"})
 
 	viper.SetDefault("tools.url_fetch.enabled", true)
 	viper.SetDefault("tools.url_fetch.timeout", 30*time.Second)
@@ -33,6 +36,11 @@ func registryFromViper() *tools.Registry {
 	viper.SetDefault("tools.web_search.base_url", "https://duckduckgo.com/html/")
 	viper.SetDefault("tools.web_search.user_agent", "mister_morph/1.0 (+https://github.com/quailyquaily)")
 
+	r.Register(builtin.NewReadFileToolWithDenyPaths(
+		int64(viperGetInt("tools.read_file.max_bytes", "read_file_max_bytes")),
+		viperGetStringSlice("tools.read_file.deny_paths", "read_file_deny_paths"),
+	))
+
 	r.Register(builtin.NewWriteFileTool(
 		viperGetBool("tools.write_file.enabled", "write_file_enabled"),
 		viperGetBool("tools.write_file.confirm", "write_file_confirm"),
@@ -40,12 +48,14 @@ func registryFromViper() *tools.Registry {
 	))
 
 	if viperGetBool("tools.bash.enabled", "bash_enabled") {
-		r.Register(builtin.NewBashTool(
+		bt := builtin.NewBashTool(
 			true,
 			viperGetBool("tools.bash.confirm", "bash_confirm"),
 			viperGetDuration("tools.bash.timeout", "bash_timeout"),
 			viperGetInt("tools.bash.max_output_bytes", "bash_max_output_bytes"),
-		))
+		)
+		bt.DenyPaths = viperGetStringSlice("tools.bash.deny_paths", "bash_deny_paths")
+		r.Register(bt)
 	}
 
 	if viperGetBool("tools.url_fetch.enabled", "url_fetch_enabled") {
@@ -103,4 +113,14 @@ func viperGetString(key, legacy string) string {
 		return viper.GetString(key)
 	}
 	return viper.GetString(legacy)
+}
+
+func viperGetStringSlice(key, legacy string) []string {
+	if viper.IsSet(key) {
+		return viper.GetStringSlice(key)
+	}
+	if viper.IsSet(legacy) {
+		return viper.GetStringSlice(legacy)
+	}
+	return nil
 }

@@ -16,6 +16,7 @@ type BashTool struct {
 	ConfirmEachRun bool
 	DefaultTimeout time.Duration
 	MaxOutputBytes int
+	DenyPaths      []string
 }
 
 func NewBashTool(enabled bool, confirmEachRun bool, defaultTimeout time.Duration, maxOutputBytes int) *BashTool {
@@ -72,6 +73,11 @@ func (t *BashTool) Execute(ctx context.Context, params map[string]any) (string, 
 	if cmdStr == "" {
 		return "", fmt.Errorf("missing required param: cmd")
 	}
+
+	if offending, ok := bashCommandDenied(cmdStr, t.DenyPaths); ok {
+		return "", fmt.Errorf("bash command references denied path %q (configure via tools.bash.deny_paths)", offending)
+	}
+
 	cwd, _ := params["cwd"].(string)
 	cwd = strings.TrimSpace(cwd)
 
@@ -133,6 +139,72 @@ func (t *BashTool) Execute(ctx context.Context, params map[string]any) (string, 
 		return b.String(), fmt.Errorf("bash exited with code %d", exitCode)
 	}
 	return b.String(), nil
+}
+
+func bashCommandDenied(cmdStr string, denyPaths []string) (string, bool) {
+	cmdStr = strings.TrimSpace(cmdStr)
+	if cmdStr == "" || len(denyPaths) == 0 {
+		return "", false
+	}
+	for _, p := range denyPaths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if containsTokenBoundary(cmdStr, p) {
+			return p, true
+		}
+		// Most configs will specify basenames (e.g. config.yaml). For safety,
+		// also deny the basename even if a path is provided.
+		if i := strings.LastIndex(p, "/"); i != -1 && i+1 < len(p) {
+			base := p[i+1:]
+			if base != "" && containsTokenBoundary(cmdStr, base) {
+				return base, true
+			}
+		}
+	}
+	return "", false
+}
+
+func containsTokenBoundary(haystack, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	for start := 0; ; {
+		i := strings.Index(haystack[start:], needle)
+		if i < 0 {
+			return false
+		}
+		i += start
+		if tokenBoundaryAt(haystack, i, len(needle)) {
+			return true
+		}
+		start = i + 1
+	}
+}
+
+func tokenBoundaryAt(s string, start, n int) bool {
+	beforeOK := start == 0 || isBashBoundaryByte(s[start-1])
+	afterIdx := start + n
+	afterOK := afterIdx >= len(s) || isBashBoundaryByte(s[afterIdx])
+	return beforeOK && afterOK
+}
+
+func isBashBoundaryByte(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r':
+		return true
+	case '"', '\'', '`':
+		return true
+	case ';', '|', '&', '(', ')', '{', '}', '[', ']':
+		return true
+	case '<', '>', '=', ':', ',', '?', '#':
+		return true
+	case '/':
+		return true
+	default:
+		return false
+	}
 }
 
 type limitedBuffer struct {

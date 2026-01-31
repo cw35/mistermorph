@@ -98,5 +98,3 @@ type RunOptions struct {
 	Model   string
 	History []llm.Message
 }
-
-

@@ -45,6 +45,13 @@ logging:
   redact_keys: []
 
 tools:
+  read_file:
+    # Enable the read_file tool (reads a local file).
+    # Note: currently always enabled; this section configures limits/policy.
+    max_bytes: 262144
+    # Denylist for sensitive local files. Basenames match anywhere (e.g. "config.yaml" blocks "./x/config.yaml").
+    deny_paths:
+      - "config.yaml"
   write_file:
     # Enable the write_file tool (writes text to a local file).
     enabled: true
@@ -82,6 +89,10 @@ tools:
     timeout: "30s"
     # Max combined output bytes kept per stream (stdout/stderr) before truncation.
     max_output_bytes: 262144
+    # Denylist for sensitive local files. If a command references one of these paths, the tool errors.
+    # (Best-effort string match; not a full sandbox.)
+    deny_paths:
+      - "config.yaml"
 
 skills:
   # Root directories to scan recursively for SKILL.md files.

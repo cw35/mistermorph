@@ -52,9 +52,9 @@ type mockTool struct {
 	err    error
 }
 
-func (t *mockTool) Name() string                                                    { return t.name }
-func (t *mockTool) Description() string                                             { return "mock tool" }
-func (t *mockTool) ParameterSchema() string                                         { return "{}" }
+func (t *mockTool) Name() string            { return t.name }
+func (t *mockTool) Description() string     { return "mock tool" }
+func (t *mockTool) ParameterSchema() string { return "{}" }
 func (t *mockTool) Execute(_ context.Context, _ map[string]any) (string, error) {
 	return t.result, t.err
 }
@@ -389,7 +389,7 @@ func TestFallbackFinal_UsedOnForceConclusionLLMError(t *testing.T) {
 	// Setup: 1 step, 0 parse retries → parse failure breaks loop → forceConclusion
 	// forceConclusion's Chat call fails because no more responses → fallback should be used
 	client2 := newMockClient(
-		llm.Result{Text: "not json"},  // main loop: parse failure
+		llm.Result{Text: "not json"}, // main loop: parse failure
 		// forceConclusion: no response → error
 	)
 	e2 := New(client2, baseRegistry(), Config{MaxSteps: 5, ParseRetries: 0, PlanMode: "off"}, DefaultPromptSpec(),
@@ -433,7 +433,7 @@ func TestFallbackFinal_DefaultWhenNotSet(t *testing.T) {
 func TestFallbackFinal_UsedOnParseError(t *testing.T) {
 	// forceConclusion gets valid LLM response but parse fails → fallback used
 	client := newMockClient(
-		llm.Result{Text: "not json"},            // main loop parse fail
+		llm.Result{Text: "not json"},             // main loop parse fail
 		llm.Result{Text: "still not valid json"}, // forceConclusion parse fail
 	)
 	e := New(client, baseRegistry(), Config{MaxSteps: 5, ParseRetries: 0, PlanMode: "off"}, DefaultPromptSpec(),
@@ -457,7 +457,7 @@ func TestFallbackFinal_UsedOnParseError(t *testing.T) {
 func TestFallbackFinal_UsedOnInvalidType(t *testing.T) {
 	// forceConclusion gets valid JSON but with non-final type → fallback used
 	client := newMockClient(
-		llm.Result{Text: "not json"},                                                    // main loop parse fail
+		llm.Result{Text: "not json"}, // main loop parse fail
 		llm.Result{Text: `{"type":"tool_call","tool_call":{"name":"x","params":null}}`}, // forceConclusion: valid but wrong type
 	)
 	e := New(client, baseRegistry(), Config{MaxSteps: 5, ParseRetries: 0, PlanMode: "off"}, DefaultPromptSpec(),
@@ -482,8 +482,8 @@ func TestForceConclusion_RawFinalAnswer_Set(t *testing.T) {
 	// Main loop exhausts with parse failure, forceConclusion succeeds with final
 	resp := `{"type":"final","final":{"thought":"forced","output":"result","extra":true}}`
 	client := newMockClient(
-		llm.Result{Text: "not json"},  // main loop parse fail
-		llm.Result{Text: resp},        // forceConclusion succeeds
+		llm.Result{Text: "not json"}, // main loop parse fail
+		llm.Result{Text: resp},       // forceConclusion succeeds
 	)
 	e := New(client, baseRegistry(), Config{MaxSteps: 5, ParseRetries: 0, PlanMode: "off"}, DefaultPromptSpec())
 

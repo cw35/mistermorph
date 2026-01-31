@@ -5,14 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 type ReadFileTool struct {
-	MaxBytes int64
+	MaxBytes  int64
+	DenyPaths []string
 }
 
 func NewReadFileTool(maxBytes int64) *ReadFileTool {
 	return &ReadFileTool{MaxBytes: maxBytes}
+}
+
+func NewReadFileToolWithDenyPaths(maxBytes int64, denyPaths []string) *ReadFileTool {
+	return &ReadFileTool{MaxBytes: maxBytes, DenyPaths: denyPaths}
 }
 
 func (t *ReadFileTool) Name() string { return "read_file" }
@@ -39,6 +46,10 @@ func (t *ReadFileTool) Execute(_ context.Context, params map[string]any) (string
 		return "", fmt.Errorf("missing required param: path")
 	}
 
+	if offending, ok := denyPath(path, t.DenyPaths); ok {
+		return "", fmt.Errorf("read_file denied for path %q (matched %q)", path, offending)
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -47,4 +58,39 @@ func (t *ReadFileTool) Execute(_ context.Context, params map[string]any) (string
 		data = data[:t.MaxBytes]
 	}
 	return string(data), nil
+}
+
+func denyPath(path string, denyPaths []string) (string, bool) {
+	if len(denyPaths) == 0 {
+		return "", false
+	}
+	p := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
+	base := filepath.Base(p)
+
+	for _, d := range denyPaths {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		dClean := filepath.ToSlash(filepath.Clean(d))
+
+		// If user provided a basename (common), deny any file with that basename.
+		if !strings.Contains(dClean, "/") {
+			if base == dClean {
+				return d, true
+			}
+			continue
+		}
+
+		// If a full path was provided, deny exact match or path-suffix match.
+		if p == dClean || strings.HasSuffix(p, "/"+dClean) {
+			return d, true
+		}
+
+		// Also deny by basename of the deny path.
+		if b := filepath.Base(dClean); b != "" && base == b {
+			return d, true
+		}
+	}
+	return "", false
 }
