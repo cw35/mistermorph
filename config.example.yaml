@@ -138,9 +138,31 @@ telegram:
   base_url: "https://api.telegram.org"
   # Optional allowlist of chat ids (strings). If empty, allows all.
   allowed_chat_ids: []
-  # Optional aliases (keywords). In groups, messages containing these may trigger a response.
+  # Optional aliases (keywords). In groups, these may trigger a response depending on `group_trigger_mode`.
   # Note: if Bot Privacy Mode is enabled, the bot may not receive non-command messages.
   aliases: []
+  # Group trigger mode:
+  # - strict: only /ask, replies, and @mentions trigger in groups.
+  # - smart: replies/@mentions trigger; aliases only trigger when they look like direct addressing (alias near start + request-like text).
+  # - contains: legacy behavior; any substring match of an alias triggers.
+  group_trigger_mode: "smart"
+  # In smart mode, how far from the start (in runes) an alias can appear to count as "addressing".
+  alias_prefix_max_chars: 24
+  # Optional LLM-based addressing classifier for borderline alias hits in groups.
+  # Only used when:
+  # - group_trigger_mode is smart, AND
+  # - an alias keyword appears somewhere, but doesn't look like direct addressing by heuristics.
+  addressing_llm:
+    enabled: false
+    # When to call the addressing classifier:
+    # - borderline: only when an alias is present but heuristics aren't confident (default).
+    # - always: for any alias hit (useful with group_trigger_mode=contains to avoid naive substring triggers).
+    mode: "borderline"
+    # Model to use for addressing classification (empty uses top-level `model`).
+    model: ""
+    timeout: "3s"
+    # Minimum confidence required to accept the classification.
+    min_confidence: 0.55
   # Long polling timeout.
   poll_timeout: "30s"
   # Per-message agent timeout (0 uses top-level timeout).

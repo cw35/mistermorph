@@ -73,6 +73,8 @@ export MISTER_MORPH_TELEGRAM_BOT_TOKEN="123456:ABC..."
 Notes:
 - Use `/ask <task>` in groups.
 - In groups, the bot also responds when you reply to it, or mention `@BotUsername` (if it receives the message).
+- If you configure `telegram.aliases`, the default `telegram.group_trigger_mode=smart` only triggers on aliases when the message looks like direct addressing (alias near the start + request-like text). Use `contains` for the old substring behavior.
+- If you want smarter disambiguation for alias mentions, enable `telegram.addressing_llm.enabled` (and optionally set `telegram.addressing_llm.mode=always`) to let an LLM classify alias hits.
 - Use `/id` to print the current chat id (useful for allowlisting group ids).
 - Use `/reset` in chat to clear conversation history.
 - If you omit `--telegram-allowed-chat-id`, all chats can talk to the bot (not recommended).
