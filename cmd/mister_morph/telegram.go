@@ -70,10 +70,7 @@ func newTelegramCmd() *cobra.Command {
 				return fmt.Errorf("missing telegram.bot_token (set via --telegram-bot-token or MISTER_MORPH_TELEGRAM_BOT_TOKEN)")
 			}
 
-			baseURL := strings.TrimRight(strings.TrimSpace(flagOrViperString(cmd, "telegram-base-url", "telegram.base_url")), "/")
-			if baseURL == "" {
-				baseURL = "https://api.telegram.org"
-			}
+			baseURL := "https://api.telegram.org"
 
 			allowed := make(map[int64]bool)
 			for _, s := range flagOrViperStringArray(cmd, "telegram-allowed-chat-id", "telegram.allowed_chat_ids") {
@@ -95,15 +92,15 @@ func newTelegramCmd() *cobra.Command {
 			slog.SetDefault(logger)
 
 			client, err := llmClientFromConfig(llmClientConfig{
-				Provider:       viper.GetString("provider"),
-				Endpoint:       viper.GetString("endpoint"),
-				APIKey:         viper.GetString("api_key"),
+				Provider:       llmProviderFromViper(),
+				Endpoint:       llmEndpointFromViper(),
+				APIKey:         llmAPIKeyFromViper(),
 				RequestTimeout: viper.GetDuration("llm.request_timeout"),
 			})
 			if err != nil {
 				return err
 			}
-			model := strings.TrimSpace(viper.GetString("model"))
+			model := llmModelFromViper()
 			reg := registryFromViper()
 			logOpts := logOptionsFromViper()
 
@@ -141,31 +138,22 @@ func newTelegramCmd() *cobra.Command {
 
 			fileCacheDir := strings.TrimSpace(flagOrViperString(cmd, "file-cache-dir", "file_cache_dir"))
 			if fileCacheDir == "" {
-				// Backward-compatible fallback.
-				fileCacheDir = strings.TrimSpace(flagOrViperString(cmd, "telegram-file-cache-dir", "telegram.file_cache_dir"))
-			}
-			if fileCacheDir == "" {
 				fileCacheDir = "/tmp/.morph-cache"
 			}
-			filesEnabled := flagOrViperBool(cmd, "telegram-files-enabled", "telegram.files.enabled")
-			filesMaxBytes := flagOrViperInt64(cmd, "telegram-files-max-bytes", "telegram.files.max_bytes")
-			if filesMaxBytes <= 0 {
-				filesMaxBytes = 20 * 1024 * 1024
+			const filesEnabled = true
+			const filesMaxBytes = int64(20 * 1024 * 1024)
+			if err := ensureSecureCacheDir(fileCacheDir); err != nil {
+				return fmt.Errorf("telegram file cache dir: %w", err)
 			}
-			if filesEnabled {
-				if err := ensureSecureCacheDir(fileCacheDir); err != nil {
-					return fmt.Errorf("telegram file cache dir: %w", err)
-				}
-				telegramCacheDir := filepath.Join(fileCacheDir, "telegram")
-				if err := ensureSecureChildDir(fileCacheDir, telegramCacheDir); err != nil {
-					return fmt.Errorf("telegram cache subdir: %w", err)
-				}
-				maxAge := viper.GetDuration("file_cache.max_age")
-				maxFiles := viper.GetInt("file_cache.max_files")
-				maxTotalBytes := viper.GetInt64("file_cache.max_total_bytes")
-				if err := cleanupFileCacheDir(telegramCacheDir, maxAge, maxFiles, maxTotalBytes); err != nil {
-					logger.Warn("file_cache_cleanup_error", "error", err.Error())
-				}
+			telegramCacheDir := filepath.Join(fileCacheDir, "telegram")
+			if err := ensureSecureChildDir(fileCacheDir, telegramCacheDir); err != nil {
+				return fmt.Errorf("telegram cache subdir: %w", err)
+			}
+			maxAge := viper.GetDuration("file_cache.max_age")
+			maxFiles := viper.GetInt("file_cache.max_files")
+			maxTotalBytes := viper.GetInt64("file_cache.max_total_bytes")
+			if err := cleanupFileCacheDir(telegramCacheDir, maxAge, maxFiles, maxTotalBytes); err != nil {
+				logger.Warn("file_cache_cleanup_error", "error", err.Error())
 			}
 
 			me, err := api.getMe(context.Background())
@@ -209,10 +197,11 @@ func newTelegramCmd() *cobra.Command {
 			}
 
 			var (
-				mu      sync.Mutex
-				history = make(map[int64][]llm.Message)
-				workers = make(map[int64]*telegramChatWorker)
-				offset  int64
+				mu                 sync.Mutex
+				history            = make(map[int64][]llm.Message)
+				stickySkillsByChat = make(map[int64][]string)
+				workers            = make(map[int64]*telegramChatWorker)
+				offset             int64
 			)
 
 			logger.Info("telegram_start",
@@ -249,6 +238,7 @@ func newTelegramCmd() *cobra.Command {
 							mu.Lock()
 							h := append([]llm.Message(nil), history[chatID]...)
 							curVersion := w.Version
+							sticky := append([]string(nil), stickySkillsByChat[chatID]...)
 							mu.Unlock()
 
 							// If there was a /reset after this job was queued, drop history for this run.
@@ -259,7 +249,7 @@ func newTelegramCmd() *cobra.Command {
 							_ = api.sendChatAction(context.Background(), chatID, "typing")
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, cfg, job, model, h)
+							final, _, loadedSkills, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, cfg, job, model, h, sticky)
 							cancel()
 
 							if runErr != nil {
@@ -276,6 +266,14 @@ func newTelegramCmd() *cobra.Command {
 							// Respect resets that happened while the task was running.
 							if w.Version != curVersion {
 								history[chatID] = nil
+								stickySkillsByChat[chatID] = nil
+							}
+							if w.Version == curVersion && len(loadedSkills) > 0 {
+								capN := viper.GetInt("skills.max_load")
+								if capN <= 0 {
+									capN = 3
+								}
+								stickySkillsByChat[chatID] = capUniqueStrings(loadedSkills, capN)
 							}
 							cur := history[chatID]
 							cur = append(cur,
@@ -504,6 +502,7 @@ func newTelegramCmd() *cobra.Command {
 						}
 						mu.Lock()
 						delete(history, chatID)
+						delete(stickySkillsByChat, chatID)
 						if w := getOrStartWorkerLocked(chatID); w != nil {
 							w.Version++
 						}
@@ -671,14 +670,14 @@ func newTelegramCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("telegram-bot-token", "", "Telegram bot token.")
-	cmd.Flags().String("telegram-base-url", "https://api.telegram.org", "Telegram API base URL.")
+	// Note: base_url is intentionally not configurable.
 	cmd.Flags().StringArray("telegram-allowed-chat-id", nil, "Allowed chat id(s). If empty, allows all.")
 	cmd.Flags().StringArray("telegram-alias", nil, "Bot alias keywords (group messages containing these may trigger a response).")
 	cmd.Flags().String("telegram-group-trigger-mode", "smart", "Group trigger mode: strict|smart|contains.")
 	cmd.Flags().Int("telegram-alias-prefix-max-chars", 24, "In smart mode, max chars from message start for alias addressing (0 uses default).")
 	cmd.Flags().Bool("telegram-addressing-llm-enabled", false, "If true, in smart mode, use the LLM to decide borderline alias-triggered group messages.")
 	cmd.Flags().String("telegram-addressing-llm-mode", "borderline", "When to call Telegram addressing LLM: borderline|always (always=any alias hit).")
-	cmd.Flags().String("telegram-addressing-llm-model", "", "Model for Telegram addressing LLM (default: --model).")
+	cmd.Flags().String("telegram-addressing-llm-model", "", "Model for Telegram addressing LLM (default: --model / llm.model).")
 	cmd.Flags().Duration("telegram-addressing-llm-timeout", 3*time.Second, "Timeout for Telegram addressing LLM calls.")
 	cmd.Flags().Float64("telegram-addressing-llm-min-confidence", 0.55, "Minimum confidence (0-1) required to accept an addressing LLM decision.")
 	cmd.Flags().Duration("telegram-poll-timeout", 30*time.Second, "Long polling timeout for getUpdates.")
@@ -686,10 +685,6 @@ func newTelegramCmd() *cobra.Command {
 	cmd.Flags().Int("telegram-max-concurrency", 3, "Max number of chats processed concurrently.")
 	cmd.Flags().Int("telegram-history-max-messages", 20, "Max chat history messages to keep per chat.")
 	cmd.Flags().String("file-cache-dir", "/tmp/.morph-cache", "Global temporary file cache directory (used for Telegram file handling).")
-	// Deprecated: use --file-cache-dir or config file_cache_dir.
-	cmd.Flags().String("telegram-file-cache-dir", "", "Deprecated. Use --file-cache-dir.")
-	cmd.Flags().Bool("telegram-files-enabled", true, "If true, download inbound attachments and enable telegram_send_file tool.")
-	cmd.Flags().Int64("telegram-files-max-bytes", 20*1024*1024, "Max bytes for a single downloaded Telegram file.")
 
 	return cmd
 }
@@ -723,7 +718,7 @@ func initMemory(ctx context.Context) (memory.Store, memory.IdentityResolver, err
 	return memoryStore, memoryResolver, memoryInitErr
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, cfg agent.Config, job telegramJob, model string, history []llm.Message) (*agent.Final, *agent.Context, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, cfg agent.Config, job telegramJob, model string, history []llm.Message, stickySkills []string) (*agent.Final, *agent.Context, []string, error) {
 	task := job.Text
 	if baseReg == nil {
 		baseReg = registryFromViper()
@@ -735,12 +730,16 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		reg.Register(t)
 	}
 	if filesEnabled && api != nil {
-		reg.Register(newTelegramSendFileTool(api, job.ChatID, filepath.Join(fileCacheDir, "telegram"), filesMaxBytes))
+		reg.Register(newTelegramSendFileTool(api, job.ChatID, fileCacheDir, filesMaxBytes))
 	}
 
-	promptSpec, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsConfigFromViper(model))
+	skillsCfg := skillsConfigFromViper(model)
+	if len(stickySkills) > 0 {
+		skillsCfg.Requested = append(skillsCfg.Requested, stickySkills...)
+	}
+	promptSpec, loadedSkills, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsCfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if viper.GetBool("memory.enabled") && job.FromUserID > 0 {
@@ -751,12 +750,12 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 
 		store, resolver, err := initMemory(ctx)
 		if err != nil {
-			return nil, nil, fmt.Errorf("memory init: %w", err)
+			return nil, nil, loadedSkills, fmt.Errorf("memory init: %w", err)
 		}
 
 		id, err := resolver.ResolveTelegram(ctx, job.FromUserID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("memory identity: %w", err)
+			return nil, nil, loadedSkills, fmt.Errorf("memory identity: %w", err)
 		}
 		if id.Enabled && strings.TrimSpace(id.SubjectID) != "" {
 			source := fmt.Sprintf("telegram:chat=%d msg=%d", job.ChatID, job.MessageID)
@@ -774,7 +773,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 				maxChars := viper.GetInt("memory.injection.max_chars")
 				items, err := memory.LoadSnapshot(ctx, store, id.SubjectID, reqCtx, maxItems)
 				if err != nil {
-					return nil, nil, fmt.Errorf("memory snapshot: %w", err)
+					return nil, nil, loadedSkills, fmt.Errorf("memory snapshot: %w", err)
 				}
 				snap := memory.FormatSnapshotForPrompt(items, memory.SnapshotOptions{MaxItems: maxItems, MaxChars: maxChars})
 				if strings.TrimSpace(snap) != "" {
@@ -795,7 +794,8 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		agent.WithLogger(logger),
 		agent.WithLogOptions(logOpts),
 	)
-	return engine.Run(ctx, task, agent.RunOptions{Model: model, History: history})
+	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: history})
+	return final, agentCtx, loadedSkills, err
 }
 
 func formatFinalOutput(final *agent.Final) string {
@@ -2034,6 +2034,33 @@ func shortHash(s string) string {
 	return hex.EncodeToString(sum[:6])
 }
 
+func capUniqueStrings(in []string, max int) []string {
+	if len(in) == 0 || max == 0 {
+		return nil
+	}
+	if max < 0 {
+		max = 0
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		k := strings.ToLower(v)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, v)
+		if max > 0 && len(out) >= max {
+			break
+		}
+	}
+	return out
+}
+
 func appendDownloadedFilesToTask(task string, files []telegramDownloadedFile) string {
 	task = strings.TrimSpace(task)
 	var b strings.Builder
@@ -2222,7 +2249,7 @@ func newTelegramSendFileTool(api *telegramAPI, chatID int64, cacheDir string, ma
 func (t *telegramSendFileTool) Name() string { return "telegram_send_file" }
 
 func (t *telegramSendFileTool) Description() string {
-	return "Sends a local file (from file_cache_dir/telegram) back to the current chat as a document. If you need more advanced behavior, describe it in text instead."
+	return "Sends a local file (from file_cache_dir) back to the current chat as a document. If you need more advanced behavior, describe it in text instead."
 }
 
 func (t *telegramSendFileTool) ParameterSchema() string {
@@ -2231,7 +2258,7 @@ func (t *telegramSendFileTool) ParameterSchema() string {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path to a local file under file_cache_dir/telegram (absolute or relative to that directory).",
+				"description": "Path to a local file under file_cache_dir (absolute or relative to that directory).",
 			},
 			"filename": map[string]any{
 				"type":        "string",

@@ -46,9 +46,9 @@ func newServeCmd() *cobra.Command {
 			slog.SetDefault(logger)
 
 			client, err := llmClientFromConfig(llmClientConfig{
-				Provider:       viper.GetString("provider"),
-				Endpoint:       viper.GetString("endpoint"),
-				APIKey:         viper.GetString("api_key"),
+				Provider:       llmProviderFromViper(),
+				Endpoint:       llmEndpointFromViper(),
+				APIKey:         llmAPIKeyFromViper(),
 				RequestTimeout: viper.GetDuration("llm.request_timeout"),
 			})
 			if err != nil {
@@ -141,7 +141,7 @@ func newServeCmd() *cobra.Command {
 				}
 				model := strings.TrimSpace(req.Model)
 				if model == "" {
-					model = viper.GetString("model")
+					model = llmModelFromViper()
 				}
 
 				info, err := store.Enqueue(context.Background(), req.Task, model, timeout)
@@ -212,7 +212,7 @@ func errorsIsContextDeadline(ctx context.Context, err error) bool {
 }
 
 func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, registry *tools.Registry, baseCfg agent.Config, task string, model string) (*agent.Final, *agent.Context, error) {
-	promptSpec, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsConfigFromViper(model))
+	promptSpec, _, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsConfigFromViper(model))
 	if err != nil {
 		return nil, nil, err
 	}

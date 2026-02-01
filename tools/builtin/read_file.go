@@ -42,9 +42,12 @@ func (t *ReadFileTool) ParameterSchema() string {
 
 func (t *ReadFileTool) Execute(_ context.Context, params map[string]any) (string, error) {
 	path, _ := params["path"].(string)
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", fmt.Errorf("missing required param: path")
 	}
+
+	path = expandHomePath(path)
 
 	if offending, ok := denyPath(path, t.DenyPaths); ok {
 		return "", fmt.Errorf("read_file denied for path %q (matched %q)", path, offending)

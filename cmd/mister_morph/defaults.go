@@ -8,10 +8,10 @@ import (
 
 func initViperDefaults() {
 	// Shared agent defaults (used by serve/telegram when flags aren't available).
-	viper.SetDefault("provider", "openai")
-	viper.SetDefault("endpoint", "https://api.openai.com")
-	viper.SetDefault("model", "gpt-4o-mini")
-	viper.SetDefault("api_key", "")
+	viper.SetDefault("llm.provider", "openai")
+	viper.SetDefault("llm.endpoint", "https://api.openai.com")
+	viper.SetDefault("llm.model", "gpt-4o-mini")
+	viper.SetDefault("llm.api_key", "")
 	viper.SetDefault("llm.request_timeout", 90*time.Second)
 
 	viper.SetDefault("max_steps", 15)
@@ -25,6 +25,7 @@ func initViperDefaults() {
 	viper.SetDefault("file_cache.max_age", 7*24*time.Hour)
 	viper.SetDefault("file_cache.max_files", 1000)
 	viper.SetDefault("file_cache.max_total_bytes", int64(512*1024*1024))
+	viper.SetDefault("user_agent", "mister_morph/1.0 (+https://github.com/quailyquaily)")
 
 	// Skills
 	viper.SetDefault("skills.mode", "smart")
@@ -44,7 +45,6 @@ func initViperDefaults() {
 	viper.SetDefault("submit.poll_interval", 1*time.Second)
 
 	// Telegram
-	viper.SetDefault("telegram.base_url", "https://api.telegram.org")
 	viper.SetDefault("telegram.poll_timeout", 30*time.Second)
 	viper.SetDefault("telegram.history_max_messages", 20)
 	viper.SetDefault("telegram.aliases", []string{})
@@ -56,8 +56,6 @@ func initViperDefaults() {
 	viper.SetDefault("telegram.addressing_llm.timeout", 3*time.Second)
 	viper.SetDefault("telegram.addressing_llm.min_confidence", 0.55)
 	viper.SetDefault("telegram.max_concurrency", 3)
-	viper.SetDefault("telegram.files.enabled", true)
-	viper.SetDefault("telegram.files.max_bytes", int64(20*1024*1024))
 
 	// DB (Phase 1: sqlite only)
 	viper.SetDefault("db.driver", "sqlite")

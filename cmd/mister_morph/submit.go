@@ -50,7 +50,7 @@ func newSubmitCmd() *cobra.Command {
 			model, _ := cmd.Flags().GetString("model")
 			model = strings.TrimSpace(model)
 			if model == "" {
-				model = strings.TrimSpace(viper.GetString("model"))
+				model = llmModelFromViper()
 			}
 			reqBody := SubmitTaskRequest{
 				Task:    task,

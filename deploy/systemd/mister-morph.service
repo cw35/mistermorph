@@ -1,0 +1,68 @@
+[Unit]
+Description=mister_morph (agent daemon, sandboxed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Install your binary somewhere stable (example: /usr/local/bin/mister_morph).
+# If you use a config file, add: --config /etc/mister-morph/config.yaml
+ExecStart=/usr/local/bin/mister_morph --log-level info serve --server-bind 127.0.0.1 --server-port 8787
+
+# Secrets/config via environment (recommended).
+# Expected:
+# - MISTER_MORPH_API_KEY
+# - MISTER_MORPH_SERVER_AUTH_TOKEN
+EnvironmentFile=-/etc/mister-morph/mister-morph.env
+
+Restart=on-failure
+RestartSec=2s
+
+# systemd-managed writable dirs (kept minimal).
+DynamicUser=yes
+StateDirectory=mister-morph
+StateDirectoryMode=0700
+CacheDirectory=mister-morph
+CacheDirectoryMode=0700
+LogsDirectory=mister-morph
+LogsDirectoryMode=0700
+
+# Keep all persistent writes inside StateDirectory, and all temp/file-tool writes inside CacheDirectory.
+WorkingDirectory=/var/lib/mister-morph
+Environment=HOME=/var/lib/mister-morph
+Environment=MISTER_MORPH_DB_DSN=/var/lib/mister-morph/mister_morph.sqlite
+Environment=MISTER_MORPH_FILE_CACHE_DIR=/var/cache/mister-morph
+
+# If you want to allow the agent to read a specific project directory, prefer a read-only bind mount:
+# BindReadOnlyPaths=/home/you/projects:/workspace
+
+NoNewPrivileges=yes
+UMask=0077
+
+PrivateTmp=yes
+PrivateDevices=yes
+DevicePolicy=closed
+
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+# Needs outbound network (OpenAI/Telegram/web_search) + local unix sockets.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

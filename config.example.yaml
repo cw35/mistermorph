@@ -4,19 +4,21 @@
 #   ./mister_morph run --config ./config.example.yaml --task "..."
 #
 # Env vars (override config):
-#   MISTER_MORPH_PROVIDER, MISTER_MORPH_ENDPOINT, MISTER_MORPH_MODEL, MISTER_MORPH_API_KEY
+#   - Preferred: MISTER_MORPH_LLM_PROVIDER, MISTER_MORPH_LLM_ENDPOINT, MISTER_MORPH_LLM_MODEL, MISTER_MORPH_LLM_API_KEY
 
-# LLM provider name. Currently supported: "openai" (OpenAI-compatible Chat Completions API).
-provider: openai
-# Base URL for the provider.
-endpoint: "https://api.openai.com"
-# Default model used by both the main agent loop and (by default) smart skills selection.
-model: "gpt-4o-mini"
-# Provider API key. Prefer env var to avoid committing secrets.
-api_key: "" # or set via MISTER_MORPH_API_KEY
+# Global User-Agent for outbound HTTP requests (tools like url_fetch, web_search, etc).
+user_agent: "mister_morph/1.0 (+https://github.com/quailyquaily)"
 
-# Per-LLM HTTP request timeout (0 uses provider default).
 llm:
+  # LLM provider name. Currently supported: "openai" (OpenAI-compatible Chat Completions API).
+  provider: openai
+  # Base URL for the provider.
+  endpoint: "https://api.openai.com"
+  # Default model used by both the main agent loop and (by default) smart skills selection.
+  model: "gpt-4o-mini"
+  # Provider API key. Prefer env var to avoid committing secrets.
+  api_key: "" # or set via MISTER_MORPH_LLM_API_KEY
+  # Per-LLM HTTP request timeout (0 uses provider default).
   request_timeout: "90s"
 
 logging:
@@ -54,11 +56,15 @@ tools:
       - "config.yaml"
   write_file:
     # Enable the write_file tool (writes text to a local file).
+    # Note: writes are restricted to the global `file_cache_dir` only.
     enabled: true
     # If true, prompts on /dev/tty before each write.
     confirm: false
     # Max bytes allowed per write_file call.
     max_bytes: 524288
+    # Allowed directories for writes. Special value ["*"] disables the restriction.
+    # If empty (default), only file_cache_dir is allowed.
+    allowed_dirs: []
   url_fetch:
     # Enable the url_fetch tool (HTTP(S) GET/POST/PUT/DELETE, truncated output).
     enabled: true
@@ -66,8 +72,6 @@ tools:
     timeout: "30s"
     # Max response bytes to read (tool will truncate beyond this).
     max_bytes: 524288
-    # Optional custom User-Agent for outbound requests.
-    user_agent: "mister_morph/1.0 (+https://github.com/quailyquaily)"
   web_search:
     # Enable the web_search tool (DuckDuckGo HTML by default).
     enabled: true
@@ -77,8 +81,6 @@ tools:
     timeout: "20s"
     # Default max results (tool also enforces a hard cap).
     max_results: 5
-    # Optional custom User-Agent for outbound requests.
-    user_agent: "mister_morph/1.0 (+https://github.com/quailyquaily)"
   # Dangerous: enables local shell execution.
   bash:
     # Enable the bash tool. Disabled by default.
@@ -182,8 +184,6 @@ server:
 telegram:
   # Bot token from @BotFather. Prefer env var: MISTER_MORPH_TELEGRAM_BOT_TOKEN
   bot_token: ""
-  # Telegram API base URL.
-  base_url: "https://api.telegram.org"
   # Optional allowlist of chat ids (strings). If empty, allows all.
   allowed_chat_ids: []
   # Optional aliases (keywords). In groups, these may trigger a response depending on `group_trigger_mode`.
@@ -206,7 +206,7 @@ telegram:
     # - borderline: only when an alias is present but heuristics aren't confident (default).
     # - always: for any alias hit (useful with group_trigger_mode=contains to avoid naive substring triggers).
     mode: "borderline"
-    # Model to use for addressing classification (empty uses top-level `model`).
+    # Model to use for addressing classification (empty uses `llm.model`).
     model: ""
     timeout: "3s"
     # Minimum confidence required to accept the classification.
@@ -219,11 +219,7 @@ telegram:
   max_concurrency: 3
   # Max chat history messages kept per chat.
   history_max_messages: 20
-  files:
-    # If true, download inbound attachments (document/photo) to file_cache_dir (under ./telegram/) and enable telegram_send_file tool.
-    enabled: true
-    # Max bytes for a single downloaded Telegram file.
-    max_bytes: 20971520
+  # Note: file handling is always enabled; files are downloaded under file_cache_dir/telegram/ (max size is hardcoded).
 
 # Agent loop limits.
 # - max_steps: maximum tool-call steps in the ReAct loop.

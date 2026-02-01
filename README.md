@@ -40,7 +40,7 @@ By default, `run` uses `skills.mode=smart` so the agent can decide which skills 
 
 - `web_search` is enabled by default and returns a short list of search results.
 - `url_fetch` is enabled by default and can send HTTP(S) requests (GET/POST/PUT/DELETE, optional headers/body; truncated output). For unsupported cases, use `bash` with `curl`.
-- `write_file` is enabled by default and writes text content to a local file.
+- `write_file` is enabled by default and writes text content to a local file (default restricted to `file_cache_dir/`; configurable via `tools.write_file.allowed_dirs`).
 - `bash` is disabled by default (dangerous). Enable via config `tools.bash.enabled: true` (recommended: `tools.bash.confirm: true`).
 
 ## Daemon Mode (Serve + Submit)
@@ -74,6 +74,7 @@ Notes:
 - Use `/ask <task>` in groups.
 - In groups, the bot also responds when you reply to it, or mention `@BotUsername` (if it receives the message).
 - You can send a file (document/photo); it will be downloaded under `file_cache_dir/telegram/` and the agent can process it (e.g. via the `bash` tool). The agent can also send cached files back via `telegram_send_file`.
+- In Telegram mode, the last loaded skill(s) stay “sticky” per chat (so follow-up messages won’t forget SKILL.md); `/reset` clears this.
 - If you configure `telegram.aliases`, the default `telegram.group_trigger_mode=smart` only triggers on aliases when the message looks like direct addressing (alias near the start + request-like text). Use `contains` for the old substring behavior.
 - If you want smarter disambiguation for alias mentions, enable `telegram.addressing_llm.enabled` (and optionally set `telegram.addressing_llm.mode=always`) to let an LLM classify alias hits.
 - Use `/id` to print the current chat id (useful for allowlisting group ids).
@@ -85,11 +86,11 @@ Notes:
 ## Config (Viper)
 
 - Flags: `--provider`, `--model`, `--api-key`, `--endpoint`, `--llm-request-timeout`, `--plan-mode`, `--max-steps`, `--parse-retries`, `--timeout`, `--trace`, `--log-level`, `--log-format`, `--server-port`, `--server-auth-token`
-- Env vars: `MISTER_MORPH_PROVIDER`, `MISTER_MORPH_MODEL`, `MISTER_MORPH_API_KEY`, `MISTER_MORPH_ENDPOINT` (nested keys also work, e.g. `MISTER_MORPH_TOOLS_BASH_ENABLED=true`)
+- Env vars: `MISTER_MORPH_LLM_PROVIDER`, `MISTER_MORPH_LLM_MODEL`, `MISTER_MORPH_LLM_API_KEY`, `MISTER_MORPH_LLM_ENDPOINT` (nested keys also work, e.g. `MISTER_MORPH_TOOLS_BASH_ENABLED=true`)
 - Optional config file: `--config path/to/config` (supports `.yaml/.yml/.json/.toml/.ini`)
 
 Key meanings (see `mister_morph/config.example.yaml` for the canonical list):
-- Core: `provider`/`endpoint`/`model`/`api_key` select the LLM backend and credentials.
+- Core: `llm.provider`/`llm.endpoint`/`llm.model`/`llm.api_key` select the LLM backend and credentials.
 - Logging: `logging.level` (`info` shows progress; `debug` adds thoughts), `logging.format` (`text|json`), plus opt-in fields `logging.include_thoughts` and `logging.include_tool_params` (redacted).
 - Loop: `plan.mode` enables planning for complex tasks; `max_steps` limits tool-call rounds; `parse_retries` retries invalid JSON; `max_token_budget` is a cumulative token cap (0 disables); `timeout` is the overall run timeout; `trace` prints debug info to stderr.
 - Skills: `skills.mode` controls whether skills are used (`smart` lets the agent decide); `skills.dirs` are scan roots; `skills.load` always loads specific skills; `skills.auto` additionally loads `$SkillName` references; smart mode tuning via `skills.max_load/preview_bytes/catalog_limit/select_timeout/selector_model`.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/quailyquaily/mister_morph/tools"
@@ -18,6 +19,7 @@ func registryFromViper() *tools.Registry {
 	viper.SetDefault("tools.write_file.enabled", true)
 	viper.SetDefault("tools.write_file.confirm", false)
 	viper.SetDefault("tools.write_file.max_bytes", 512*1024)
+	viper.SetDefault("tools.write_file.allowed_dirs", []string{})
 
 	viper.SetDefault("tools.bash.enabled", false)
 	viper.SetDefault("tools.bash.confirm", false)
@@ -28,52 +30,53 @@ func registryFromViper() *tools.Registry {
 	viper.SetDefault("tools.url_fetch.enabled", true)
 	viper.SetDefault("tools.url_fetch.timeout", 30*time.Second)
 	viper.SetDefault("tools.url_fetch.max_bytes", int64(512*1024))
-	viper.SetDefault("tools.url_fetch.user_agent", "mister_morph/1.0 (+https://github.com/quailyquaily)")
-
 	viper.SetDefault("tools.web_search.enabled", true)
 	viper.SetDefault("tools.web_search.timeout", 20*time.Second)
 	viper.SetDefault("tools.web_search.max_results", 5)
 	viper.SetDefault("tools.web_search.base_url", "https://duckduckgo.com/html/")
-	viper.SetDefault("tools.web_search.user_agent", "mister_morph/1.0 (+https://github.com/quailyquaily)")
+
+	userAgent := strings.TrimSpace(viper.GetString("user_agent"))
 
 	r.Register(builtin.NewReadFileToolWithDenyPaths(
-		int64(viperGetInt("tools.read_file.max_bytes", "read_file_max_bytes")),
-		viperGetStringSlice("tools.read_file.deny_paths", "read_file_deny_paths"),
+		int64(viper.GetInt("tools.read_file.max_bytes")),
+		viper.GetStringSlice("tools.read_file.deny_paths"),
 	))
 
 	r.Register(builtin.NewWriteFileTool(
-		viperGetBool("tools.write_file.enabled", "write_file_enabled"),
-		viperGetBool("tools.write_file.confirm", "write_file_confirm"),
-		viperGetInt("tools.write_file.max_bytes", "write_file_max_bytes"),
+		viper.GetBool("tools.write_file.enabled"),
+		viper.GetBool("tools.write_file.confirm"),
+		viper.GetInt("tools.write_file.max_bytes"),
+		strings.TrimSpace(viper.GetString("file_cache_dir")),
+		viper.GetStringSlice("tools.write_file.allowed_dirs"),
 	))
 
-	if viperGetBool("tools.bash.enabled", "bash_enabled") {
+	if viper.GetBool("tools.bash.enabled") {
 		bt := builtin.NewBashTool(
 			true,
-			viperGetBool("tools.bash.confirm", "bash_confirm"),
-			viperGetDuration("tools.bash.timeout", "bash_timeout"),
-			viperGetInt("tools.bash.max_output_bytes", "bash_max_output_bytes"),
+			viper.GetBool("tools.bash.confirm"),
+			viper.GetDuration("tools.bash.timeout"),
+			viper.GetInt("tools.bash.max_output_bytes"),
 		)
-		bt.DenyPaths = viperGetStringSlice("tools.bash.deny_paths", "bash_deny_paths")
+		bt.DenyPaths = viper.GetStringSlice("tools.bash.deny_paths")
 		r.Register(bt)
 	}
 
-	if viperGetBool("tools.url_fetch.enabled", "url_fetch_enabled") {
+	if viper.GetBool("tools.url_fetch.enabled") {
 		r.Register(builtin.NewURLFetchTool(
 			true,
-			viperGetDuration("tools.url_fetch.timeout", "url_fetch_timeout"),
-			viperGetInt64("tools.url_fetch.max_bytes", "url_fetch_max_bytes"),
-			viperGetString("tools.url_fetch.user_agent", "url_fetch_user_agent"),
+			viper.GetDuration("tools.url_fetch.timeout"),
+			viper.GetInt64("tools.url_fetch.max_bytes"),
+			userAgent,
 		))
 	}
 
-	if viperGetBool("tools.web_search.enabled", "web_search_enabled") {
+	if viper.GetBool("tools.web_search.enabled") {
 		r.Register(builtin.NewWebSearchTool(
 			true,
-			viperGetString("tools.web_search.base_url", "web_search_base_url"),
-			viperGetDuration("tools.web_search.timeout", "web_search_timeout"),
-			viperGetInt("tools.web_search.max_results", "web_search_max_results"),
-			viperGetString("tools.web_search.user_agent", "web_search_user_agent"),
+			viper.GetString("tools.web_search.base_url"),
+			viper.GetDuration("tools.web_search.timeout"),
+			viper.GetInt("tools.web_search.max_results"),
+			userAgent,
 		))
 	}
 

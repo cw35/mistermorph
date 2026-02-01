@@ -35,17 +35,32 @@ func newRunCmd() *cobra.Command {
 				return fmt.Errorf("missing --task (or stdin)")
 			}
 
+			provider := llmProviderFromViper()
+			if cmd.Flags().Changed("provider") {
+				provider = strings.TrimSpace(flagOrViperString(cmd, "provider", ""))
+			}
+			endpoint := llmEndpointFromViper()
+			if cmd.Flags().Changed("endpoint") {
+				endpoint = strings.TrimSpace(flagOrViperString(cmd, "endpoint", ""))
+			}
+			apiKey := llmAPIKeyFromViper()
+			if cmd.Flags().Changed("api-key") {
+				apiKey = strings.TrimSpace(flagOrViperString(cmd, "api-key", ""))
+			}
 			client, err := llmClientFromConfig(llmClientConfig{
-				Provider:       strings.TrimSpace(flagOrViperString(cmd, "provider", "provider")),
-				Endpoint:       strings.TrimSpace(flagOrViperString(cmd, "endpoint", "endpoint")),
-				APIKey:         strings.TrimSpace(flagOrViperString(cmd, "api-key", "api_key")),
+				Provider:       provider,
+				Endpoint:       endpoint,
+				APIKey:         apiKey,
 				RequestTimeout: flagOrViperDuration(cmd, "llm-request-timeout", "llm.request_timeout"),
 			})
 			if err != nil {
 				return err
 			}
 
-			model := strings.TrimSpace(flagOrViperString(cmd, "model", "model"))
+			model := llmModelFromViper()
+			if cmd.Flags().Changed("model") {
+				model = strings.TrimSpace(flagOrViperString(cmd, "model", ""))
+			}
 
 			timeout := flagOrViperDuration(cmd, "timeout", "timeout")
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -59,7 +74,7 @@ func newRunCmd() *cobra.Command {
 
 			logOpts := logOptionsFromViper()
 
-			promptSpec, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsConfigFromRunCmd(cmd, model))
+			promptSpec, _, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsConfigFromRunCmd(cmd, model))
 			if err != nil {
 				return err
 			}
@@ -161,11 +176,12 @@ func llmClientFromConfig(cfg llmClientConfig) (llm.Client, error) {
 
 var errAbortedByUser = errors.New("aborted by user")
 
-func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, cfg skillsConfig) (agent.PromptSpec, error) {
+func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, cfg skillsConfig) (agent.PromptSpec, []string, error) {
 	if log == nil {
 		log = slog.Default()
 	}
 	spec := agent.DefaultPromptSpec()
+	var loadedOrdered []string
 
 	discovered, err := skills.Discover(skills.DiscoverOptions{Roots: cfg.Roots})
 	if err != nil {
@@ -180,7 +196,7 @@ func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 	}
 	switch mode {
 	case "off", "none", "disabled":
-		return spec, nil
+		return spec, nil, nil
 	}
 
 	loadedSkillIDs := make(map[string]bool)
@@ -214,16 +230,17 @@ func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 	for _, q := range finalReq {
 		s, err := skills.Resolve(discovered, q)
 		if err != nil {
-			return agent.PromptSpec{}, err
+			return agent.PromptSpec{}, nil, err
 		}
 		if loadedSkillIDs[strings.ToLower(s.ID)] {
 			continue
 		}
 		skillLoaded, err := skills.Load(s, 512*1024)
 		if err != nil {
-			return agent.PromptSpec{}, err
+			return agent.PromptSpec{}, nil, err
 		}
 		loadedSkillIDs[strings.ToLower(skillLoaded.ID)] = true
+		loadedOrdered = append(loadedOrdered, skillLoaded.ID)
 		spec.Blocks = append(spec.Blocks, agent.PromptBlock{
 			Title:   fmt.Sprintf("%s (%s)", skillLoaded.Name, skillLoaded.ID),
 			Content: skillLoaded.Contents,
@@ -237,7 +254,7 @@ func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 
 	if mode == "explicit" {
 		log.Info("skills_loaded", "mode", mode, "count", len(spec.Blocks))
-		return spec, nil
+		return spec, loadedOrdered, nil
 	}
 
 	// Smart selection: non-strict (model may suggest none or unknown ids)
@@ -295,6 +312,7 @@ func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 				continue
 			}
 			loadedSkillIDs[strings.ToLower(skillLoaded.ID)] = true
+			loadedOrdered = append(loadedOrdered, skillLoaded.ID)
 			spec.Blocks = append(spec.Blocks, agent.PromptBlock{
 				Title:   fmt.Sprintf("%s (%s)", skillLoaded.Name, skillLoaded.ID),
 				Content: skillLoaded.Contents,
@@ -307,7 +325,7 @@ func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 	}
 
 	log.Info("skills_loaded", "mode", mode, "count", len(spec.Blocks))
-	return spec, nil
+	return spec, loadedOrdered, nil
 }
 
 func newInteractiveHook() (agent.Hook, error) {

@@ -382,13 +382,13 @@ func installSkillFromURL(ctx context.Context, log *slog.Logger, client llm.Clien
 
 func llmClientForRemoteSkillReview() (llm.Client, string, error) {
 	cfg := llmClientConfig{
-		Provider:       viper.GetString("provider"),
-		Endpoint:       viper.GetString("endpoint"),
-		APIKey:         viper.GetString("api_key"),
+		Provider:       llmProviderFromViper(),
+		Endpoint:       llmEndpointFromViper(),
+		APIKey:         llmAPIKeyFromViper(),
 		RequestTimeout: viper.GetDuration("llm.request_timeout"),
 	}
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		return nil, "", fmt.Errorf("missing api_key (required to review remote skills safely)")
+		return nil, "", fmt.Errorf("missing llm.api_key (required to review remote skills safely)")
 	}
 	c, err := llmClientFromConfig(cfg)
 	if err != nil {
@@ -396,7 +396,7 @@ func llmClientForRemoteSkillReview() (llm.Client, string, error) {
 	}
 	model := strings.TrimSpace(viper.GetString("skills.selector_model"))
 	if model == "" {
-		model = strings.TrimSpace(viper.GetString("model"))
+		model = llmModelFromViper()
 	}
 	if model == "" {
 		model = "gpt-4o-mini"
