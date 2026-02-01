@@ -969,6 +969,7 @@ func (api *telegramAPI) getUpdates(ctx context.Context, offset int64, timeout ti
 type telegramSendMessageRequest struct {
 	ChatID                int64  `json:"chat_id"`
 	Text                  string `json:"text"`
+	ParseMode             string `json:"parse_mode,omitempty"`
 	DisableWebPagePreview bool   `json:"disable_web_page_preview,omitempty"`
 }
 
@@ -1081,9 +1082,41 @@ func (api *telegramAPI) sendMessage(ctx context.Context, chatID int64, text stri
 	if text == "" {
 		text = "(empty)"
 	}
+
+	// Telegram Markdown can be picky; try richer formatting first, then fall back to plain text.
+	if err := api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "MarkdownV2"); err == nil {
+		return nil
+	}
+	if err := api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "Markdown"); err == nil {
+		return nil
+	}
+	return api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "")
+}
+
+func (api *telegramAPI) sendMessageChunked(ctx context.Context, chatID int64, text string) error {
+	const max = 3500
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return api.sendMessage(ctx, chatID, "(empty)", true)
+	}
+	for len(text) > 0 {
+		chunk := text
+		if len(chunk) > max {
+			chunk = chunk[:max]
+		}
+		if err := api.sendMessage(ctx, chatID, chunk, true); err != nil {
+			return err
+		}
+		text = strings.TrimSpace(text[len(chunk):])
+	}
+	return nil
+}
+
+func (api *telegramAPI) sendMessageWithParseMode(ctx context.Context, chatID int64, text string, disablePreview bool, parseMode string) error {
 	reqBody := telegramSendMessageRequest{
 		ChatID:                chatID,
 		Text:                  text,
+		ParseMode:             strings.TrimSpace(parseMode),
 		DisableWebPagePreview: disablePreview,
 	}
 	b, _ := json.Marshal(reqBody)
@@ -1106,25 +1139,6 @@ func (api *telegramAPI) sendMessage(ctx context.Context, chatID int64, text stri
 	_ = json.Unmarshal(raw, &ok)
 	if !ok.OK {
 		return fmt.Errorf("telegram sendMessage: ok=false")
-	}
-	return nil
-}
-
-func (api *telegramAPI) sendMessageChunked(ctx context.Context, chatID int64, text string) error {
-	const max = 3500
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return api.sendMessage(ctx, chatID, "(empty)", true)
-	}
-	for len(text) > 0 {
-		chunk := text
-		if len(chunk) > max {
-			chunk = chunk[:max]
-		}
-		if err := api.sendMessage(ctx, chatID, chunk, true); err != nil {
-			return err
-		}
-		text = strings.TrimSpace(text[len(chunk):])
 	}
 	return nil
 }

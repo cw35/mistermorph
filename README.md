@@ -77,6 +77,7 @@ export MISTER_MORPH_TELEGRAM_BOT_TOKEN="123456:ABC..."
 Notes:
 - Use `/ask <task>` in groups.
 - In groups, the bot also responds when you reply to it, or mention `@BotUsername` (if it receives the message).
+- Bot replies are sent with Telegram Markdown (MarkdownV2; with fallback to plain text if Telegram rejects formatting).
 - You can send a file (document/photo); it will be downloaded under `file_cache_dir/telegram/` and the agent can process it (e.g. via the `bash` tool). The agent can also send cached files back via `telegram_send_file`.
 - In Telegram mode, the last loaded skill(s) stay “sticky” per chat (so follow-up messages won’t forget SKILL.md); `/reset` clears this.
 - If you configure `telegram.aliases`, the default `telegram.group_trigger_mode=smart` only triggers on aliases when the message looks like direct addressing (alias near the start + request-like text). Use `contains` for the old substring behavior.
