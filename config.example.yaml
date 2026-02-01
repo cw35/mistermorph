@@ -226,7 +226,7 @@ max_token_budget: 0
 # Overall run timeout.
 timeout: "10m"
 # Global temporary file cache directory used for inbound/outbound file handling (e.g. Telegram).
-file_cache_dir: "/tmp/.morph-cache"
+file_cache_dir: "/var/cache/morph"
 file_cache:
   # Note: cleanup runs on startup (best-effort).
   # Max age for cached files (0 disables age-based cleanup).

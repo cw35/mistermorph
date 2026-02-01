@@ -21,7 +21,7 @@ func NewWriteFileTool(enabled bool, maxBytes int, baseDir string) *WriteFileTool
 	}
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
-		baseDir = "/tmp/.morph-cache"
+		baseDir = "/var/cache/morph"
 	}
 	return &WriteFileTool{
 		Enabled:  enabled,

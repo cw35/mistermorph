@@ -21,7 +21,7 @@ func initViperDefaults() {
 	viper.SetDefault("plan.mode", "auto")
 
 	// Global
-	viper.SetDefault("file_cache_dir", "/tmp/.morph-cache")
+	viper.SetDefault("file_cache_dir", "/var/cache/morph")
 	viper.SetDefault("file_cache.max_age", 7*24*time.Hour)
 	viper.SetDefault("file_cache.max_files", 1000)
 	viper.SetDefault("file_cache.max_total_bytes", int64(512*1024*1024))

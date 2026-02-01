@@ -138,7 +138,7 @@ func newTelegramCmd() *cobra.Command {
 
 			fileCacheDir := strings.TrimSpace(flagOrViperString(cmd, "file-cache-dir", "file_cache_dir"))
 			if fileCacheDir == "" {
-				fileCacheDir = "/tmp/.morph-cache"
+				fileCacheDir = "/var/cache/morph"
 			}
 			const filesEnabled = true
 			const filesMaxBytes = int64(20 * 1024 * 1024)
@@ -684,7 +684,7 @@ func newTelegramCmd() *cobra.Command {
 	cmd.Flags().Duration("telegram-task-timeout", 0, "Per-message agent timeout (0 uses --timeout).")
 	cmd.Flags().Int("telegram-max-concurrency", 3, "Max number of chats processed concurrently.")
 	cmd.Flags().Int("telegram-history-max-messages", 20, "Max chat history messages to keep per chat.")
-	cmd.Flags().String("file-cache-dir", "/tmp/.morph-cache", "Global temporary file cache directory (used for Telegram file handling).")
+	cmd.Flags().String("file-cache-dir", "/var/cache/morph", "Global temporary file cache directory (used for Telegram file handling).")
 
 	return cmd
 }
