@@ -70,6 +70,21 @@ Useful flags:
 
 After installation, the built-in skills are picked up automatically via the default roots.
 
+## Installing a remote SKILL.md (single-file)
+
+If you have a URL that points directly to a `SKILL.md` file, you can install/update it into `~/.morph/skills`:
+
+- `mister_morph skills install "https://example.com/skill.md"`
+
+Notes:
+
+- The installer first prints the remote `SKILL.md` and asks for confirmation.
+- Then it uses the configured LLM to review the file (treating it as untrusted) and extract any explicitly required additional downloads (e.g. `scripts/...`).
+- Before writing anything, it prints a file plan + potential risks and asks for confirmation again.
+- Safety: downloaded files are only written to disk; they are **not executed** during install.
+- The destination folder name is exactly the `name:` in the YAML frontmatter (must match `[A-Za-z0-9_.-]+`).
+- All downloaded files are written under `~/.morph/skills/<name>/` (no paths outside the skills directory).
+
 ## Creating your own skill
 
 Create a folder under one of the roots (recommended: `~/.morph/skills/<my-skill>/`) with this structure:
