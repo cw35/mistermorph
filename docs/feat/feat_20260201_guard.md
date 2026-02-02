@@ -88,6 +88,11 @@ Recommended hardening defaults:
 - disable proxies by default
 - allow redirects only if same-origin and still allowlisted (or disable redirects)
 
+Notes on the two "hardening" toggles:
+- `deny_private_ips`: reduces SSRF risk by blocking literal `localhost` / `127.0.0.1` / RFC1918 private IP targets.
+- `resolve_dns` (default `true`): when enabled alongside `deny_private_ips`, Guard resolves hostnames via `net.LookupHost` and checks all returned IPs against loopback/private/link-local/unspecified ranges. This prevents DNS rebinding attacks where a hostname resolves to a private IP. If DNS resolution fails, the request is allowed through (it will fail at the HTTP layer).
+- `allow_proxy`: when false, the HTTP client should ignore `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` env vars so requests cannot be transparently routed through a proxy/MITM.
+
 ### 5.3 Example config sketch
 
 ```yaml
