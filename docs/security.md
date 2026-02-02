@@ -8,10 +8,15 @@ This document focuses on:
 
 - **process isolation** and **filesystem sandboxing** when running `mister_morph` as a long-lived daemon (for example, via `mister_morph serve`)
 - **secret handling** for authenticated outbound HTTP calls (profile-based credential injection)
+- **Guard (M1)**: outbound allowlists, redaction, async approvals, and audit logs
 
 ## Table of contents
 
 - [Threat model](#threat-model)
+- [Guard (M1)](#guard-m1)
+  - [Outbound allowlists](#outbound-allowlists)
+  - [Redaction](#redaction)
+  - [Async approvals and audit](#async-approvals-and-audit)
 - [Secret handling (profile-based auth)](#secret-handling-profile-based-auth)
   - [Configure profiles](#configure-profiles)
   - [Tool behavior and safeguards](#tool-behavior-and-safeguards)
@@ -34,6 +39,74 @@ The main security risks are:
 - **data exfiltration** (sending local data to external services)
 - **secret leakage** (prompts, tool params, logs, traces)
 - **over-broad capabilities** (shell access, unrestricted networking, unrestricted filesystem reads/writes)
+
+## Guard (M1)
+
+Guard is a lightweight, content/workflow safety layer designed to complement (not replace) OS/container sandboxing.
+
+M1 focuses on three high-value capabilities:
+
+- outbound destination allowlists (primarily `url_fetch`)
+- redaction for tool outputs and final outputs
+- async approvals and an audit trail (JSONL)
+
+### Outbound allowlists
+
+Guard can enforce a **global allowlist** for unauthenticated `url_fetch` calls (i.e. calls without `auth_profile`).
+
+Config (example):
+
+```yaml
+guard:
+  enabled: true
+  network:
+    url_fetch:
+      allowed_url_prefixes:
+        - "https://api.example.com/v1/"
+      deny_private_ips: true
+      allow_proxy: false
+      follow_redirects: false
+```
+
+Behavior:
+
+- If `guard.network.url_fetch.allowed_url_prefixes` is **empty**, unauthenticated `url_fetch` is **blocked** (fail-closed).
+- If `url_fetch` uses `auth_profile`, the destination boundary is enforced by `auth_profiles.<id>.allow.url_prefixes` (Guard still audits, but does not add an extra global allowlist layer by default).
+
+Hardening toggles:
+
+- `deny_private_ips`: blocks literal `localhost` / `127.0.0.1` / RFC1918 private IP targets to reduce SSRF risk. M1 does not resolve hostnames to IPs; enforce egress at the network/OS layer if you need stronger guarantees.
+- `allow_proxy`: when false, the HTTP client ignores `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` to avoid unexpected routing/MITM.
+
+### Redaction
+
+Guard redacts secret-like content **before it enters context/logs**:
+
+- tool observations (`ToolCallPost`)
+- final output (`OutputPublish`)
+
+Built-in redactors cover common patterns (private key blocks, JWT-like strings, bearer tokens, and sensitive `key=value` forms). You can add extra regex patterns under `guard.redaction.patterns`.
+
+### Async approvals and audit
+
+Guard approvals are asynchronous by design:
+
+- When an action requires approval (M1 default: `bash` tool when enabled), the run pauses and returns a `final.output` object like:
+  - `{ "status": "pending", "approval_request_id": "apr_...", "message": "..." }`
+- Approval state is stored in SQLite (reuses `db.dsn` resolution; no separate `guard.approvals.sqlite_dsn`).
+- Approval expiry is **hard-coded to 5 minutes** in M1.
+
+Daemon (`mister_morph serve`) exposes minimal admin endpoints (authenticated with `server.auth_token`):
+
+- `GET /approvals/{id}` (status + metadata; never returns `resume_state`)
+- `POST /approvals/{id}/approve`
+- `POST /approvals/{id}/deny`
+- `POST /approvals/{id}/resume` (re-queues the paused task)
+
+Audit:
+
+- Guard emits structured audit events to an append-only JSONL log.
+- Configure via `guard.audit.jsonl_path` (default: `$HOME/.morph/guard_audit.jsonl`) and `guard.audit.rotate_max_bytes`.
 
 ## Systemd sandbox
 
@@ -175,3 +248,4 @@ The example unit also enables common isolation options:
 - systemd hardening is not a perfect sandbox. If you need stronger isolation, consider running in a container/VM.
 - If you enable the `bash` tool, treat it as high risk. Prefer keeping it disabled in daemon mode, or requiring confirmations and using a strict allowlist of read-only bind mounts.
 - Even with profile-based auth, avoid enabling arbitrary outbound execution paths (e.g. shelling out to network tools). Prefer structured tools with explicit allowlists and fail-closed policy.
+- Guard M1 is intentionally small: Telegram approval UX and durable task storage across daemon restarts are not implemented yet.

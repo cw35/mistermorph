@@ -101,7 +101,7 @@ func (p *AuthProfile) Validate() error {
 			continue
 		}
 		switch m {
-		case "GET", "POST", "PUT", "DELETE":
+		case "GET", "POST", "PUT", "PATCH", "DELETE":
 		default:
 			return fmt.Errorf("auth_profiles.%s.allow.methods contains unsupported method: %q", p.ID, m)
 		}

@@ -73,7 +73,7 @@ func NewURLFetchToolWithAuth(enabled bool, timeout time.Duration, maxBytes int64
 func (t *URLFetchTool) Name() string { return "url_fetch" }
 
 func (t *URLFetchTool) Description() string {
-	return "Fetches an HTTP(S) URL (GET/POST/PUT/DELETE) and returns the response body (truncated)."
+	return "Fetches an HTTP(S) URL (GET/POST/PUT/PATCH/DELETE) and returns the response body (truncated)."
 }
 
 func (t *URLFetchTool) ParameterSchema() string {
@@ -86,8 +86,8 @@ func (t *URLFetchTool) ParameterSchema() string {
 			},
 			"method": map[string]any{
 				"type":        "string",
-				"description": "Optional HTTP method (GET/POST/PUT/DELETE). Defaults to GET.",
-				"enum":        []string{"GET", "POST", "PUT", "DELETE"},
+				"description": "Optional HTTP method (GET/POST/PUT/PATCH/DELETE). Defaults to GET.",
+				"enum":        []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
 			},
 			"auth_profile": map[string]any{
 				"type":        "string",
@@ -102,7 +102,7 @@ func (t *URLFetchTool) ParameterSchema() string {
 			},
 			"body": map[string]any{
 				"type":        []string{"string", "object", "array", "number", "boolean", "null"},
-				"description": "Optional request body (supported for POST and PUT). For binary responses, prefer download_path to save to a file instead of returning in the observation.",
+				"description": "Optional request body (supported for POST, PUT, PATCH). For binary responses, prefer download_path to save to a file instead of returning in the observation.",
 			},
 			"download_path": map[string]any{
 				"type":        "string",
@@ -181,9 +181,9 @@ func (t *URLFetchTool) Execute(ctx context.Context, params map[string]any) (stri
 		}
 	}
 	switch method {
-	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete:
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 	default:
-		return "", fmt.Errorf("unsupported method: %s (url_fetch supports GET, POST, PUT, DELETE; for other methods use the bash tool with curl)", method)
+		return "", fmt.Errorf("unsupported method: %s (url_fetch supports GET, POST, PUT, PATCH, DELETE; for other methods use the bash tool with curl)", method)
 	}
 
 	timeout := t.Timeout
@@ -228,7 +228,9 @@ func (t *URLFetchTool) Execute(ctx context.Context, params map[string]any) (stri
 		}
 	}
 	if bodyProvided && method != http.MethodPost && method != http.MethodPut {
-		return "", fmt.Errorf("request body is only supported for POST/PUT in url_fetch (use the bash tool with curl for %s with a body)", method)
+		if method != http.MethodPatch {
+			return "", fmt.Errorf("request body is only supported for POST/PUT/PATCH in url_fetch (use the bash tool with curl for %s with a body)", method)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(reqCtx, method, u.String(), bodyReader)
