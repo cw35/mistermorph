@@ -9,7 +9,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/quailyquaily/mister_morph/llm"
+	"github.com/quailyquaily/mistermorph/llm"
 )
 
 // --- log-capturing handler ---

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/quailyquaily/mister_morph/llm"
+	"github.com/quailyquaily/mistermorph/llm"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

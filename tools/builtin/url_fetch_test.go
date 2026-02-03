@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/guard"
+	"github.com/quailyquaily/mistermorph/guard"
 )
 
 func TestURLFetchTool_DefaultGET(t *testing.T) {
