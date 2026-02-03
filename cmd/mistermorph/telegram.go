@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -823,6 +824,9 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	)
 	promptSpec.Rules = append(promptSpec.Rules,
 		"If you create a scheduled reminder for this chat using schedule_job: set run_once=true for one-shot reminders, and set notify_telegram_chat_id to the telegram_chat_id value from mister_morph_meta so the scheduler can deliver the result back into this chat.",
+	)
+	promptSpec.Rules = append(promptSpec.Rules,
+		"If you need to send a Telegram voice message: call telegram_send_voice. If you do not already have a voice file path, do NOT ask the user for one; instead call telegram_send_voice without path and provide a short `text` to synthesize from the current context.",
 	)
 
 	if viper.GetBool("memory.enabled") && job.FromUserID > 0 {
@@ -2596,7 +2600,7 @@ func newTelegramSendVoiceTool(api *telegramAPI, defaultChatID int64, cacheDir st
 func (t *telegramSendVoiceTool) Name() string { return "telegram_send_voice" }
 
 func (t *telegramSendVoiceTool) Description() string {
-	return "Sends a local .ogg/.opus voice message (from file_cache_dir) to Telegram. Prefer .ogg with Opus audio. Use chat_id when not running in an active chat context."
+	return "Sends a Telegram voice message. Provide either a local .ogg/.opus file under file_cache_dir, or omit path and provide text to synthesize locally. Use chat_id when not running in an active chat context."
 }
 
 func (t *telegramSendVoiceTool) ParameterSchema() string {
@@ -2610,7 +2614,11 @@ func (t *telegramSendVoiceTool) ParameterSchema() string {
 			},
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path to a local voice file under file_cache_dir (absolute or relative to that directory). Recommended: .ogg with Opus audio.",
+				"description": "Path to a local voice file under file_cache_dir (absolute or relative to that directory). Recommended: .ogg with Opus audio. If omitted, the tool can synthesize a voice file from `text`.",
+			},
+			"text": map[string]any{
+				"type":        "string",
+				"description": "Text to synthesize into a voice message when `path` is omitted. If omitted, falls back to `caption`.",
 			},
 			"filename": map[string]any{
 				"type":        "string",
@@ -2621,10 +2629,85 @@ func (t *telegramSendVoiceTool) ParameterSchema() string {
 				"description": "Optional caption text.",
 			},
 		},
-		"required": []string{"path"},
+		"required": []string{},
 	}
 	b, _ := json.MarshalIndent(s, "", "  ")
 	return string(b)
+}
+
+func commandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func synthesizeVoiceToOggOpus(ctx context.Context, cacheDir string, text string) (string, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("missing voice synthesis text")
+	}
+	// Keep this bounded: huge TTS is slow and can exceed Telegram limits.
+	if len(text) > 1200 {
+		text = strings.TrimSpace(text[:1200])
+	}
+
+	cacheDir = strings.TrimSpace(cacheDir)
+	if cacheDir == "" {
+		return "", fmt.Errorf("file cache dir is not configured")
+	}
+	cacheAbs, err := filepath.Abs(cacheDir)
+	if err != nil {
+		return "", err
+	}
+	ttsDir := filepath.Join(cacheAbs, "tts")
+	if err := os.MkdirAll(ttsDir, 0o700); err != nil {
+		return "", err
+	}
+	_ = os.Chmod(ttsDir, 0o700)
+
+	sum := sha256.Sum256([]byte(text))
+	base := fmt.Sprintf("voice_%d_%s", time.Now().UTC().Unix(), hex.EncodeToString(sum[:8]))
+	wavPath := filepath.Join(ttsDir, base+".wav")
+	oggPath := filepath.Join(ttsDir, base+".ogg")
+
+	var synthCmd *exec.Cmd
+	switch {
+	case commandExists("pico2wave"):
+		// pico2wave writes the WAV file directly.
+		synthCmd = exec.CommandContext(ctx, "pico2wave", "-l", "en-US", "-w", wavPath, text)
+	case commandExists("espeak-ng"):
+		synthCmd = exec.CommandContext(ctx, "espeak-ng", "-w", wavPath, text)
+	case commandExists("espeak"):
+		synthCmd = exec.CommandContext(ctx, "espeak", "-w", wavPath, text)
+	case commandExists("flite"):
+		synthCmd = exec.CommandContext(ctx, "flite", "-t", text, "-o", wavPath)
+	default:
+		return "", fmt.Errorf("no local TTS engine found (install one of: pico2wave, espeak-ng, espeak, flite)")
+	}
+	out, err := synthCmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("tts synth failed: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	// Convert to OGG/Opus for Telegram voice.
+	if commandExists("ffmpeg") {
+		conv := exec.CommandContext(ctx, "ffmpeg", "-y", "-loglevel", "error", "-i", wavPath, "-c:a", "libopus", "-b:a", "24k", "-vbr", "on", "-compression_level", "10", oggPath)
+		out, err := conv.CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("ffmpeg convert failed: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+	} else if commandExists("opusenc") {
+		conv := exec.CommandContext(ctx, "opusenc", "--quiet", wavPath, oggPath)
+		out, err := conv.CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("opusenc convert failed: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+	} else {
+		return "", fmt.Errorf("no audio converter found (install ffmpeg or opusenc)")
+	}
+
+	_ = os.Remove(wavPath)
+	_ = os.Chmod(oggPath, 0o600)
+	return oggPath, nil
 }
 
 func (t *telegramSendVoiceTool) Execute(ctx context.Context, params map[string]any) (string, error) {
@@ -2650,47 +2733,63 @@ func (t *telegramSendVoiceTool) Execute(ctx context.Context, params map[string]a
 		return "", fmt.Errorf("unauthorized chat_id: %d", chatID)
 	}
 
-	rawPath, _ := params["path"].(string)
-	rawPath = strings.TrimSpace(rawPath)
-	if rawPath == "" {
-		return "", fmt.Errorf("missing required param: path")
-	}
 	cacheDir := strings.TrimSpace(t.cacheDir)
 	if cacheDir == "" {
 		return "", fmt.Errorf("file cache dir is not configured")
 	}
 
-	p := rawPath
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(cacheDir, p)
-	}
-	p = filepath.Clean(p)
-
 	cacheAbs, err := filepath.Abs(cacheDir)
 	if err != nil {
 		return "", err
 	}
-	pathAbs, err := filepath.Abs(p)
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(cacheAbs, pathAbs)
-	if err != nil {
-		return "", err
-	}
-	if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
-		return "", fmt.Errorf("refusing to send file outside file_cache_dir: %s", pathAbs)
-	}
+	caption, _ := params["caption"].(string)
+	caption = strings.TrimSpace(caption)
 
-	st, err := os.Stat(pathAbs)
-	if err != nil {
-		return "", err
-	}
-	if st.IsDir() {
-		return "", fmt.Errorf("path is a directory: %s", pathAbs)
-	}
-	if t.maxBytes > 0 && st.Size() > t.maxBytes {
-		return "", fmt.Errorf("file too large to send (>%d bytes): %s", t.maxBytes, pathAbs)
+	rawPath, _ := params["path"].(string)
+	rawPath = strings.TrimSpace(rawPath)
+
+	var pathAbs string
+	if rawPath != "" {
+		p := rawPath
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(cacheDir, p)
+		}
+		p = filepath.Clean(p)
+
+		pathAbs, err = filepath.Abs(p)
+		if err != nil {
+			return "", err
+		}
+		rel, err := filepath.Rel(cacheAbs, pathAbs)
+		if err != nil {
+			return "", err
+		}
+		if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
+			return "", fmt.Errorf("refusing to send file outside file_cache_dir: %s", pathAbs)
+		}
+
+		st, err := os.Stat(pathAbs)
+		if err != nil {
+			return "", err
+		}
+		if st.IsDir() {
+			return "", fmt.Errorf("path is a directory: %s", pathAbs)
+		}
+		if t.maxBytes > 0 && st.Size() > t.maxBytes {
+			return "", fmt.Errorf("file too large to send (>%d bytes): %s", t.maxBytes, pathAbs)
+		}
+	} else {
+		text, _ := params["text"].(string)
+		text = strings.TrimSpace(text)
+		if text == "" {
+			text = caption
+		}
+		synthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		pathAbs, err = synthesizeVoiceToOggOpus(synthCtx, cacheAbs, text)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	filename, _ := params["filename"].(string)
@@ -2699,9 +2798,6 @@ func (t *telegramSendVoiceTool) Execute(ctx context.Context, params map[string]a
 		filename = filepath.Base(pathAbs)
 	}
 	filename = sanitizeFilename(filename)
-
-	caption, _ := params["caption"].(string)
-	caption = strings.TrimSpace(caption)
 
 	if err := t.api.sendVoice(ctx, chatID, pathAbs, filename, caption); err != nil {
 		return "", err
