@@ -29,6 +29,7 @@ import (
 	"github.com/quailyquaily/mistermorph/db"
 	"github.com/quailyquaily/mistermorph/db/models"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
+	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/scheduler"
@@ -2719,6 +2720,7 @@ func (t *telegramSendFileTool) Execute(ctx context.Context, params map[string]an
 	if rawPath == "" {
 		return "", fmt.Errorf("missing required param: path")
 	}
+	rawPath = pathutil.NormalizeFileCacheDirPath(rawPath)
 	cacheDir := strings.TrimSpace(t.cacheDir)
 	if cacheDir == "" {
 		return "", fmt.Errorf("file cache dir is not configured")
@@ -2937,6 +2939,7 @@ func (t *telegramSendVoiceTool) Execute(ctx context.Context, params map[string]a
 
 	rawPath, _ := params["path"].(string)
 	rawPath = strings.TrimSpace(rawPath)
+	rawPath = pathutil.NormalizeFileCacheDirPath(rawPath)
 
 	var pathAbs string
 	if rawPath != "" {

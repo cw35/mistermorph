@@ -23,3 +23,17 @@ func ExpandHomePath(p string) string {
 	}
 	return filepath.Clean(p)
 }
+
+func NormalizeFileCacheDirPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return p
+	}
+	trimmed := strings.TrimLeft(p, "/\\")
+	trimmed = strings.TrimPrefix(trimmed, "file_cache_dir/")
+	trimmed = strings.TrimPrefix(trimmed, "file_cache_dir\\")
+	if trimmed == p {
+		return p
+	}
+	return strings.TrimLeft(trimmed, "/\\")
+}

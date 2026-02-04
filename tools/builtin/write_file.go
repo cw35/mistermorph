@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/quailyquaily/mistermorph/internal/pathutil"
 )
 
 type WriteFileTool struct {
@@ -135,7 +137,7 @@ func (t *WriteFileTool) Execute(_ context.Context, params map[string]any) (strin
 }
 
 func resolveWritePath(baseDirCfg string, userPath string) (string, string, error) {
-	baseDir := expandHomePath(baseDirCfg)
+	baseDir := pathutil.ExpandHomePath(baseDirCfg)
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
 		return "", "", fmt.Errorf("file_cache_dir is not configured")
@@ -162,7 +164,8 @@ func resolveWritePath(baseDirCfg string, userPath string) (string, string, error
 		_ = os.Chmod(baseAbs, 0o700)
 	}
 
-	userPath = expandHomePath(userPath)
+	userPath = pathutil.ExpandHomePath(userPath)
+	userPath = pathutil.NormalizeFileCacheDirPath(userPath)
 	if strings.TrimSpace(userPath) == "" {
 		return "", "", fmt.Errorf("missing required param: path")
 	}

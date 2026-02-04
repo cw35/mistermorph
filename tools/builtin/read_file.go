@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/quailyquaily/mistermorph/internal/pathutil"
 )
 
 type ReadFileTool struct {
@@ -43,11 +45,12 @@ func (t *ReadFileTool) ParameterSchema() string {
 func (t *ReadFileTool) Execute(_ context.Context, params map[string]any) (string, error) {
 	path, _ := params["path"].(string)
 	path = strings.TrimSpace(path)
+	path = pathutil.NormalizeFileCacheDirPath(path)
 	if path == "" {
 		return "", fmt.Errorf("missing required param: path")
 	}
 
-	path = expandHomePath(path)
+	path = pathutil.ExpandHomePath(path)
 
 	if offending, ok := denyPath(path, t.DenyPaths); ok {
 		return "", fmt.Errorf("read_file denied for path %q (matched %q)", path, offending)
