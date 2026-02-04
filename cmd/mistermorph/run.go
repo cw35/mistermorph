@@ -224,7 +224,6 @@ func llmClientFromConfig(cfg llmClientConfig) (llm.Client, error) {
 			AwsSecret:          firstNonEmpty(viper.GetString("llm.bedrock.aws_secret"), viper.GetString("llm.aws.secret")),
 			AwsRegion:          firstNonEmpty(viper.GetString("llm.bedrock.region"), viper.GetString("llm.aws.region")),
 			AwsBedrockModelArn: firstNonEmpty(viper.GetString("llm.bedrock.model_arn"), viper.GetString("llm.aws.bedrock_model_arn")),
-			Debug:              true,
 		})
 		return c, nil
 	default:
