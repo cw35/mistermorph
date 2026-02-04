@@ -709,7 +709,7 @@ func newTelegramCmd() *cobra.Command {
 					}
 
 					var downloaded []telegramDownloadedFile
-					if filesEnabled && messageHasDownloadableFile(msg) {
+					if filesEnabled && (messageHasDownloadableFile(msg) || (msg.ReplyTo != nil && messageHasDownloadableFile(msg.ReplyTo))) {
 						telegramCacheDir := filepath.Join(fileCacheDir, "telegram")
 						ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 						downloaded, err = downloadTelegramMessageFiles(ctx, api, telegramCacheDir, filesMaxBytes, msg, chatID)
@@ -724,6 +724,15 @@ func newTelegramCmd() *cobra.Command {
 					}
 					if len(downloaded) > 0 {
 						text = appendDownloadedFilesToTask(text, downloaded)
+					}
+					if msg.ReplyTo != nil {
+						quoted := buildReplyContext(msg.ReplyTo)
+						if quoted != "" {
+							if strings.TrimSpace(text) == "" {
+								text = "Please interpret the quoted message and proceed in your understanding."
+							}
+							text = "Quoted message:\n> " + quoted + "\n\nUser request:\n" + strings.TrimSpace(text)
+						}
 					}
 
 					// Enqueue to per-chat worker (per chat serial; across chats parallel).
@@ -1600,6 +1609,39 @@ func truncateOneLine(s string, max int) string {
 	return s[:max-3] + "..."
 }
 
+func buildReplyContext(msg *telegramMessage) string {
+	if msg == nil {
+		return ""
+	}
+	text := strings.TrimSpace(messageTextOrCaption(msg))
+	if text == "" && messageHasDownloadableFile(msg) {
+		text = "[attachment]"
+	}
+	if text == "" {
+		return ""
+	}
+	text = truncateRunes(text, 2000)
+	if msg.From != nil && strings.TrimSpace(msg.From.Username) != "" {
+		return "@" + strings.TrimSpace(msg.From.Username) + ": " + text
+	}
+	return text
+}
+
+func truncateRunes(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if s == "" || max <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	if max <= 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
+}
+
 func visibilityLabel(v int) string {
 	if v == int(memory.PublicOK) {
 		return "public_ok"
@@ -2386,113 +2428,140 @@ func downloadTelegramMessageFiles(ctx context.Context, api *telegramAPI, cacheDi
 	}
 
 	var out []telegramDownloadedFile
+	seen := make(map[string]bool)
+	handleMessage := func(m *telegramMessage) error {
+		if m == nil {
+			return nil
+		}
 
-	// document
-	if msg.Document != nil && strings.TrimSpace(msg.Document.FileID) != "" {
-		f, err := api.getFile(ctx, msg.Document.FileID)
-		if err != nil {
-			return nil, err
+		// document
+		if m.Document != nil {
+			fileID := strings.TrimSpace(m.Document.FileID)
+			if fileID != "" {
+				key := "doc:" + fileID
+				if !seen[key] {
+					seen[key] = true
+					f, err := api.getFile(ctx, fileID)
+					if err != nil {
+						return err
+					}
+					orig := strings.TrimSpace(m.Document.FileName)
+					if orig == "" {
+						orig = "document" + filepath.Ext(f.FilePath)
+					}
+					name := sanitizeFilename(orig)
+					base := fmt.Sprintf("tg_%d_%s_%s", m.MessageID, shortHash(fileID), name)
+					dst := filepath.Join(chatDir, base)
+					if _, err := os.Stat(dst); err == nil {
+						out = append(out, telegramDownloadedFile{
+							Kind:         "document",
+							OriginalName: orig,
+							MimeType:     m.Document.MimeType,
+							SizeBytes:    m.Document.FileSize,
+							Path:         dst,
+						})
+					} else {
+						tmp, err := os.CreateTemp(chatDir, base+".tmp-*")
+						if err != nil {
+							return err
+						}
+						tmpPath := tmp.Name()
+						_ = tmp.Close()
+						_, _, dlErr := api.downloadFileTo(ctx, f.FilePath, tmpPath, maxBytes)
+						if dlErr != nil {
+							_ = os.Remove(tmpPath)
+							return dlErr
+						}
+						if err := os.Chmod(tmpPath, 0o600); err != nil {
+							_ = os.Remove(tmpPath)
+							return err
+						}
+						if err := os.Rename(tmpPath, dst); err != nil {
+							_ = os.Remove(tmpPath)
+							return err
+						}
+						_ = os.Chmod(dst, 0o600)
+						out = append(out, telegramDownloadedFile{
+							Kind:         "document",
+							OriginalName: orig,
+							MimeType:     m.Document.MimeType,
+							SizeBytes:    m.Document.FileSize,
+							Path:         dst,
+						})
+					}
+				}
+			}
 		}
-		orig := strings.TrimSpace(msg.Document.FileName)
-		if orig == "" {
-			orig = "document" + filepath.Ext(f.FilePath)
+
+		// photo (download the largest size).
+		if len(m.Photo) > 0 {
+			var best telegramPhotoSize
+			for i := range m.Photo {
+				if strings.TrimSpace(m.Photo[i].FileID) == "" {
+					continue
+				}
+				best = m.Photo[i]
+			}
+			if strings.TrimSpace(best.FileID) != "" {
+				key := "photo:" + best.FileID
+				if !seen[key] {
+					seen[key] = true
+					f, err := api.getFile(ctx, best.FileID)
+					if err != nil {
+						return err
+					}
+					ext := filepath.Ext(f.FilePath)
+					orig := "photo" + ext
+					name := sanitizeFilename(orig)
+					base := fmt.Sprintf("tg_%d_%s_%s", m.MessageID, shortHash(best.FileID), name)
+					dst := filepath.Join(chatDir, base)
+					if _, err := os.Stat(dst); err == nil {
+						out = append(out, telegramDownloadedFile{
+							Kind:         "photo",
+							OriginalName: orig,
+							SizeBytes:    best.FileSize,
+							Path:         dst,
+						})
+					} else {
+						tmp, err := os.CreateTemp(chatDir, base+".tmp-*")
+						if err != nil {
+							return err
+						}
+						tmpPath := tmp.Name()
+						_ = tmp.Close()
+						_, _, dlErr := api.downloadFileTo(ctx, f.FilePath, tmpPath, maxBytes)
+						if dlErr != nil {
+							_ = os.Remove(tmpPath)
+							return dlErr
+						}
+						if err := os.Chmod(tmpPath, 0o600); err != nil {
+							_ = os.Remove(tmpPath)
+							return err
+						}
+						if err := os.Rename(tmpPath, dst); err != nil {
+							_ = os.Remove(tmpPath)
+							return err
+						}
+						_ = os.Chmod(dst, 0o600)
+						out = append(out, telegramDownloadedFile{
+							Kind:         "photo",
+							OriginalName: orig,
+							SizeBytes:    best.FileSize,
+							Path:         dst,
+						})
+					}
+				}
+			}
 		}
-		name := sanitizeFilename(orig)
-		base := fmt.Sprintf("tg_%d_%s_%s", msg.MessageID, shortHash(msg.Document.FileID), name)
-		dst := filepath.Join(chatDir, base)
-		if _, err := os.Stat(dst); err == nil {
-			out = append(out, telegramDownloadedFile{
-				Kind:         "document",
-				OriginalName: orig,
-				MimeType:     msg.Document.MimeType,
-				SizeBytes:    msg.Document.FileSize,
-				Path:         dst,
-			})
-		} else {
-			tmp, err := os.CreateTemp(chatDir, base+".tmp-*")
-			if err != nil {
-				return nil, err
-			}
-			tmpPath := tmp.Name()
-			_ = tmp.Close()
-			_, _, dlErr := api.downloadFileTo(ctx, f.FilePath, tmpPath, maxBytes)
-			if dlErr != nil {
-				_ = os.Remove(tmpPath)
-				return nil, dlErr
-			}
-			if err := os.Chmod(tmpPath, 0o600); err != nil {
-				_ = os.Remove(tmpPath)
-				return nil, err
-			}
-			if err := os.Rename(tmpPath, dst); err != nil {
-				_ = os.Remove(tmpPath)
-				return nil, err
-			}
-			_ = os.Chmod(dst, 0o600)
-			out = append(out, telegramDownloadedFile{
-				Kind:         "document",
-				OriginalName: orig,
-				MimeType:     msg.Document.MimeType,
-				SizeBytes:    msg.Document.FileSize,
-				Path:         dst,
-			})
-		}
+		return nil
 	}
 
-	// photo (download the largest size).
-	if len(msg.Photo) > 0 {
-		var best telegramPhotoSize
-		for i := range msg.Photo {
-			if strings.TrimSpace(msg.Photo[i].FileID) == "" {
-				continue
-			}
-			best = msg.Photo[i]
-		}
-		if strings.TrimSpace(best.FileID) != "" {
-			f, err := api.getFile(ctx, best.FileID)
-			if err != nil {
-				return nil, err
-			}
-			ext := filepath.Ext(f.FilePath)
-			orig := "photo" + ext
-			name := sanitizeFilename(orig)
-			base := fmt.Sprintf("tg_%d_%s_%s", msg.MessageID, shortHash(best.FileID), name)
-			dst := filepath.Join(chatDir, base)
-			if _, err := os.Stat(dst); err == nil {
-				out = append(out, telegramDownloadedFile{
-					Kind:         "photo",
-					OriginalName: orig,
-					SizeBytes:    best.FileSize,
-					Path:         dst,
-				})
-			} else {
-				tmp, err := os.CreateTemp(chatDir, base+".tmp-*")
-				if err != nil {
-					return nil, err
-				}
-				tmpPath := tmp.Name()
-				_ = tmp.Close()
-				_, _, dlErr := api.downloadFileTo(ctx, f.FilePath, tmpPath, maxBytes)
-				if dlErr != nil {
-					_ = os.Remove(tmpPath)
-					return nil, dlErr
-				}
-				if err := os.Chmod(tmpPath, 0o600); err != nil {
-					_ = os.Remove(tmpPath)
-					return nil, err
-				}
-				if err := os.Rename(tmpPath, dst); err != nil {
-					_ = os.Remove(tmpPath)
-					return nil, err
-				}
-				_ = os.Chmod(dst, 0o600)
-				out = append(out, telegramDownloadedFile{
-					Kind:         "photo",
-					OriginalName: orig,
-					SizeBytes:    best.FileSize,
-					Path:         dst,
-				})
-			}
+	if err := handleMessage(msg); err != nil {
+		return nil, err
+	}
+	if msg.ReplyTo != nil {
+		if err := handleMessage(msg.ReplyTo); err != nil {
+			return nil, err
 		}
 	}
 
