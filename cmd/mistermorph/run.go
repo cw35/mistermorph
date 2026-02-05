@@ -178,6 +178,13 @@ func newRunCmd() *cobra.Command {
 			opts = append(opts, agent.WithLogger(logger))
 			opts = append(opts, agent.WithLogOptions(logOpts))
 			opts = append(opts, agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")))
+			if !isHeartbeat {
+				opts = append(opts, agent.WithPlanStepUpdate(func(runCtx *agent.Context, update agent.PlanStepUpdate) {
+					if payload := formatPlanProgressUpdate(runCtx, update); payload != "" {
+						_, _ = fmt.Fprintln(os.Stdout, payload)
+					}
+				}))
+			}
 			if g := guardFromViper(logger); g != nil {
 				opts = append(opts, agent.WithGuard(g))
 			}
@@ -383,6 +390,34 @@ func llmClientFromConfig(cfg llmClientConfig) (llm.Client, error) {
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", cfg.Provider)
 	}
+}
+
+func formatPlanProgressUpdate(runCtx *agent.Context, update agent.PlanStepUpdate) string {
+	if runCtx == nil || runCtx.Plan == nil {
+		return ""
+	}
+	if update.CompletedIndex < 0 {
+		return ""
+	}
+	total := len(runCtx.Plan.Steps)
+	if total == 0 {
+		return ""
+	}
+	payload := map[string]any{
+		"type": "plan_step",
+		"plan_step": map[string]any{
+			"completed_index": update.CompletedIndex,
+			"completed_step":  strings.TrimSpace(update.CompletedStep),
+			"started_index":   update.StartedIndex,
+			"started_step":    strings.TrimSpace(update.StartedStep),
+			"total_steps":     total,
+		},
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func toolsEmulationModeFromViper() (string, error) {
