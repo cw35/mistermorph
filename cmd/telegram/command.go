@@ -618,26 +618,19 @@ func newTelegramCmd() *cobra.Command {
 					case "/mem":
 						if len(allowed) > 0 && !allowed[chatID] {
 							logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "unauthorized", true)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "unauthorized, please contact the bot administrator", true)
 							continue
 						}
 						if strings.ToLower(strings.TrimSpace(chatType)) != "private" {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "请在私聊中使用 /mem（避免在群里泄露隐私）", true)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "please use /mem in the private chat", true)
 							continue
 						}
 						if fromUserID <= 0 {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "无法识别当前用户（msg.from 为空）", true)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "failed to recognize the user (msg.from is nil)", true)
 							continue
 						}
 						if !viper.GetBool("memory.enabled") {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "memory 未启用（设置 memory.enabled=true）", true)
-							continue
-						}
-
-						sub, _ := splitCommand(cmdArgs)
-						sub = strings.ToLower(strings.TrimSpace(sub))
-						if sub != "" && sub != "ls" && sub != "list" {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "memory 已切换为文件存储；/mem 仅显示摘要。", true)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "memory is not enabled (set memory.enabled=true)", true)
 							continue
 						}
 
@@ -649,7 +642,7 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 						if !id.Enabled || strings.TrimSpace(id.SubjectID) == "" {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "memory 未启用（identity disabled）", true)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "memory identity disabled", true)
 							continue
 						}
 
@@ -661,7 +654,7 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 						if strings.TrimSpace(snap) == "" {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "（空）", true)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "(empty)", true)
 							continue
 						}
 						if err := api.sendMessageChunked(context.Background(), chatID, snap); err != nil {
@@ -690,7 +683,7 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 						if strings.TrimSpace(cmdArgs) == "" {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: /ask <task>", true)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: /ask <task>, or mention the bot", true)
 							continue
 						}
 						text = strings.TrimSpace(cmdArgs)
