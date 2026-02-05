@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -23,13 +25,9 @@ type skillsConfig struct {
 
 func skillsConfigFromViper(model string) skillsConfig {
 	cfg := skillsConfig{
-		Roots: getStringSlice(
-			"skills.dirs",
-			"skills_dirs",
-			"skills_dir",
-		),
-		Mode: strings.TrimSpace(viper.GetString("skills.mode")),
-		Auto: skillsAutoFromViper(),
+		Roots: statepaths.DefaultSkillsRoots(),
+		Mode:  strings.TrimSpace(viper.GetString("skills.mode")),
+		Auto:  skillsAutoFromViper(),
 		Requested: append(
 			append([]string{}, viper.GetStringSlice("skill")...), // legacy
 			viper.GetStringSlice("skills")...,                    // legacy
@@ -70,17 +68,17 @@ func skillsConfigFromRunCmd(cmd *cobra.Command, model string) skillsConfig {
 		cfg.Roots = roots
 	}
 
-	cfg.Mode = strings.TrimSpace(flagOrViperString(cmd, "skills-mode", "skills.mode"))
-	cfg.Auto = flagOrViperBool(cmd, "skills-auto", "skills.auto")
+	cfg.Mode = strings.TrimSpace(configutil.FlagOrViperString(cmd, "skills-mode", "skills.mode"))
+	cfg.Auto = configutil.FlagOrViperBool(cmd, "skills-auto", "skills.auto")
 
 	if cmd.Flags().Changed("skill") {
 		cfg.Requested, _ = cmd.Flags().GetStringArray("skill")
 	}
 
-	cfg.MaxLoad = flagOrViperInt(cmd, "skills-max-load", "skills.max_load")
-	cfg.PreviewBytes = flagOrViperInt64(cmd, "skills-preview-bytes", "skills.preview_bytes")
-	cfg.CatalogLimit = flagOrViperInt(cmd, "skills-catalog-limit", "skills.catalog_limit")
-	cfg.SelectTimeout = flagOrViperDuration(cmd, "skills-select-timeout", "skills.select_timeout")
+	cfg.MaxLoad = configutil.FlagOrViperInt(cmd, "skills-max-load", "skills.max_load")
+	cfg.PreviewBytes = configutil.FlagOrViperInt64(cmd, "skills-preview-bytes", "skills.preview_bytes")
+	cfg.CatalogLimit = configutil.FlagOrViperInt(cmd, "skills-catalog-limit", "skills.catalog_limit")
+	cfg.SelectTimeout = configutil.FlagOrViperDuration(cmd, "skills-select-timeout", "skills.select_timeout")
 
 	if strings.TrimSpace(cfg.Mode) == "" {
 		cfg.Mode = "smart"

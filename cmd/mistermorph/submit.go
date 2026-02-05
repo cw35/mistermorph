@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/internal/configutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,7 +35,7 @@ func newSubmitCmd() *cobra.Command {
 				return fmt.Errorf("missing --task (or stdin)")
 			}
 
-			serverURL := strings.TrimRight(strings.TrimSpace(flagOrViperString(cmd, "server-url", "server.url")), "/")
+			serverURL := strings.TrimRight(strings.TrimSpace(configutil.FlagOrViperString(cmd, "server-url", "server.url")), "/")
 			if serverURL == "" {
 				serverURL = "http://127.0.0.1:8787"
 			}
@@ -55,7 +56,7 @@ func newSubmitCmd() *cobra.Command {
 			reqBody := SubmitTaskRequest{
 				Task:    task,
 				Model:   model,
-				Timeout: strings.TrimSpace(flagOrViperString(cmd, "submit-timeout", "submit.timeout")),
+				Timeout: strings.TrimSpace(configutil.FlagOrViperString(cmd, "submit-timeout", "submit.timeout")),
 			}
 			b, _ := json.Marshal(reqBody)
 
@@ -82,14 +83,14 @@ func newSubmitCmd() *cobra.Command {
 				return fmt.Errorf("failed to parse server response: %w", err)
 			}
 
-			wait := flagOrViperBool(cmd, "wait", "submit.wait")
+			wait := configutil.FlagOrViperBool(cmd, "wait", "submit.wait")
 			if !wait {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
 				return enc.Encode(submitResp)
 			}
 
-			interval := flagOrViperDuration(cmd, "poll-interval", "submit.poll_interval")
+			interval := configutil.FlagOrViperDuration(cmd, "poll-interval", "submit.poll_interval")
 			if interval <= 0 {
 				interval = 1 * time.Second
 			}

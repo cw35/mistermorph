@@ -13,6 +13,8 @@ import (
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
@@ -25,20 +27,20 @@ func newServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Run as a local daemon that accepts tasks over HTTP",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bind := strings.TrimSpace(flagOrViperString(cmd, "server-bind", "server.bind"))
+			bind := strings.TrimSpace(configutil.FlagOrViperString(cmd, "server-bind", "server.bind"))
 			if bind == "" {
 				bind = "127.0.0.1"
 			}
-			port := flagOrViperInt(cmd, "server-port", "server.port")
+			port := configutil.FlagOrViperInt(cmd, "server-port", "server.port")
 			if port <= 0 {
 				port = 8787
 			}
-			auth := flagOrViperString(cmd, "server-auth-token", "server.auth_token")
+			auth := configutil.FlagOrViperString(cmd, "server-auth-token", "server.auth_token")
 			if strings.TrimSpace(auth) == "" {
 				return fmt.Errorf("missing server.auth_token (set via --server-auth-token or MISTER_MORPH_SERVER_AUTH_TOKEN)")
 			}
 
-			maxQueue := flagOrViperInt(cmd, "server-max-queue", "server.max_queue")
+			maxQueue := configutil.FlagOrViperInt(cmd, "server-max-queue", "server.max_queue")
 			store := NewTaskStore(maxQueue)
 
 			logger, err := loggerFromViper()
@@ -172,13 +174,13 @@ func newServeCmd() *cobra.Command {
 
 			hbEnabled := viper.GetBool("heartbeat.enabled")
 			hbInterval := viper.GetDuration("heartbeat.interval")
-			hbChecklist := strings.TrimSpace(viper.GetString("heartbeat.checklist_path"))
+			hbChecklist := statepaths.HeartbeatChecklistPath()
 			if hbEnabled && hbInterval > 0 {
 				go func() {
 					var hbMemMgr *memory.Manager
 					hbMaxItems := viper.GetInt("memory.injection.max_items")
 					if viper.GetBool("memory.enabled") {
-						hbMemMgr = memory.NewManager(viper.GetString("memory.dir"), viper.GetInt("memory.short_term_days"))
+						hbMemMgr = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 					}
 					ticker := time.NewTicker(hbInterval)
 					defer ticker.Stop()

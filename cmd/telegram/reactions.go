@@ -25,9 +25,8 @@ const (
 )
 
 type telegramReactionConfig struct {
-	Enabled       bool
-	Allow         []string
-	MaxPerMessage int
+	Enabled bool
+	Allow   []string
 }
 
 type telegramReactionDecision struct {
@@ -48,15 +47,9 @@ type telegramReaction struct {
 
 func readTelegramReactionConfig() telegramReactionConfig {
 	cfg := telegramReactionConfig{
-		Enabled:       viper.GetBool("telegram.reactions.enabled"),
-		Allow:         normalizeReactionAllowList(viper.GetStringSlice("telegram.reactions.allow")),
-		MaxPerMessage: viper.GetInt("telegram.reactions.max_per_message"),
-	}
-	if cfg.MaxPerMessage <= 0 {
-		cfg.MaxPerMessage = 1
-	}
-	if len(cfg.Allow) == 0 {
-		cfg.Allow = defaultReactionAllowList()
+		Enabled: viper.GetBool("telegram.reactions.enabled"),
+		// Hardcoded allow list: keep this in sync with reaction selection.
+		Allow: defaultReactionAllowList(),
 	}
 	return cfg
 }
@@ -73,26 +66,6 @@ func defaultReactionAllowList() []string {
 		reactionEmojiWarn,
 		reactionEmojiSmile,
 	}
-}
-
-func normalizeReactionAllowList(list []string) []string {
-	if len(list) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(list))
-	seen := map[string]bool{}
-	for _, raw := range list {
-		item := strings.TrimSpace(raw)
-		if item == "" {
-			continue
-		}
-		if seen[item] {
-			continue
-		}
-		seen[item] = true
-		out = append(out, item)
-	}
-	return out
 }
 
 func buildReactionAllowSet(list []string) map[string]bool {

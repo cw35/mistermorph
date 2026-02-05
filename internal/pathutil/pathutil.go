@@ -37,3 +37,32 @@ func NormalizeFileCacheDirPath(p string) string {
 	}
 	return p
 }
+
+func ResolveStateDir(dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		dir = "~/.morph"
+	}
+	return ExpandHomePath(dir)
+}
+
+func ResolveStateChildDir(stateDir string, name string, defaultName string) string {
+	base := ResolveStateDir(stateDir)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = strings.TrimSpace(defaultName)
+	}
+	if name == "" {
+		return filepath.Clean(base)
+	}
+	return filepath.Clean(filepath.Join(base, name))
+}
+
+func ResolveStateFile(stateDir string, filename string) string {
+	base := ResolveStateDir(stateDir)
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return filepath.Clean(base)
+	}
+	return filepath.Clean(filepath.Join(base, filename))
+}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/quailyquaily/mistermorph/assets"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
+	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,14 +38,14 @@ func newSkillsInstallBuiltinCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install [skill_md_url]",
-		Short: "Install/update skills into the first configured skills.dirs (or ~/.morph/skills)",
+		Short: "Install/update skills into file_state_dir/skills.dir_name",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil || strings.TrimSpace(home) == "" {
 				return fmt.Errorf("cannot resolve home dir")
 			}
-			defaultDest := defaultSkillsInstallDest(home, getStringSlice("skills.dirs", "skills_dirs", "skills_dir"))
+			defaultDest := statepaths.SkillsDir()
 
 			if strings.TrimSpace(dest) == "" {
 				dest = defaultDest
@@ -173,7 +174,7 @@ func newSkillsInstallBuiltinCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&dest, "dest", "", "Destination directory (default: first skills.dirs entry; fallback: ~/.morph/skills)")
+	cmd.Flags().StringVar(&dest, "dest", "", "Destination directory (default: file_state_dir/skills.dir_name)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print operations without writing files")
 	cmd.Flags().BoolVar(&clean, "clean", false, "Remove existing skill dir before copying (destructive)")
 	cmd.Flags().BoolVar(&skipExisting, "skip-existing", false, "Skip files that already exist in destination")
@@ -286,27 +287,6 @@ func installBuiltInSkills(dest string, dryRun bool, clean bool, skipExisting boo
 	}
 
 	return nil
-}
-
-func defaultSkillsInstallDest(home string, roots []string) string {
-	home = strings.TrimSpace(home)
-	if home == "" {
-		home = "."
-	}
-	fallback := filepath.Join(home, ".morph", "skills")
-	if len(roots) == 0 {
-		return fallback
-	}
-	first := strings.TrimSpace(roots[0])
-	if first == "" {
-		return fallback
-	}
-	first = expandHome(first)
-	if strings.TrimSpace(first) == "" {
-		return fallback
-	}
-	first = resolveRelativeToHome(first, home)
-	return first
 }
 
 func resolveRelativeToHome(p string, home string) string {

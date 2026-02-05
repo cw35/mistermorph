@@ -15,6 +15,8 @@ import (
 
 	"github.com/quailyquaily/mistermorph/agent"
 	telegramcmd "github.com/quailyquaily/mistermorph/cmd/telegram"
+	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	uniaiProvider "github.com/quailyquaily/mistermorph/providers/uniai"
@@ -28,14 +30,14 @@ func newRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Run an agent task",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			isHeartbeat := flagOrViperBool(cmd, "heartbeat", "")
+			isHeartbeat := configutil.FlagOrViperBool(cmd, "heartbeat", "")
 			task := ""
 			var runMeta map[string]any
 			if isHeartbeat {
-				hbChecklist := strings.TrimSpace(viper.GetString("heartbeat.checklist_path"))
+				hbChecklist := statepaths.HeartbeatChecklistPath()
 				var hbSnapshot string
 				if viper.GetBool("memory.enabled") {
-					hbMgr := memory.NewManager(viper.GetString("memory.dir"), viper.GetInt("memory.short_term_days"))
+					hbMgr := memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 					snap, err := buildHeartbeatProgressSnapshot(hbMgr, viper.GetInt("memory.injection.max_items"))
 					if err != nil {
 						return err
@@ -59,7 +61,7 @@ func newRunCmd() *cobra.Command {
 					),
 				}
 			} else {
-				task = strings.TrimSpace(flagOrViperString(cmd, "task", "task"))
+				task = strings.TrimSpace(configutil.FlagOrViperString(cmd, "task", "task"))
 				if task == "" {
 					data, err := os.ReadFile("/dev/stdin")
 					if err == nil {
@@ -73,19 +75,19 @@ func newRunCmd() *cobra.Command {
 
 			provider := llmProviderFromViper()
 			if cmd.Flags().Changed("provider") {
-				provider = strings.TrimSpace(flagOrViperString(cmd, "provider", ""))
+				provider = strings.TrimSpace(configutil.FlagOrViperString(cmd, "provider", ""))
 			}
 			endpoint := llmEndpointForProvider(provider)
 			if cmd.Flags().Changed("endpoint") {
-				endpoint = strings.TrimSpace(flagOrViperString(cmd, "endpoint", ""))
+				endpoint = strings.TrimSpace(configutil.FlagOrViperString(cmd, "endpoint", ""))
 			}
 			apiKey := llmAPIKeyForProvider(provider)
 			if cmd.Flags().Changed("api-key") {
-				apiKey = strings.TrimSpace(flagOrViperString(cmd, "api-key", ""))
+				apiKey = strings.TrimSpace(configutil.FlagOrViperString(cmd, "api-key", ""))
 			}
 			model := llmModelForProvider(provider)
 			if cmd.Flags().Changed("model") {
-				model = strings.TrimSpace(flagOrViperString(cmd, "model", ""))
+				model = strings.TrimSpace(configutil.FlagOrViperString(cmd, "model", ""))
 			}
 
 			client, err := llmClientFromConfig(llmClientConfig{
@@ -93,13 +95,13 @@ func newRunCmd() *cobra.Command {
 				Endpoint:       endpoint,
 				APIKey:         apiKey,
 				Model:          model,
-				RequestTimeout: flagOrViperDuration(cmd, "llm-request-timeout", "llm.request_timeout"),
+				RequestTimeout: configutil.FlagOrViperDuration(cmd, "llm-request-timeout", "llm.request_timeout"),
 			})
 			if err != nil {
 				return err
 			}
 
-			timeout := flagOrViperDuration(cmd, "timeout", "timeout")
+			timeout := configutil.FlagOrViperDuration(cmd, "timeout", "timeout")
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
@@ -111,7 +113,7 @@ func newRunCmd() *cobra.Command {
 
 			logOpts := logOptionsFromViper()
 
-			if flagOrViperBool(cmd, "inspect-request", "") {
+			if configutil.FlagOrViperBool(cmd, "inspect-request", "") {
 				inspector, err := newRequestInspector(task)
 				if err != nil {
 					return err
@@ -126,7 +128,7 @@ func newRunCmd() *cobra.Command {
 				setter.SetDebugFn(inspector.Dump)
 			}
 
-			if flagOrViperBool(cmd, "inspect-prompt", "") {
+			if configutil.FlagOrViperBool(cmd, "inspect-prompt", "") {
 				inspector, err := newPromptInspector(task)
 				if err != nil {
 					return err
@@ -146,7 +148,7 @@ func newRunCmd() *cobra.Command {
 				id := resolveRunMemoryIdentity()
 				if id.Enabled && strings.TrimSpace(id.SubjectID) != "" {
 					memIdentity = id
-					memManager = memory.NewManager(viper.GetString("memory.dir"), viper.GetInt("memory.short_term_days"))
+					memManager = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 					if viper.GetBool("memory.injection.enabled") {
 						maxItems := viper.GetInt("memory.injection.max_items")
 						snap, err := memManager.BuildInjection(id.SubjectID, memory.ContextPrivate, maxItems)
@@ -164,7 +166,7 @@ func newRunCmd() *cobra.Command {
 			}
 
 			var hook agent.Hook
-			if flagOrViperBool(cmd, "interactive", "interactive") {
+			if configutil.FlagOrViperBool(cmd, "interactive", "interactive") {
 				hook, err = newInteractiveHook()
 				if err != nil {
 					return err
@@ -196,9 +198,9 @@ func newRunCmd() *cobra.Command {
 				client,
 				reg,
 				agent.Config{
-					MaxSteps:         flagOrViperInt(cmd, "max-steps", "max_steps"),
-					ParseRetries:     flagOrViperInt(cmd, "parse-retries", "parse_retries"),
-					MaxTokenBudget:   flagOrViperInt(cmd, "max-token-budget", "max_token_budget"),
+					MaxSteps:         configutil.FlagOrViperInt(cmd, "max-steps", "max_steps"),
+					ParseRetries:     configutil.FlagOrViperInt(cmd, "parse-retries", "parse_retries"),
+					MaxTokenBudget:   configutil.FlagOrViperInt(cmd, "max-token-budget", "max_token_budget"),
 					IntentEnabled:    viper.GetBool("intent.enabled"),
 					IntentTimeout:    viper.GetDuration("intent.timeout"),
 					IntentMaxHistory: viper.GetInt("intent.max_history"),

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/skills"
 	"github.com/spf13/cobra"
 )
@@ -28,11 +29,7 @@ func newSkillsListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			roots, _ := cmd.Flags().GetStringArray("skills-dir")
 			if len(roots) == 0 {
-				roots = getStringSlice(
-					"skills.dirs",
-					"skills_dirs",
-					"skills_dir",
-				)
+				roots = statepaths.DefaultSkillsRoots()
 			}
 			list, err := skills.Discover(skills.DiscoverOptions{Roots: roots})
 			if err != nil {
@@ -45,7 +42,7 @@ func newSkillsListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: ~/.morph/skills, ~/.claude/skills, ~/.codex/skills")
+	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: file_state_dir/skills + ~/.claude/skills + ~/.codex/skills")
 
 	return cmd
 }
@@ -58,11 +55,7 @@ func newSkillsShowCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			roots, _ := cmd.Flags().GetStringArray("skills-dir")
 			if len(roots) == 0 {
-				roots = getStringSlice(
-					"skills.dirs",
-					"skills_dirs",
-					"skills_dir",
-				)
+				roots = statepaths.DefaultSkillsRoots()
 			}
 			list, err := skills.Discover(skills.DiscoverOptions{Roots: roots})
 			if err != nil {
@@ -84,7 +77,7 @@ func newSkillsShowCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: ~/.morph/skills, ~/.claude/skills, ~/.codex/skills")
+	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: file_state_dir/skills + ~/.claude/skills + ~/.codex/skills")
 
 	return cmd
 }

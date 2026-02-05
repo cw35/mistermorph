@@ -1,4 +1,4 @@
-package telegram
+package configutil
 
 import (
 	"time"
@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func flagOrViperString(cmd *cobra.Command, flagName, viperKey string) string {
+func FlagOrViperString(cmd *cobra.Command, flagName, viperKey string) string {
 	v, _ := cmd.Flags().GetString(flagName)
 	if cmd.Flags().Changed(flagName) {
 		return v
@@ -18,7 +18,7 @@ func flagOrViperString(cmd *cobra.Command, flagName, viperKey string) string {
 	return v
 }
 
-func flagOrViperStringArray(cmd *cobra.Command, flagName, viperKey string) []string {
+func FlagOrViperStringArray(cmd *cobra.Command, flagName, viperKey string) []string {
 	v, _ := cmd.Flags().GetStringArray(flagName)
 	if cmd.Flags().Changed(flagName) {
 		return v
@@ -29,7 +29,7 @@ func flagOrViperStringArray(cmd *cobra.Command, flagName, viperKey string) []str
 	return v
 }
 
-func flagOrViperBool(cmd *cobra.Command, flagName, viperKey string) bool {
+func FlagOrViperBool(cmd *cobra.Command, flagName, viperKey string) bool {
 	v, _ := cmd.Flags().GetBool(flagName)
 	if cmd.Flags().Changed(flagName) {
 		return v
@@ -40,7 +40,7 @@ func flagOrViperBool(cmd *cobra.Command, flagName, viperKey string) bool {
 	return v
 }
 
-func flagOrViperInt(cmd *cobra.Command, flagName, viperKey string) int {
+func FlagOrViperInt(cmd *cobra.Command, flagName, viperKey string) int {
 	v, _ := cmd.Flags().GetInt(flagName)
 	if cmd.Flags().Changed(flagName) {
 		return v
@@ -51,7 +51,7 @@ func flagOrViperInt(cmd *cobra.Command, flagName, viperKey string) int {
 	return v
 }
 
-func flagOrViperInt64(cmd *cobra.Command, flagName, viperKey string) int64 {
+func FlagOrViperInt64(cmd *cobra.Command, flagName, viperKey string) int64 {
 	v, _ := cmd.Flags().GetInt64(flagName)
 	if cmd.Flags().Changed(flagName) {
 		return v
@@ -62,7 +62,7 @@ func flagOrViperInt64(cmd *cobra.Command, flagName, viperKey string) int64 {
 	return v
 }
 
-func flagOrViperDuration(cmd *cobra.Command, flagName, viperKey string) time.Duration {
+func FlagOrViperDuration(cmd *cobra.Command, flagName, viperKey string) time.Duration {
 	v, _ := cmd.Flags().GetDuration(flagName)
 	if cmd.Flags().Changed(flagName) {
 		return v
@@ -73,7 +73,7 @@ func flagOrViperDuration(cmd *cobra.Command, flagName, viperKey string) time.Dur
 	return v
 }
 
-func flagOrViperFloat64(cmd *cobra.Command, flagName, viperKey string) float64 {
+func FlagOrViperFloat64(cmd *cobra.Command, flagName, viperKey string) float64 {
 	v, _ := cmd.Flags().GetFloat64(flagName)
 	if cmd.Flags().Changed(flagName) {
 		return v

@@ -21,6 +21,7 @@ func initViperDefaults() {
 	viper.SetDefault("timeout", 10*time.Minute)
 
 	// Global
+	viper.SetDefault("file_state_dir", "~/.morph")
 	viper.SetDefault("file_cache_dir", "/var/cache/morph")
 	viper.SetDefault("file_cache.max_age", 7*24*time.Hour)
 	viper.SetDefault("file_cache.max_files", 1000)
@@ -33,6 +34,7 @@ func initViperDefaults() {
 	viper.SetDefault("skills.preview_bytes", int64(2048))
 	viper.SetDefault("skills.catalog_limit", 200)
 	viper.SetDefault("skills.select_timeout", 10*time.Second)
+	viper.SetDefault("skills.dir_name", "skills")
 
 	// Daemon server
 	viper.SetDefault("server.bind", "127.0.0.1")
@@ -53,23 +55,10 @@ func initViperDefaults() {
 	viper.SetDefault("telegram.smart_addressing_confidence", 0.55)
 	viper.SetDefault("telegram.max_concurrency", 3)
 	viper.SetDefault("telegram.reactions.enabled", true)
-	viper.SetDefault("telegram.reactions.allow", []string{
-		"\u2705",
-		"\U0001F44D",
-		"\U0001F440",
-		"\U0001F389",
-		"\U0001F64F",
-		"\U0001F44E",
-		"\U0001F44C",
-		"\u2757",
-		"\U0001F60A",
-	})
-	viper.SetDefault("telegram.reactions.max_per_message", 1)
 
 	// Heartbeat
 	viper.SetDefault("heartbeat.enabled", true)
 	viper.SetDefault("heartbeat.interval", 30*time.Minute)
-	viper.SetDefault("heartbeat.checklist_path", "~/.morph/HEARTBEAT.md")
 
 	// Intent inference
 	viper.SetDefault("intent.enabled", true)
@@ -78,7 +67,7 @@ func initViperDefaults() {
 
 	// Long-term memory (Phase 1)
 	viper.SetDefault("memory.enabled", true)
-	viper.SetDefault("memory.dir", "~/.morph/memory")
+	viper.SetDefault("memory.dir_name", "memory")
 	viper.SetDefault("memory.short_term_days", 7)
 	viper.SetDefault("memory.injection.enabled", true)
 	viper.SetDefault("memory.injection.max_items", 50)

@@ -27,8 +27,10 @@ import (
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/internal/configutil"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
+	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
@@ -61,7 +63,7 @@ func newTelegramCmd() *cobra.Command {
 		Use:   "telegram",
 		Short: "Run a Telegram bot that chats with the agent",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			token := strings.TrimSpace(flagOrViperString(cmd, "telegram-bot-token", "telegram.bot_token"))
+			token := strings.TrimSpace(configutil.FlagOrViperString(cmd, "telegram-bot-token", "telegram.bot_token"))
 			if token == "" {
 				return fmt.Errorf("missing telegram.bot_token (set via --telegram-bot-token or MISTER_MORPH_TELEGRAM_BOT_TOKEN)")
 			}
@@ -69,7 +71,7 @@ func newTelegramCmd() *cobra.Command {
 			baseURL := "https://api.telegram.org"
 
 			allowed := make(map[int64]bool)
-			for _, s := range flagOrViperStringArray(cmd, "telegram-allowed-chat-id", "telegram.allowed_chat_ids") {
+			for _, s := range configutil.FlagOrViperStringArray(cmd, "telegram-allowed-chat-id", "telegram.allowed_chat_ids") {
 				s = strings.TrimSpace(s)
 				if s == "" {
 					continue
@@ -110,24 +112,24 @@ func newTelegramCmd() *cobra.Command {
 				IntentMaxHistory: viper.GetInt("intent.max_history"),
 			}
 
-			pollTimeout := flagOrViperDuration(cmd, "telegram-poll-timeout", "telegram.poll_timeout")
+			pollTimeout := configutil.FlagOrViperDuration(cmd, "telegram-poll-timeout", "telegram.poll_timeout")
 			if pollTimeout <= 0 {
 				pollTimeout = 30 * time.Second
 			}
-			taskTimeout := flagOrViperDuration(cmd, "telegram-task-timeout", "telegram.task_timeout")
+			taskTimeout := configutil.FlagOrViperDuration(cmd, "telegram-task-timeout", "telegram.task_timeout")
 			if taskTimeout <= 0 {
 				taskTimeout = viper.GetDuration("timeout")
 			}
 			if taskTimeout <= 0 {
 				taskTimeout = 10 * time.Minute
 			}
-			maxConc := flagOrViperInt(cmd, "telegram-max-concurrency", "telegram.max_concurrency")
+			maxConc := configutil.FlagOrViperInt(cmd, "telegram-max-concurrency", "telegram.max_concurrency")
 			if maxConc <= 0 {
 				maxConc = 3
 			}
 			sem := make(chan struct{}, maxConc)
 
-			historyMax := flagOrViperInt(cmd, "telegram-history-max-messages", "telegram.history_max_messages")
+			historyMax := configutil.FlagOrViperInt(cmd, "telegram-history-max-messages", "telegram.history_max_messages")
 			if historyMax <= 0 {
 				historyMax = 20
 			}
@@ -137,7 +139,7 @@ func newTelegramCmd() *cobra.Command {
 			httpClient := &http.Client{Timeout: 60 * time.Second}
 			api := newTelegramAPI(httpClient, baseURL, token)
 
-			fileCacheDir := strings.TrimSpace(flagOrViperString(cmd, "file-cache-dir", "file_cache_dir"))
+			fileCacheDir := strings.TrimSpace(configutil.FlagOrViperString(cmd, "file-cache-dir", "file_cache_dir"))
 			if fileCacheDir == "" {
 				fileCacheDir = "/var/cache/morph"
 			}
@@ -164,20 +166,20 @@ func newTelegramCmd() *cobra.Command {
 
 			botUser := me.Username
 			botID := me.ID
-			aliases := flagOrViperStringArray(cmd, "telegram-alias", "telegram.aliases")
+			aliases := configutil.FlagOrViperStringArray(cmd, "telegram-alias", "telegram.aliases")
 			for i := range aliases {
 				aliases[i] = strings.TrimSpace(aliases[i])
 			}
-			groupTriggerMode := strings.ToLower(strings.TrimSpace(flagOrViperString(cmd, "telegram-group-trigger-mode", "telegram.group_trigger_mode")))
+			groupTriggerMode := strings.ToLower(strings.TrimSpace(configutil.FlagOrViperString(cmd, "telegram-group-trigger-mode", "telegram.group_trigger_mode")))
 			if groupTriggerMode == "" {
 				groupTriggerMode = "smart"
 			}
-			smartAddressingMaxChars := flagOrViperInt(cmd, "telegram-smart-addressing-max-chars", "telegram.smart_addressing_max_chars")
+			smartAddressingMaxChars := configutil.FlagOrViperInt(cmd, "telegram-smart-addressing-max-chars", "telegram.smart_addressing_max_chars")
 			if smartAddressingMaxChars <= 0 {
 				smartAddressingMaxChars = 24
 			}
 			addressingLLMTimeout := 10 * time.Second
-			smartAddressingConfidence := flagOrViperFloat64(cmd, "telegram-smart-addressing-confidence", "telegram.smart_addressing_confidence")
+			smartAddressingConfidence := configutil.FlagOrViperFloat64(cmd, "telegram-smart-addressing-confidence", "telegram.smart_addressing_confidence")
 			if smartAddressingConfidence <= 0 {
 				smartAddressingConfidence = 0.55
 			}
@@ -222,7 +224,6 @@ func newTelegramCmd() *cobra.Command {
 				"history_max_messages", historyMax,
 				"reactions_enabled", reactionCfg.Enabled,
 				"reactions_allow_count", len(reactionCfg.Allow),
-				"reactions_max_per_message", reactionCfg.MaxPerMessage,
 				"group_trigger_mode", groupTriggerMode,
 				"smart_addressing_max_chars", smartAddressingMaxChars,
 				"smart_addressing_confidence", smartAddressingConfidence,
@@ -449,13 +450,13 @@ func newTelegramCmd() *cobra.Command {
 
 			hbEnabled := viper.GetBool("heartbeat.enabled")
 			hbInterval := viper.GetDuration("heartbeat.interval")
-			hbChecklist := strings.TrimSpace(viper.GetString("heartbeat.checklist_path"))
+			hbChecklist := statepaths.HeartbeatChecklistPath()
 			if hbEnabled && hbInterval > 0 {
 				go func() {
 					var hbMemMgr *memory.Manager
 					hbMaxItems := viper.GetInt("memory.injection.max_items")
 					if viper.GetBool("memory.enabled") {
-						hbMemMgr = memory.NewManager(viper.GetString("memory.dir"), viper.GetInt("memory.short_term_days"))
+						hbMemMgr = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 					}
 					ticker := time.NewTicker(hbInterval)
 					defer ticker.Stop()
@@ -651,7 +652,7 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 
-						mgr := memory.NewManager(viper.GetString("memory.dir"), viper.GetInt("memory.short_term_days"))
+						mgr := memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 						maxItems := viper.GetInt("memory.injection.max_items")
 						snap, err := mgr.BuildInjection(id.SubjectID, memory.ContextPrivate, maxItems)
 						if err != nil {
@@ -967,7 +968,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		}
 		if id.Enabled && strings.TrimSpace(id.SubjectID) != "" {
 			memIdentity = id
-			memManager = memory.NewManager(viper.GetString("memory.dir"), viper.GetInt("memory.short_term_days"))
+			memManager = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 			if viper.GetBool("memory.injection.enabled") {
 				maxItems := viper.GetInt("memory.injection.max_items")
 				snap, err := memManager.BuildInjection(id.SubjectID, memReqCtx, maxItems)

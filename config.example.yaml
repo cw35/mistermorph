@@ -190,10 +190,8 @@ tools:
 memory:
   # Enable memory (Telegram + run).
   enabled: true
-  # Root directory for memory files.
-  # Default: ~/.morph/memory
-  # Systemd deployments (recommended): /var/lib/morph/memory
-  dir: "~/.morph/memory"
+  # Directory name under file_state_dir for memory files.
+  dir_name: "memory"
   # How many recent days of short-term memory to load on session start.
   short_term_days: 7
   injection:
@@ -211,12 +209,9 @@ intent:
   timeout: "8s"
 
 skills:
-  # Root directories to scan recursively for SKILL.md files.
-  # Priority order (first wins on duplicates): ~/.morph/skills, ~/.claude/skills, ~/.codex/skills
-  dirs:
-    - "~/.morph/skills"
-    - "~/.claude/skills"
-    - "~/.codex/skills"
+  # Directory name under file_state_dir for skills.
+  dir_name: "skills"
+  # Note: the default scan also includes ~/.claude/skills and ~/.codex/skills.
   # off|explicit|smart
   # - off: never load skills
   # - explicit: only load skills from skills.load and/or $SkillName references (if skills.auto=true)
@@ -279,19 +274,6 @@ telegram:
   # Emoji reactions (lightweight replies).
   reactions:
     enabled: true
-    # Allowed reaction emoji list (Telegram emoji). Empty uses defaults.
-    allow:
-      - "\u2705"
-      - "\U0001F44D"
-      - "\U0001F440"
-      - "\U0001F389"
-      - "\U0001F64F"
-      - "\U0001F44E"
-      - "\U0001F44C"
-      - "\u2757"
-      - "\U0001F60A"
-    # Max emoji reactions per message (default 1).
-    max_per_message: 1
   # Note: file handling is always enabled; files are downloaded under file_cache_dir/telegram/ (max size is hardcoded).
 
 # Heartbeat (periodic awareness/checkpoint).
@@ -300,8 +282,6 @@ heartbeat:
   enabled: true
   # Interval between heartbeats (use "0m" to disable without changing enabled).
   interval: "30m"
-  # Checklist file path (default under ~/.morph).
-  checklist_path: "~/.morph/HEARTBEAT.md"
 
 # Agent loop limits.
 # - max_steps: maximum tool-call steps in the ReAct loop.
@@ -312,6 +292,8 @@ parse_retries: 2
 max_token_budget: 0
 # Overall run timeout.
 timeout: "10m"
+# Base directory for local state (memory/skills/heartbeat).
+file_state_dir: "~/.morph"
 # Global temporary file cache directory used for inbound/outbound file handling (e.g. Telegram).
 file_cache_dir: "/var/cache/morph"
 file_cache:
