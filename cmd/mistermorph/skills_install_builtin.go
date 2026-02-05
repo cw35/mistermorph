@@ -19,6 +19,7 @@ import (
 
 	"github.com/quailyquaily/mistermorph/assets"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
+	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/spf13/cobra"
@@ -522,7 +523,7 @@ func llmClientForRemoteSkillReview() (llm.Client, string, error) {
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
-	cfg := llmClientConfig{
+	cfg := llmconfig.ClientConfig{
 		Provider:       llmProviderFromViper(),
 		Endpoint:       llmEndpointFromViper(),
 		APIKey:         llmAPIKeyFromViper(),

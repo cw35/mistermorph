@@ -8,6 +8,7 @@ import (
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
@@ -37,14 +38,6 @@ var deps Dependencies
 func NewCommand(d Dependencies) *cobra.Command {
 	deps = d
 	return newTelegramCmd()
-}
-
-type llmClientConfig struct {
-	Provider       string
-	Endpoint       string
-	APIKey         string
-	Model          string
-	RequestTimeout time.Duration
 }
 
 func loggerFromViper() (*slog.Logger, error) {
@@ -101,7 +94,7 @@ func llmModelFromViper() string {
 	return llmModelForProvider(llmProviderFromViper())
 }
 
-func llmClientFromConfig(cfg llmClientConfig) (llm.Client, error) {
+func llmClientFromConfig(cfg llmconfig.ClientConfig) (llm.Client, error) {
 	if deps.CreateLLMClient == nil {
 		return nil, fmt.Errorf("CreateLLMClient dependency missing")
 	}

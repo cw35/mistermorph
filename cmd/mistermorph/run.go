@@ -16,6 +16,7 @@ import (
 	"github.com/quailyquaily/mistermorph/agent"
 	telegramcmd "github.com/quailyquaily/mistermorph/cmd/telegram"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
@@ -90,7 +91,7 @@ func newRunCmd() *cobra.Command {
 				model = strings.TrimSpace(configutil.FlagOrViperString(cmd, "model", ""))
 			}
 
-			client, err := llmClientFromConfig(llmClientConfig{
+			client, err := llmClientFromConfig(llmconfig.ClientConfig{
 				Provider:       provider,
 				Endpoint:       endpoint,
 				APIKey:         apiKey,
@@ -358,15 +359,7 @@ func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client
 	return nil
 }
 
-type llmClientConfig struct {
-	Provider       string
-	Endpoint       string
-	APIKey         string
-	Model          string
-	RequestTimeout time.Duration
-}
-
-func llmClientFromConfig(cfg llmClientConfig) (llm.Client, error) {
+func llmClientFromConfig(cfg llmconfig.ClientConfig) (llm.Client, error) {
 	toolsEmulationMode, err := toolsEmulationModeFromViper()
 	if err != nil {
 		return nil, err

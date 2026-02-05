@@ -14,6 +14,7 @@ import (
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
@@ -49,7 +50,7 @@ func newServeCmd() *cobra.Command {
 			}
 			slog.SetDefault(logger)
 
-			client, err := llmClientFromConfig(llmClientConfig{
+			client, err := llmClientFromConfig(llmconfig.ClientConfig{
 				Provider:       llmProviderFromViper(),
 				Endpoint:       llmEndpointFromViper(),
 				APIKey:         llmAPIKeyFromViper(),

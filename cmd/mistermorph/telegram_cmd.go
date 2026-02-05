@@ -7,6 +7,7 @@ import (
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/cmd/telegram"
+	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/spf13/cobra"
@@ -17,7 +18,7 @@ func newTelegramCommand() *cobra.Command {
 		LoggerFromViper:     loggerFromViper,
 		LogOptionsFromViper: logOptionsFromViper,
 		CreateLLMClient: func(provider, endpoint, apiKey, model string, timeout time.Duration) (llm.Client, error) {
-			return llmClientFromConfig(llmClientConfig{
+			return llmClientFromConfig(llmconfig.ClientConfig{
 				Provider:       provider,
 				Endpoint:       endpoint,
 				APIKey:         apiKey,
