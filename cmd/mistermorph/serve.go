@@ -50,12 +50,13 @@ func newServeCmd() *cobra.Command {
 			}
 			slog.SetDefault(logger)
 
+			requestTimeout := viper.GetDuration("llm.request_timeout")
 			client, err := llmClientFromConfig(llmconfig.ClientConfig{
 				Provider:       llmProviderFromViper(),
 				Endpoint:       llmEndpointFromViper(),
 				APIKey:         llmAPIKeyFromViper(),
 				Model:          llmModelFromViper(),
-				RequestTimeout: viper.GetDuration("llm.request_timeout"),
+				RequestTimeout: requestTimeout,
 			})
 			if err != nil {
 				return err
@@ -70,7 +71,7 @@ func newServeCmd() *cobra.Command {
 				ParseRetries:     viper.GetInt("parse_retries"),
 				MaxTokenBudget:   viper.GetInt("max_token_budget"),
 				IntentEnabled:    viper.GetBool("intent.enabled"),
-				IntentTimeout:    viper.GetDuration("intent.timeout"),
+				IntentTimeout:    requestTimeout,
 				IntentMaxHistory: viper.GetInt("intent.max_history"),
 			}
 

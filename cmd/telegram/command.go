@@ -110,7 +110,7 @@ func newTelegramCmd() *cobra.Command {
 				ParseRetries:     viper.GetInt("parse_retries"),
 				MaxTokenBudget:   viper.GetInt("max_token_budget"),
 				IntentEnabled:    viper.GetBool("intent.enabled"),
-				IntentTimeout:    viper.GetDuration("intent.timeout"),
+				IntentTimeout:    requestTimeout,
 				IntentMaxHistory: viper.GetInt("intent.max_history"),
 			}
 
@@ -180,7 +180,7 @@ func newTelegramCmd() *cobra.Command {
 			if smartAddressingMaxChars <= 0 {
 				smartAddressingMaxChars = 24
 			}
-			addressingLLMTimeout := 10 * time.Second
+			addressingLLMTimeout := requestTimeout
 			smartAddressingConfidence := configutil.FlagOrViperFloat64(cmd, "telegram-smart-addressing-confidence", "telegram.smart_addressing_confidence")
 			if smartAddressingConfidence <= 0 {
 				smartAddressingConfidence = 0.55
@@ -700,8 +700,12 @@ func newTelegramCmd() *cobra.Command {
 							addressingLLMConfidence := 0.0
 							smartAddressing := strings.TrimSpace(strings.ToLower(groupTriggerMode)) != "strict"
 							if smartAddressing && (dec.NeedsAddressingLLM || isAliasReason(dec.Reason)) {
-								ctx, cancel := context.WithTimeout(context.Background(), addressingLLMTimeout)
-								llmDec, llmOK, llmErr := addressingDecisionViaLLM(ctx, client, model, botUser, aliases, rawText)
+								addrCtx := context.Background()
+								cancel := func() {}
+								if addressingLLMTimeout > 0 {
+									addrCtx, cancel = context.WithTimeout(context.Background(), addressingLLMTimeout)
+								}
+								llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, rawText)
 								cancel()
 								if llmErr != nil {
 									logger.Warn("telegram_addressing_llm_error",
@@ -1047,7 +1051,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	if reaction == nil && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
 		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, final, requestTimeout); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, 12*time.Second, func(retryCtx context.Context) error {
+				retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, requestTimeout, func(retryCtx context.Context) error {
 					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, history, final, requestTimeout)
 				})
 			}
@@ -1089,7 +1093,7 @@ func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client,
 	system := "You write very short, casual progress updates for a Telegram chat. " +
 		"Keep it conversational and concise (1 short sentence, max 2). " +
 		"Use the same language as the task. " +
-		"Use Telegram Markdown and wrap identifiers/paths in backticks. " +
+		"Use Telegram MarkdownV2 and wrap identifiers/paths in backticks. " +
 		"Do not mention tools, internal steps, or that you are an AI. " +
 		"Include the completed step and, if present, the next step."
 
@@ -1101,7 +1105,7 @@ func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client,
 			{Role: "user", Content: "Generate a progress update for this plan step:\n" + string(b)},
 		},
 		Parameters: map[string]any{
-			"max_tokens": 200,
+			"max_tokens": 4096,
 		},
 	}
 
@@ -1112,8 +1116,6 @@ func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client,
 	cancel := func() {}
 	if requestTimeout > 0 {
 		planCtx, cancel = context.WithTimeout(ctx, requestTimeout)
-	} else {
-		planCtx, cancel = context.WithTimeout(ctx, 6*time.Second)
 	}
 	defer cancel()
 
@@ -1262,7 +1264,7 @@ func BuildMemoryDraft(ctx context.Context, client llm.Client, model string, hist
 			{Role: "user", Content: string(b)},
 		},
 		Parameters: map[string]any{
-			"max_tokens": 600,
+			"max_tokens": 10240,
 		},
 	})
 	if err != nil {
@@ -1436,7 +1438,7 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 			{Role: "user", Content: string(payload)},
 		},
 		Parameters: map[string]any{
-			"max_tokens": 500,
+			"max_tokens": 40960,
 		},
 	})
 	if err != nil {
@@ -1603,7 +1605,7 @@ func semanticMatchTasks(ctx context.Context, client llm.Client, model string, ba
 			{Role: "user", Content: string(b)},
 		},
 		Parameters: map[string]any{
-			"max_tokens": 300,
+			"max_tokens": 40960,
 		},
 	})
 	if err != nil {

@@ -35,7 +35,7 @@ func skillsConfigFromViper(model string) skillsConfig {
 		MaxLoad:       viper.GetInt("skills.max_load"),
 		PreviewBytes:  viper.GetInt64("skills.preview_bytes"),
 		CatalogLimit:  viper.GetInt("skills.catalog_limit"),
-		SelectTimeout: viper.GetDuration("skills.select_timeout"),
+		SelectTimeout: viper.GetDuration("llm.request_timeout"),
 		SelectorModel: strings.TrimSpace(viper.GetString("skills.selector_model")),
 		Trace:         viper.GetBool("trace"),
 	}
@@ -78,7 +78,7 @@ func skillsConfigFromRunCmd(cmd *cobra.Command, model string) skillsConfig {
 	cfg.MaxLoad = configutil.FlagOrViperInt(cmd, "skills-max-load", "skills.max_load")
 	cfg.PreviewBytes = configutil.FlagOrViperInt64(cmd, "skills-preview-bytes", "skills.preview_bytes")
 	cfg.CatalogLimit = configutil.FlagOrViperInt(cmd, "skills-catalog-limit", "skills.catalog_limit")
-	cfg.SelectTimeout = configutil.FlagOrViperDuration(cmd, "skills-select-timeout", "skills.select_timeout")
+	cfg.SelectTimeout = configutil.FlagOrViperDuration(cmd, "llm-request-timeout", "llm.request_timeout")
 
 	if strings.TrimSpace(cfg.Mode) == "" {
 		cfg.Mode = "smart"

@@ -205,7 +205,7 @@ func newRunCmd() *cobra.Command {
 					ParseRetries:     configutil.FlagOrViperInt(cmd, "parse-retries", "parse_retries"),
 					MaxTokenBudget:   configutil.FlagOrViperInt(cmd, "max-token-budget", "max_token_budget"),
 					IntentEnabled:    viper.GetBool("intent.enabled"),
-					IntentTimeout:    viper.GetDuration("intent.timeout"),
+					IntentTimeout:    requestTimeout,
 					IntentMaxHistory: viper.GetInt("intent.max_history"),
 				},
 				promptSpec,
@@ -223,7 +223,7 @@ func newRunCmd() *cobra.Command {
 			if !isHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
 				if err := updateRunMemory(ctx, logger, client, model, memManager, memIdentity, task, final, requestTimeout); err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
-						retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, 12*time.Second, func(retryCtx context.Context) error {
+						retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, requestTimeout, func(retryCtx context.Context) error {
 							return updateRunMemory(retryCtx, logger, client, model, memManager, memIdentity, task, final, requestTimeout)
 						})
 					}
@@ -560,7 +560,11 @@ func promptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 	if selectTimeout <= 0 {
 		selectTimeout = 10 * time.Second
 	}
-	selectCtx, cancel := context.WithTimeout(ctx, selectTimeout)
+	selectCtx := ctx
+	cancel := func() {}
+	if selectTimeout > 0 {
+		selectCtx, cancel = context.WithTimeout(ctx, selectTimeout)
+	}
 	defer cancel()
 
 	selection, err := skills.Select(selectCtx, client, task, discovered, skills.SelectOptions{

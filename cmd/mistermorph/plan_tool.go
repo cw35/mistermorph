@@ -193,7 +193,7 @@ Rules:
 			{Role: "user", Content: string(payloadJSON)},
 		},
 		Parameters: map[string]any{
-			"max_tokens": 400,
+			"max_tokens": 4096,
 		},
 	})
 	if err != nil {

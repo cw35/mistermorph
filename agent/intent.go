@@ -61,7 +61,7 @@ func InferIntent(ctx context.Context, client llm.Client, model string, task stri
 			{Role: "user", Content: string(b)},
 		},
 		Parameters: map[string]any{
-			"max_tokens":  300,
+			"max_tokens":  1024,
 			"temperature": 0,
 		},
 	})

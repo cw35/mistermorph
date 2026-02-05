@@ -144,7 +144,7 @@ func decideTelegramReaction(ctx context.Context, client llm.Client, model string
 	}
 	match := classifyReactionCategory(intent, task)
 	if match.Category == "" {
-		intentMatch, err := classifyReactionCategoryViaIntent(ctx, client, model, intent, task)
+		intentMatch, err := classifyReactionCategoryViaIntent(intentCtx, client, model, intent, task)
 		if err == nil && intentMatch.Category != "" {
 			match = intentMatch
 		}
