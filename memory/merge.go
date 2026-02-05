@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -71,8 +72,8 @@ func BuildShortTermBody(date string, content ShortTermContent) string {
 	b.WriteString(date)
 	b.WriteString(" Short-Term Memory\n\n")
 
-	writeKVSection(&b, sectionSessionSummary, content.SessionSummary)
-	writeKVSection(&b, sectionTemporaryFacts, content.TemporaryFacts)
+	writeShortTermKVSection(&b, sectionSessionSummary, content.SessionSummary)
+	writeShortTermKVSection(&b, sectionTemporaryFacts, content.TemporaryFacts)
 	writeTodoSection(&b, sectionTasks, content.Tasks)
 	writeTodoSection(&b, sectionFollowUps, content.FollowUps)
 	writeLinkSection(&b, sectionRelatedLinks, content.RelatedLinks)
@@ -113,20 +114,67 @@ func splitSections(body string) map[string][]string {
 
 func parseKVSection(lines []string) []KVItem {
 	items := make([]KVItem, 0, len(lines))
-	seen := map[string]bool{}
-	for _, line := range lines {
-		item, ok := parseKVLine(line)
-		if !ok {
+	var currentTitle string
+	var currentLines []string
+
+	flush := func() {
+		if strings.TrimSpace(currentTitle) == "" && len(currentLines) == 0 {
+			currentTitle = ""
+			currentLines = nil
+			return
+		}
+		value := strings.TrimSpace(strings.Join(currentLines, "\n"))
+		items = append(items, KVItem{Title: strings.TrimSpace(currentTitle), Value: value})
+		currentTitle = ""
+		currentLines = nil
+	}
+
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
 			continue
 		}
+
+		if title, inline, ok := parseNumberedKVLine(line); ok {
+			flush()
+			currentTitle = title
+			if inline != "" {
+				currentLines = append(currentLines, inline)
+			}
+			continue
+		}
+
+		if item, ok := parseKVLine(line); ok {
+			flush()
+			items = append(items, item)
+			continue
+		}
+
+		if strings.HasPrefix(line, "-") && currentTitle != "" {
+			sub := strings.TrimSpace(strings.TrimPrefix(line, "-"))
+			if sub != "" {
+				currentLines = append(currentLines, sub)
+			}
+			continue
+		}
+
+		if currentTitle != "" {
+			currentLines = append(currentLines, line)
+		}
+	}
+	flush()
+
+	out := make([]KVItem, 0, len(items))
+	seen := map[string]bool{}
+	for _, item := range items {
 		key := strings.ToLower(strings.TrimSpace(item.Title))
 		if key == "" || seen[key] {
 			continue
 		}
 		seen[key] = true
-		items = append(items, item)
+		out = append(out, item)
 	}
-	return items
+	return out
 }
 
 func parseTodoSection(lines []string) []TaskItem {
@@ -184,6 +232,70 @@ func parseKVLine(line string) (KVItem, bool) {
 		return KVItem{}, false
 	}
 	return KVItem{Title: title, Value: after}, true
+}
+
+func parseNumberedKVLine(line string) (string, string, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", "", false
+	}
+	dot := strings.Index(line, ".")
+	if dot <= 0 {
+		return "", "", false
+	}
+	for _, r := range line[:dot] {
+		if r < '0' || r > '9' {
+			return "", "", false
+		}
+	}
+	rest := strings.TrimSpace(line[dot+1:])
+	if rest == "" {
+		return "", "", false
+	}
+	if strings.HasPrefix(rest, "**") {
+		end := strings.Index(rest[2:], "**")
+		if end < 0 {
+			return "", "", false
+		}
+		label := strings.TrimSpace(rest[2 : 2+end])
+		after := strings.TrimSpace(rest[2+end+2:])
+		if strings.HasPrefix(after, ":") {
+			after = strings.TrimSpace(strings.TrimPrefix(after, ":"))
+		}
+		if strings.EqualFold(label, "topic") {
+			if after == "" {
+				return "", "", false
+			}
+			return after, "", true
+		}
+		if label == "" {
+			return "", "", false
+		}
+		return label, strings.TrimSpace(after), true
+	}
+
+	restLower := strings.ToLower(rest)
+	if strings.HasPrefix(restLower, "topic") {
+		after := strings.TrimSpace(rest[len("topic"):])
+		if strings.HasPrefix(after, ":") {
+			after = strings.TrimSpace(strings.TrimPrefix(after, ":"))
+		}
+		if after == "" {
+			return "", "", false
+		}
+		return after, "", true
+	}
+
+	parts := strings.SplitN(rest, ":", 2)
+	title := strings.TrimSpace(parts[0])
+	if title == "" {
+		return "", "", false
+	}
+	inline := ""
+	if len(parts) > 1 {
+		inline = strings.TrimSpace(parts[1])
+	}
+	return title, inline, true
 }
 
 func parseTodoLine(line string) (TaskItem, bool) {
@@ -478,6 +590,128 @@ func writeKVSection(b *strings.Builder, title string, items []KVItem) {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
+}
+
+type subItem struct {
+	Key   string
+	Value string
+}
+
+func writeShortTermKVSection(b *strings.Builder, title string, items []KVItem) {
+	b.WriteString("## ")
+	b.WriteString(title)
+	b.WriteString("\n")
+	index := 1
+	for _, it := range items {
+		itemTitle := strings.TrimSpace(it.Title)
+		itemValue := strings.TrimSpace(it.Value)
+		if itemTitle == "" && itemValue == "" {
+			continue
+		}
+		if itemTitle == "" {
+			itemTitle = "Item"
+		}
+		if title == sectionSessionSummary {
+			b.WriteString(strconv.Itoa(index))
+			b.WriteString(". **Topic**: ")
+			b.WriteString(itemTitle)
+			b.WriteString("\n")
+			subitems := parseValueSubitems(itemValue, "Event")
+			subitems = orderSessionSubitems(subitems)
+			writeSubitems(b, subitems)
+		} else {
+			b.WriteString(strconv.Itoa(index))
+			b.WriteString(". ")
+			b.WriteString(itemTitle)
+			b.WriteString(":")
+			b.WriteString("\n")
+			subitems := parseValueSubitems(itemValue, "Detail")
+			writeSubitems(b, subitems)
+		}
+		index++
+	}
+	b.WriteString("\n")
+}
+
+func parseValueSubitems(value string, defaultKey string) []subItem {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	lines := strings.Split(value, "\n")
+	items := make([]subItem, 0, len(lines))
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "-") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
+		}
+		if line == "" {
+			continue
+		}
+		key, val := splitSubitem(line)
+		if key == "" {
+			key = defaultKey
+		}
+		if strings.TrimSpace(val) == "" {
+			continue
+		}
+		items = append(items, subItem{Key: key, Value: val})
+	}
+	return items
+}
+
+func splitSubitem(line string) (string, string) {
+	parts := strings.SplitN(line, ":", 2)
+	if len(parts) < 2 {
+		return "", strings.TrimSpace(line)
+	}
+	key := strings.TrimSpace(parts[0])
+	val := strings.TrimSpace(parts[1])
+	return key, val
+}
+
+func orderSessionSubitems(items []subItem) []subItem {
+	if len(items) == 0 {
+		return items
+	}
+	order := []string{"Users", "Datetime", "Event", "Result"}
+	used := make([]bool, len(items))
+	ordered := make([]subItem, 0, len(items))
+	for _, key := range order {
+		for i, item := range items {
+			if used[i] {
+				continue
+			}
+			if strings.EqualFold(item.Key, key) {
+				ordered = append(ordered, item)
+				used[i] = true
+			}
+		}
+	}
+	for i, item := range items {
+		if !used[i] {
+			ordered = append(ordered, item)
+		}
+	}
+	return ordered
+}
+
+func writeSubitems(b *strings.Builder, items []subItem) {
+	for _, item := range items {
+		key := strings.TrimSpace(item.Key)
+		val := strings.TrimSpace(item.Value)
+		if key == "" || val == "" {
+			continue
+		}
+		b.WriteString("  - ")
+		b.WriteString(key)
+		b.WriteString(": ")
+		b.WriteString(val)
+		b.WriteString("\n")
+	}
 }
 
 func writeTodoSection(b *strings.Builder, title string, items []TaskItem) {

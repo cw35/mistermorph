@@ -1,4 +1,4 @@
-package main
+package telegram
 
 import (
 	"bytes"
@@ -390,7 +390,7 @@ func newTelegramCmd() *cobra.Command {
 							if last, ok := lastHeartbeat[chatID]; ok && !last.IsZero() {
 								extra["last_success_utc"] = last.UTC().Format(time.RFC3339)
 							}
-							meta := buildHeartbeatMeta("telegram", hbInterval, hbChecklist, checklistEmpty, nil, extra)
+							meta := buildHeartbeatMeta("telegram", hbInterval, hbChecklist, checklistEmpty, extra)
 							job := telegramJob{
 								ChatID:          chatID,
 								ChatType:        chatType,
@@ -736,11 +736,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		reg.Register(newTelegramSendFileTool(api, job.ChatID, fileCacheDir, filesMaxBytes))
 	}
 
-	skillsCfg := skillsConfigFromViper(model)
-	if len(stickySkills) > 0 {
-		skillsCfg.Requested = append(skillsCfg.Requested, stickySkills...)
-	}
-	promptSpec, loadedSkills, skillAuthProfiles, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsCfg)
+	promptSpec, loadedSkills, skillAuthProfiles, err := promptSpecForTelegram(ctx, logger, logOpts, task, client, model, stickySkills)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -926,7 +922,7 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 	memCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	ctxInfo := memoryDraftContext{
+	ctxInfo := MemoryDraftContext{
 		SessionID:          meta.SessionID,
 		ChatID:             job.ChatID,
 		ChatType:           job.ChatType,
@@ -939,16 +935,16 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 		ctxInfo.CounterpartyName = strings.TrimSpace(strings.Join([]string{job.FromFirstName, job.FromLastName}, " "))
 	}
 
-	draft, err := buildMemoryDraft(memCtx, client, model, history, job.Text, output, existingContent, ctxInfo)
+	draft, err := BuildMemoryDraft(memCtx, client, model, history, job.Text, output, existingContent, ctxInfo)
 	if err != nil {
 		return err
 	}
-	draft.Promote = enforceLongTermPromotionRules(draft.Promote, history, job.Text)
+	draft.Promote = EnforceLongTermPromotionRules(draft.Promote, history, job.Text)
 
 	mergedContent := memory.MergeShortTerm(existingContent, draft)
 	summary := strings.TrimSpace(draft.Summary)
-	if hasExisting && hasDraftContent(draft) {
-		semantic, semanticSummary, mergeErr := semanticMergeShortTerm(memCtx, client, model, existingContent, draft)
+	if hasExisting && HasDraftContent(draft) {
+		semantic, semanticSummary, mergeErr := SemanticMergeShortTerm(memCtx, client, model, existingContent, draft)
 		if mergeErr == nil {
 			mergedContent = semantic
 			summary = semanticSummary
@@ -979,7 +975,7 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 	return nil
 }
 
-type memoryDraftContext struct {
+type MemoryDraftContext struct {
 	SessionID          string `json:"session_id,omitempty"`
 	ChatID             int64  `json:"chat_id,omitempty"`
 	ChatType           string `json:"chat_type,omitempty"`
@@ -989,7 +985,7 @@ type memoryDraftContext struct {
 	TimestampUTC       string `json:"timestamp_utc,omitempty"`
 }
 
-func buildMemoryDraft(ctx context.Context, client llm.Client, model string, history []llm.Message, task string, output string, existing memory.ShortTermContent, ctxInfo memoryDraftContext) (memory.SessionDraft, error) {
+func BuildMemoryDraft(ctx context.Context, client llm.Client, model string, history []llm.Message, task string, output string, existing memory.ShortTermContent, ctxInfo MemoryDraftContext) (memory.SessionDraft, error) {
 	if client == nil {
 		return memory.SessionDraft{}, fmt.Errorf("nil llm client")
 	}
@@ -1004,9 +1000,11 @@ func buildMemoryDraft(ctx context.Context, client llm.Client, model string, hist
 		"existing_follow_ups": existing.FollowUps,
 		"rules": []string{
 			"Short-term memory is public. Do NOT include private or sensitive info in summary/session_summary/temporary_facts/tasks/follow_ups.",
-			"Use the same language as the user.",
-			"Session summary items should state who was involved, when it happened (if known), what happened, and the result (if any).",
+			"Use the same language as the user for titles and values; keep Session Summary keys labeled as Users/Datetime/Event/Result.",
+			"Session summary items must be single-topic. Set title to the topic name.",
+			"Session summary value must be newline-separated key-value lines: Users: ..., Datetime: ..., Event: ..., Result: ... (omit unknowns).",
 			"If session_context includes counterparty info, use it instead of generic labels like \"user\".",
+			"Temporary facts title is the fact group name; value is newline-separated key-value lines (e.g., 网站 URL: ..., API 示例: ...).",
 			"Temporary facts should preserve key metadata such as URLs, terms, identifiers, IDs, or ticket numbers when they matter to future work.",
 			"Keep items concise but specific.",
 			"If an existing task or follow-up was completed in this session, include it with done=true.",
@@ -1058,7 +1056,7 @@ func buildMemoryDraft(ctx context.Context, client llm.Client, model string, hist
 	return out, nil
 }
 
-func enforceLongTermPromotionRules(promote memory.PromoteDraft, history []llm.Message, task string) memory.PromoteDraft {
+func EnforceLongTermPromotionRules(promote memory.PromoteDraft, history []llm.Message, task string) memory.PromoteDraft {
 	if !hasExplicitMemoryRequest(history, task) {
 		return memory.PromoteDraft{}
 	}
@@ -1163,7 +1161,7 @@ type semanticMergeResult struct {
 	FollowUps      []memory.TaskItem `json:"follow_ups"`
 }
 
-func semanticMergeShortTerm(ctx context.Context, client llm.Client, model string, existing memory.ShortTermContent, draft memory.SessionDraft) (memory.ShortTermContent, string, error) {
+func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string, existing memory.ShortTermContent, draft memory.SessionDraft) (memory.ShortTermContent, string, error) {
 	if client == nil {
 		return memory.ShortTermContent{}, "", fmt.Errorf("nil llm client")
 	}
@@ -1187,6 +1185,8 @@ func semanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 		Rules: []string{
 			"These are same-day short-term items. Merge semantically and deduplicate.",
 			"Short-term memory is public. Do NOT include private or sensitive info.",
+			"Session summary title is the topic name; value is newline-separated key-value lines (Users/Datetime/Event/Result).",
+			"Temporary facts title is the fact group name; value is newline-separated key-value lines.",
 			"Prefer the most recent information when conflicts occur.",
 			"Preserve important metadata in temporary_facts such as URLs, terms, identifiers, IDs, or ticket numbers.",
 			"Keep items concise.",
@@ -1242,7 +1242,7 @@ func semanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	return merged, summary, nil
 }
 
-func hasDraftContent(draft memory.SessionDraft) bool {
+func HasDraftContent(draft memory.SessionDraft) bool {
 	return len(draft.SessionSummary) > 0 || len(draft.TemporaryFacts) > 0 || len(draft.Tasks) > 0 || len(draft.FollowUps) > 0
 }
 

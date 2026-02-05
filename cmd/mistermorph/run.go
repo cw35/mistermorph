@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
+	telegramcmd "github.com/quailyquaily/mistermorph/cmd/telegram"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	uniaiProvider "github.com/quailyquaily/mistermorph/providers/uniai"
@@ -291,7 +292,7 @@ func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client
 	memCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	ctxInfo := memoryDraftContext{
+	ctxInfo := telegramcmd.MemoryDraftContext{
 		SessionID:        meta.SessionID,
 		ChatType:         "cli",
 		CounterpartyName: strings.TrimSpace(os.Getenv("USER")),
@@ -301,16 +302,16 @@ func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client
 		ctxInfo.CounterpartyName = strings.TrimSpace(os.Getenv("USERNAME"))
 	}
 
-	draft, err := buildMemoryDraft(memCtx, client, model, nil, task, output, existingContent, ctxInfo)
+	draft, err := telegramcmd.BuildMemoryDraft(memCtx, client, model, nil, task, output, existingContent, ctxInfo)
 	if err != nil {
 		return err
 	}
-	draft.Promote = enforceLongTermPromotionRules(draft.Promote, nil, task)
+	draft.Promote = telegramcmd.EnforceLongTermPromotionRules(draft.Promote, nil, task)
 
 	mergedContent := memory.MergeShortTerm(existingContent, draft)
 	summary := strings.TrimSpace(draft.Summary)
-	if hasExisting && hasDraftContent(draft) {
-		semantic, semanticSummary, mergeErr := semanticMergeShortTerm(memCtx, client, model, existingContent, draft)
+	if hasExisting && telegramcmd.HasDraftContent(draft) {
+		semantic, semanticSummary, mergeErr := telegramcmd.SemanticMergeShortTerm(memCtx, client, model, existingContent, draft)
 		if mergeErr == nil {
 			mergedContent = semantic
 			summary = semanticSummary
