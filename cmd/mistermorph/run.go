@@ -315,12 +315,11 @@ func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client
 	var mergedContent memory.ShortTermContent
 	if hasExisting && telegramcmd.HasDraftContent(draft) {
 		semantic, semanticSummary, mergeErr := telegramcmd.SemanticMergeShortTerm(memCtx, client, model, existingContent, draft)
-		if mergeErr == nil {
-			mergedContent = semantic
-			summary = semanticSummary
-		} else {
-			mergedContent = memory.MergeShortTerm(existingContent, draft)
+		if mergeErr != nil {
+			return mergeErr
 		}
+		mergedContent = semantic
+		summary = semanticSummary
 	} else {
 		mergedContent = memory.MergeShortTerm(existingContent, draft)
 	}
