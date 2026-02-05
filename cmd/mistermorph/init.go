@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/quailyquaily/mistermorph/assets"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/spf13/cobra"
 )
@@ -31,28 +32,39 @@ func newInitCmd() *cobra.Command {
 			}
 
 			cfgPath := filepath.Join(dir, "config.yaml")
+			writeConfig := true
 			if _, err := os.Stat(cfgPath); err == nil {
-				return fmt.Errorf("config already exists: %s", cfgPath)
+				fmt.Fprintf(os.Stderr, "warn: config already exists, skipping: %s\n", cfgPath)
+				writeConfig = false
 			}
 
 			hbPath := filepath.Join(dir, "HEARTBEAT.md")
+			writeHeartbeat := true
 			if _, err := os.Stat(hbPath); err == nil {
-				return fmt.Errorf("heartbeat already exists: %s", hbPath)
+				fmt.Fprintf(os.Stderr, "warn: heartbeat already exists, skipping: %s\n", hbPath)
+				writeHeartbeat = false
 			}
 
-			cfgBody, err := loadConfigExample()
-			if err != nil {
-				return err
-			}
-			cfgBody = patchInitConfig(cfgBody, dir)
+			if writeConfig {
+				cfgBody, err := loadConfigExample()
+				if err != nil {
+					return err
+				}
+				cfgBody = patchInitConfig(cfgBody, dir)
 
-			if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
-				return err
+				if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
+					return err
+				}
 			}
 
-			hbBody := defaultHeartbeatTemplate()
-			if err := os.WriteFile(hbPath, []byte(hbBody), 0o644); err != nil {
-				return err
+			if writeHeartbeat {
+				hbBody, err := loadHeartbeatTemplate()
+				if err != nil {
+					return err
+				}
+				if err := os.WriteFile(hbPath, []byte(hbBody), 0o644); err != nil {
+					return err
+				}
 			}
 
 			skillsDir := filepath.Join(dir, "skills")
@@ -69,9 +81,17 @@ func newInitCmd() *cobra.Command {
 }
 
 func loadConfigExample() (string, error) {
-	data, err := os.ReadFile("config.example.yaml")
+	data, err := assets.ConfigFS.ReadFile("config/config.example.yaml")
 	if err != nil {
-		return "", fmt.Errorf("read config.example.yaml: %w", err)
+		return "", fmt.Errorf("read embedded config.example.yaml: %w", err)
+	}
+	return string(data), nil
+}
+
+func loadHeartbeatTemplate() (string, error) {
+	data, err := assets.ConfigFS.ReadFile("config/HEARTBEAT.md")
+	if err != nil {
+		return "", fmt.Errorf("read embedded HEARTBEAT.md: %w", err)
 	}
 	return string(data), nil
 }
@@ -82,22 +102,6 @@ func patchInitConfig(cfg string, dir string) string {
 	}
 	dir = filepath.Clean(dir)
 	dir = filepath.ToSlash(dir)
-	checklistPath := filepath.ToSlash(filepath.Join(dir, "HEARTBEAT.md"))
-	cfg = strings.ReplaceAll(cfg, `checklist_path: "~/.morph/HEARTBEAT.md"`, fmt.Sprintf(`checklist_path: "%s"`, checklistPath))
-	cfg = strings.ReplaceAll(cfg, `- "~/.morph/skills"`, fmt.Sprintf(`- "%s"`, filepath.ToSlash(filepath.Join(dir, "skills"))))
+	cfg = strings.ReplaceAll(cfg, `file_state_dir: "~/.morph"`, fmt.Sprintf(`file_state_dir: "%s"`, dir))
 	return cfg
-}
-
-func defaultHeartbeatTemplate() string {
-	return strings.Join([]string{
-		"# Heartbeat Checklist",
-		"",
-		"<!--",
-		"- Add periodic checks here.",
-		"- If empty, the agent will look at recent short-term memory and context.",
-		"- Recent short-term TODO progress is appended automatically when available.",
-		"- Keep it short; focus on actionable items.",
-		"-->",
-		"",
-	}, "\n")
 }

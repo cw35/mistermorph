@@ -161,7 +161,7 @@ If user task text can influence `auth_profile`, validate strictly:
 ### P1 (Strongly recommended)
 
 - Extend skill frontmatter schema: allow `auth_profiles: ["..."]` (profile id only; no injection details).
-- Add policy config (recommend in `config.example.yaml`):
+- Add policy config (recommend in `assets/config/config.example.yaml`):
   - `secrets.enabled: true|false`
   - `secrets.allow_refs: [...]` (optional: further restrict secret_ref values)
   - `secrets.aliases: {JSONBILL_API_KEY: "SOME_ENV_NAME"}` (optional)
@@ -169,7 +169,7 @@ If user task text can influence `auth_profile`, validate strictly:
 - Default policy for `bash` (recommend hard-coded safe default):
   - When `secrets.enabled=true`, allow `bash` for local automation, but deny `curl` by default to avoid “bash + curl” carrying authenticated HTTP; use `url_fetch + auth_profile` for HTTP.
   - If curl features are needed, prefer a structured subprocess tool (e.g. `exec`/`curl_fetch`) that takes `profile_id + argv + stdin` and injects secrets host-side with a minimal environment.
-- `auth_profiles` config (recommend in `config.example.yaml`):
+- `auth_profiles` config (recommend in `assets/config/config.example.yaml`):
   - `auth_profiles.<id>.credential.secret_ref`
   - `auth_profiles.<id>.credential.kind` (api_key/bearer/...)
   - `auth_profiles.<id>.allow.url_prefixes` / `methods`
@@ -205,7 +205,7 @@ If user task text can influence `auth_profile`, validate strictly:
   - [x] `secrets.allow_profiles=[]` (empty means “all profiles disabled”)
   - [x] `secrets.aliases={}`
   - [x] `auth_profiles={}`
-- [x] Add full examples and comments for `secrets:` and `auth_profiles:` in `config.example.yaml` (and clarify: bash disabled by default; when secrets enabled, curl denied by default).
+- [x] Add full examples and comments for `secrets:` and `auth_profiles:` in `assets/config/config.example.yaml` (and clarify: bash disabled by default; when secrets enabled, curl denied by default).
 - [x] In `cmd/mistermorph/registry.go`:
   - [x] Build `EnvResolver` from viper (`secrets.aliases` supported)
   - [x] Load/validate `auth_profiles` and build a read-only `ProfileStore` (discard invalid profiles)

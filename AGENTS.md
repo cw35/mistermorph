@@ -9,7 +9,7 @@
 - `tools/` and `tools/builtin/`: tool registry and built-ins (`web_search`, `url_fetch`, `bash`, `read_file`, `echo`).
 - `skills/`: skill discovery and selection logic for `SKILL.md`.
 - `demo/`: embedding examples (`demo/embed-go/`, `demo/embed-cli/`).
-- Root configs: `config.example.yaml` (template) and `config.yaml` (local). `mistermorph` in repo root is a build artifact.
+- Root configs: `assets/config/config.example.yaml` (template) and `config.yaml` (local). `mistermorph` in repo root is a build artifact.
 
 ## Build, Test, and Development Commands
 
@@ -46,7 +46,7 @@
 ## Security & Configuration Tips
 
 - Prefer `MISTER_MORPH_API_KEY` over committing `api_key` in config; treat logs as sensitive when enabling debug/thought output.
-- When adding/changing config keys, update `config.example.yaml` (the template used for docs and examples).
+- When adding/changing config keys, update `assets/config/config.example.yaml` (the template used for docs and examples).
 
 ## Commit & Pull Request Guidelines
 

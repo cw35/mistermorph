@@ -155,7 +155,7 @@ Behavior details:
 - Should the daemon export a `/heartbeat` HTTP endpoint for external monitors?
 
 ## TODO
-- [x] Add `heartbeat` config section + defaults in `config.example.yaml` and `cmd/mistermorph/defaults.go` (enabled/interval/checklist_path with `~/.morph/HEARTBEAT.md` default).
+- [x] Add `heartbeat` config section + defaults in `assets/config/config.example.yaml` and `cmd/mistermorph/defaults.go` (enabled/interval/checklist_path with `~/.morph/HEARTBEAT.md` default).
 - [x] Add heartbeat task builder (new helper in `cmd/mistermorph/`).
 - [x] Read checklist file (use `internal/pathutil.ExpandHomePath`).
 - [x] Detect empty/whitespace-only content (treat comment-only as empty).

@@ -1,7 +1,7 @@
 # Example config for mistermorph
 #
 # Usage:
-#   ./mistermorph run --config ./config.example.yaml --task "..."
+#   ./mistermorph run --config ./assets/config/config.example.yaml --task "..."
 #
 # Env vars (override config):
 #   - Preferred: MISTER_MORPH_LLM_PROVIDER, MISTER_MORPH_LLM_ENDPOINT, MISTER_MORPH_LLM_MODEL, MISTER_MORPH_LLM_API_KEY
