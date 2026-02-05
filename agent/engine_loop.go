@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/llm"
 )
 
@@ -311,11 +312,21 @@ func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Con
 					Duration:    time.Since(stepStart),
 				})
 
+				if toolErr == nil && tc.Name == "plan_create" && st.agentCtx.Plan == nil {
+					if plan := parsePlanCreateObservation(observation); plan != nil {
+						st.agentCtx.Plan = plan
+						NormalizePlanSteps(st.agentCtx.Plan)
+						log.Info("plan", "step", step, "summary_len", len(strings.TrimSpace(plan.Summary)), "steps", len(plan.Steps))
+					} else {
+						log.Warn("plan_create_parse_failed", "step", step)
+					}
+				}
+
 				if toolErr == nil && e.onToolSuccess != nil {
 					e.onToolSuccess(st.agentCtx, tc.Name)
 				}
 
-				if toolErr == nil && st.agentCtx.Plan != nil {
+				if toolErr == nil && st.agentCtx.Plan != nil && tc.Name != "plan_create" {
 					completedIdx, completedStep, startedIdx, startedStep, ok := AdvancePlanOnSuccess(st.agentCtx.Plan)
 					if ok {
 						planFields := []any{
@@ -535,4 +546,17 @@ func toolCallSignature(tc ToolCall) string {
 	}
 	b, _ := json.Marshal(tc.Params)
 	return tc.Name + ":" + string(b)
+}
+
+func parsePlanCreateObservation(observation string) *Plan {
+	var payload struct {
+		Plan Plan `json:"plan"`
+	}
+	if err := jsonutil.DecodeWithFallback(observation, &payload); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(payload.Plan.Summary) == "" && len(payload.Plan.Steps) == 0 {
+		return nil
+	}
+	return &payload.Plan
 }

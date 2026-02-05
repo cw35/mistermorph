@@ -292,6 +292,8 @@ parse_retries: 2
 max_token_budget: 0
 # Overall run timeout.
 timeout: "10m"
+# If true, prints extra debug info to stderr (tool steps, selected skills, etc).
+trace: false
 # Base directory for local state (memory/skills/heartbeat).
 file_state_dir: "~/.morph"
 # Global temporary file cache directory used for inbound/outbound file handling (e.g. Telegram).
@@ -304,5 +306,7 @@ file_cache:
   max_files: 1000
   # Max total bytes of cached files (0 disables size-based cleanup).
   max_total_bytes: 536870912
-# If true, prints extra debug info to stderr (tool steps, selected skills, etc).
-trace: false
+# Plan tool defaults.
+plan:
+  # Default max steps for plan_create (can be overridden by tool params).
+  max_steps: 6

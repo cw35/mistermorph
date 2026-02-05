@@ -92,12 +92,13 @@ func newRunCmd() *cobra.Command {
 				model = strings.TrimSpace(configutil.FlagOrViperString(cmd, "model", ""))
 			}
 
+			requestTimeout := configutil.FlagOrViperDuration(cmd, "llm-request-timeout", "llm.request_timeout")
 			client, err := llmClientFromConfig(llmconfig.ClientConfig{
 				Provider:       provider,
 				Endpoint:       endpoint,
 				APIKey:         apiKey,
 				Model:          model,
-				RequestTimeout: configutil.FlagOrViperDuration(cmd, "llm-request-timeout", "llm.request_timeout"),
+				RequestTimeout: requestTimeout,
 			})
 			if err != nil {
 				return err
@@ -220,10 +221,10 @@ func newRunCmd() *cobra.Command {
 			}
 
 			if !isHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
-				if err := updateRunMemory(ctx, logger, client, model, memManager, memIdentity, task, final); err != nil {
+				if err := updateRunMemory(ctx, logger, client, model, memManager, memIdentity, task, final, requestTimeout); err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
 						retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, 12*time.Second, func(retryCtx context.Context) error {
-							return updateRunMemory(retryCtx, logger, client, model, memManager, memIdentity, task, final)
+							return updateRunMemory(retryCtx, logger, client, model, memManager, memIdentity, task, final, requestTimeout)
 						})
 					}
 					logger.Warn("memory_update_error", "error", err.Error())
@@ -291,7 +292,7 @@ func resolveRunMemoryIdentity() memory.Identity {
 	}
 }
 
-func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, task string, final *agent.Final) error {
+func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, task string, final *agent.Final, requestTimeout time.Duration) error {
 	if mgr == nil || client == nil {
 		return nil
 	}
@@ -308,7 +309,11 @@ func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client
 		return err
 	}
 
-	memCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	memCtx := ctx
+	cancel := func() {}
+	if requestTimeout > 0 {
+		memCtx, cancel = context.WithTimeout(ctx, requestTimeout)
+	}
 	defer cancel()
 
 	ctxInfo := telegramcmd.MemoryDraftContext{

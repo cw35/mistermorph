@@ -90,12 +90,13 @@ func newTelegramCmd() *cobra.Command {
 			}
 			slog.SetDefault(logger)
 
+			requestTimeout := viper.GetDuration("llm.request_timeout")
 			client, err := llmClientFromConfig(llmconfig.ClientConfig{
 				Provider:       llmProviderFromViper(),
 				Endpoint:       llmEndpointFromViper(),
 				APIKey:         llmAPIKeyFromViper(),
 				Model:          llmModelFromViper(),
-				RequestTimeout: viper.GetDuration("llm.request_timeout"),
+				RequestTimeout: requestTimeout,
 			})
 			if err != nil {
 				return err
@@ -348,7 +349,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, reactionCfg, allowed, job, model, h, sticky)
+							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, reactionCfg, allowed, job, model, h, sticky, requestTimeout)
 							cancel()
 
 							if runErr != nil {
@@ -855,7 +856,7 @@ func newTelegramCmd() *cobra.Command {
 	return cmd
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []llm.Message, stickySkills []string) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []llm.Message, stickySkills []string, requestTimeout time.Duration) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
 	task := job.Text
 	if baseReg == nil {
 		baseReg = registryFromViper()
@@ -985,7 +986,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 			if api == nil || runCtx == nil || runCtx.Plan == nil {
 				return
 			}
-			msg, err := generateTelegramPlanProgressMessage(ctx, client, model, task, runCtx.Plan, update)
+			msg, err := generateTelegramPlanProgressMessage(ctx, client, model, task, runCtx.Plan, update, requestTimeout)
 			if err != nil {
 				logger.Warn("telegram_plan_progress_error", "error", err.Error())
 				return
@@ -1044,10 +1045,10 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	}
 
 	if reaction == nil && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
-		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, final); err != nil {
+		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, final, requestTimeout); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, 12*time.Second, func(retryCtx context.Context) error {
-					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, history, final)
+					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, history, final, requestTimeout)
 				})
 			}
 			logger.Warn("memory_update_error", "error", err.Error())
@@ -1056,7 +1057,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	return final, agentCtx, loadedSkills, reaction, nil
 }
 
-func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client, model string, task string, plan *agent.Plan, update agent.PlanStepUpdate) (string, error) {
+func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client, model string, task string, plan *agent.Plan, update agent.PlanStepUpdate, requestTimeout time.Duration) (string, error) {
 	if client == nil || plan == nil || update.CompletedIndex < 0 {
 		return "", nil
 	}
@@ -1104,21 +1105,26 @@ func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client,
 		},
 	}
 
-	timeout := 6 * time.Second
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	planCtx := ctx
+	cancel := func() {}
+	if requestTimeout > 0 {
+		planCtx, cancel = context.WithTimeout(ctx, requestTimeout)
+	} else {
+		planCtx, cancel = context.WithTimeout(ctx, 6*time.Second)
+	}
 	defer cancel()
 
-	result, err := client.Chat(ctx, req)
+	result, err := client.Chat(planCtx, req)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(result.Text), nil
 }
 
-func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, job telegramJob, history []llm.Message, final *agent.Final) error {
+func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, job telegramJob, history []llm.Message, final *agent.Final, requestTimeout time.Duration) error {
 	if mgr == nil || client == nil {
 		return nil
 	}
@@ -1135,7 +1141,11 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 		return err
 	}
 
-	memCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	memCtx := ctx
+	cancel := func() {}
+	if requestTimeout > 0 {
+		memCtx, cancel = context.WithTimeout(ctx, requestTimeout)
+	}
 	defer cancel()
 
 	ctxInfo := MemoryDraftContext{

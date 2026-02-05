@@ -10,12 +10,14 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/tools"
+	"github.com/spf13/viper"
 )
 
 type planCreateTool struct {
-	client       llm.Client
-	defaultModel string
-	toolNames    []string
+	client          llm.Client
+	defaultModel    string
+	defaultMaxSteps int
+	toolNames       []string
 }
 
 func registerPlanTool(reg *tools.Registry, client llm.Client, defaultModel string) {
@@ -24,7 +26,11 @@ func registerPlanTool(reg *tools.Registry, client llm.Client, defaultModel strin
 	}
 	names := toolNames(reg)
 	names = append(names, "plan_create")
-	reg.Register(newPlanCreateTool(client, defaultModel, names))
+	defaultMaxSteps := viper.GetInt("plan.max_steps")
+	if defaultMaxSteps <= 0 {
+		defaultMaxSteps = 6
+	}
+	reg.Register(newPlanCreateTool(client, defaultModel, names, defaultMaxSteps))
 }
 
 func toolNames(reg *tools.Registry) []string {
@@ -36,11 +42,12 @@ func toolNames(reg *tools.Registry) []string {
 	return out
 }
 
-func newPlanCreateTool(client llm.Client, defaultModel string, toolNames []string) *planCreateTool {
+func newPlanCreateTool(client llm.Client, defaultModel string, toolNames []string, defaultMaxSteps int) *planCreateTool {
 	return &planCreateTool{
-		client:       client,
-		defaultModel: strings.TrimSpace(defaultModel),
-		toolNames:    toolNames,
+		client:          client,
+		defaultModel:    strings.TrimSpace(defaultModel),
+		defaultMaxSteps: defaultMaxSteps,
+		toolNames:       toolNames,
 	}
 }
 
@@ -51,6 +58,10 @@ func (t *planCreateTool) Description() string {
 }
 
 func (t *planCreateTool) ParameterSchema() string {
+	maxSteps := t.defaultMaxSteps
+	if maxSteps <= 0 {
+		maxSteps = 6
+	}
 	s := map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -61,7 +72,7 @@ func (t *planCreateTool) ParameterSchema() string {
 			},
 			"max_steps": map[string]any{
 				"type":        "integer",
-				"description": "Maximum number of steps (default: 6).",
+				"description": fmt.Sprintf("Maximum number of steps (default: %d).", maxSteps),
 			},
 			"style": map[string]any{
 				"type":        "string",
@@ -109,7 +120,10 @@ func (t *planCreateTool) Execute(ctx context.Context, params map[string]any) (st
 		return "", fmt.Errorf("missing required param: task")
 	}
 
-	maxSteps := 6
+	maxSteps := t.defaultMaxSteps
+	if maxSteps <= 0 {
+		maxSteps = 6
+	}
 	if v, ok := params["max_steps"]; ok {
 		switch x := v.(type) {
 		case int:
