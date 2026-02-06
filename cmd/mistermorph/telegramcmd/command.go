@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,6 +53,7 @@ type telegramJob struct {
 	Version         uint64
 	IsHeartbeat     bool
 	Meta            map[string]any
+	MentionUsers    []string
 }
 
 type telegramChatWorker struct {
@@ -204,6 +206,7 @@ func newTelegramCmd() *cobra.Command {
 				lastHeartbeat      = make(map[int64]time.Time)
 				heartbeatRunning   = make(map[int64]bool)
 				heartbeatFailures  = make(map[int64]int)
+				knownMentions      = make(map[int64]map[string]string)
 				offset             int64
 			)
 			var sharedGuard *guard.Guard
@@ -522,6 +525,10 @@ func newTelegramCmd() *cobra.Command {
 							fromName := lastFromName[chatID]
 							fromFirst := lastFromFirst[chatID]
 							fromLast := lastFromLast[chatID]
+							var mentionUsers []string
+							if isGroupChat(chatType) {
+								mentionUsers = mentionUsersSnapshot(knownMentions[chatID], mentionUserSnapshotLimit)
+							}
 							extra := map[string]any{
 								"telegram_chat_id":       chatID,
 								"telegram_chat_type":     chatType,
@@ -546,6 +553,7 @@ func newTelegramCmd() *cobra.Command {
 								Version:         w.Version,
 								IsHeartbeat:     true,
 								Meta:            meta,
+								MentionUsers:    mentionUsers,
 							}
 							select {
 							case w.Jobs <- job:
@@ -602,6 +610,16 @@ func newTelegramCmd() *cobra.Command {
 					chatType := strings.ToLower(strings.TrimSpace(msg.Chat.Type))
 					isGroup := chatType == "group" || chatType == "supergroup"
 					sendSystemWarnings(chatID)
+
+					var mentionCandidates []string
+					if isGroup {
+						mentionCandidates = collectMentionCandidates(msg, botUser)
+						if len(mentionCandidates) > 0 {
+							mu.Lock()
+							addKnownUsernames(knownMentions, chatID, mentionCandidates)
+							mu.Unlock()
+						}
+					}
 
 					cmdWord, cmdArgs := splitCommand(text)
 					switch normalizeSlashCommand(cmdWord) {
@@ -671,6 +689,7 @@ func newTelegramCmd() *cobra.Command {
 						mu.Lock()
 						delete(history, chatID)
 						delete(stickySkillsByChat, chatID)
+						delete(knownMentions, chatID)
 						if w := getOrStartWorkerLocked(chatID); w != nil {
 							w.Version++
 						}
@@ -825,6 +844,10 @@ func newTelegramCmd() *cobra.Command {
 					if strings.TrimSpace(chatType) != "" {
 						lastChatType[chatID] = chatType
 					}
+					var mentionUsers []string
+					if isGroup {
+						mentionUsers = mentionUsersSnapshot(knownMentions[chatID], mentionUserSnapshotLimit)
+					}
 					mu.Unlock()
 					logger.Info("telegram_task_enqueued", "chat_id", chatID, "type", chatType, "text_len", len(text))
 					w.Jobs <- telegramJob{
@@ -838,6 +861,7 @@ func newTelegramCmd() *cobra.Command {
 						FromDisplayName: fromDisplay,
 						Text:            text,
 						Version:         v,
+						MentionUsers:    mentionUsers,
 					}
 				}
 			}
@@ -940,6 +964,21 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	promptSpec.Rules = append(promptSpec.Rules,
 		"In your final.output string, write for Telegram MarkdownV2 with LIMITED syntax only: *bold*, _italic_, __underline__, ~strikethrough~, ||spoiler||. Avoid inline code, code blocks, or any other Markdown features. If unsure, output plain text. Escape underscores in identifiers (e.g., new\\_york) instead of using backticks.",
 	)
+	if isGroupChat(job.ChatType) {
+		if len(job.MentionUsers) > 0 {
+			promptSpec.Blocks = append(promptSpec.Blocks, agent.PromptBlock{
+				Title:   "Group Usernames",
+				Content: strings.Join(job.MentionUsers, "\n"),
+			})
+			promptSpec.Rules = append(promptSpec.Rules,
+				"When replying in a group chat and you need to address someone directly, mention their username with @ using only the usernames listed in Group Usernames. Do not invent usernames.",
+			)
+		} else {
+			promptSpec.Rules = append(promptSpec.Rules,
+				"When replying in a group chat, only @mention someone if you are confident of their username from the conversation; otherwise avoid @mentions.",
+			)
+		}
+	}
 	promptSpec.Rules = append(promptSpec.Rules,
 		"If you need to send a Telegram voice message: call telegram_send_voice. If you do not already have a voice file path, do NOT ask the user for one; instead call telegram_send_voice without path and provide a short `text` to synthesize from the current context.",
 	)
@@ -1135,6 +1174,7 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 		SessionID: fmt.Sprintf("telegram:%d", job.ChatID),
 		Source:    "telegram",
 		Channel:   job.ChatType,
+		Usernames: mergeMemoryUsernames(job.FromUsername, job.MentionUsers),
 		SubjectID: id.SubjectID,
 	}
 	date := time.Now().UTC()
@@ -1752,6 +1792,8 @@ type telegramMessage struct {
 	Entities  []telegramEntity `json:"entities,omitempty"`
 	Text      string           `json:"text,omitempty"`
 	Caption   string           `json:"caption,omitempty"`
+	// Entities inside caption text.
+	CaptionEntities []telegramEntity `json:"caption_entities,omitempty"`
 
 	// Attachments (subset).
 	Document *telegramDocument   `json:"document,omitempty"`
@@ -2385,6 +2427,131 @@ func groupTriggerDecision(msg *telegramMessage, botUser string, botID int64, ali
 		task := stripBotMentions(m.TaskText, botUser)
 		return telegramGroupTriggerDecision{Reason: "alias_smart:" + m.Alias, TaskText: task}, true
 	}
+}
+
+const mentionUserSnapshotLimit = 12
+
+func collectMentionCandidates(msg *telegramMessage, botUser string) []string {
+	if msg == nil {
+		return nil
+	}
+	var out []string
+	add := func(username string) {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			return
+		}
+		if strings.HasPrefix(username, "@") {
+			username = strings.TrimSpace(username[1:])
+		}
+		if username == "" {
+			return
+		}
+		if botUser != "" && strings.EqualFold(username, botUser) {
+			return
+		}
+		out = append(out, "@"+username)
+	}
+	if msg.From != nil && !msg.From.IsBot {
+		add(msg.From.Username)
+	}
+	if msg.ReplyTo != nil && msg.ReplyTo.From != nil && !msg.ReplyTo.From.IsBot {
+		add(msg.ReplyTo.From.Username)
+	}
+	addEntities := func(text string, entities []telegramEntity) {
+		if strings.TrimSpace(text) == "" || len(entities) == 0 {
+			return
+		}
+		for _, e := range entities {
+			switch strings.ToLower(strings.TrimSpace(e.Type)) {
+			case "text_mention":
+				if e.User != nil {
+					add(e.User.Username)
+				}
+			case "mention":
+				mention := strings.TrimSpace(sliceByUTF16(text, e.Offset, e.Length))
+				if mention == "" {
+					continue
+				}
+				add(strings.TrimPrefix(mention, "@"))
+			}
+		}
+	}
+	addEntities(msg.Text, msg.Entities)
+	addEntities(msg.Caption, msg.CaptionEntities)
+	return out
+}
+
+func addKnownUsernames(known map[int64]map[string]string, chatID int64, usernames []string) {
+	if chatID == 0 || len(usernames) == 0 {
+		return
+	}
+	set := known[chatID]
+	if set == nil {
+		set = make(map[string]string)
+		known[chatID] = set
+	}
+	for _, username := range usernames {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			continue
+		}
+		if strings.HasPrefix(username, "@") {
+			username = strings.TrimSpace(username[1:])
+		}
+		if username == "" {
+			continue
+		}
+		key := strings.ToLower(username)
+		if _, ok := set[key]; ok {
+			continue
+		}
+		set[key] = "@" + username
+	}
+}
+
+func mentionUsersSnapshot(known map[string]string, limit int) []string {
+	if len(known) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(known))
+	for _, username := range known {
+		out = append(out, username)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i]) < strings.ToLower(out[j])
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+func isGroupChat(chatType string) bool {
+	chatType = strings.ToLower(strings.TrimSpace(chatType))
+	return chatType == "group" || chatType == "supergroup"
+}
+
+func mergeMemoryUsernames(primary string, others []string) []string {
+	var out []string
+	add := func(username string) {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			return
+		}
+		if strings.HasPrefix(username, "@") {
+			username = strings.TrimSpace(username[1:])
+		}
+		if username == "" {
+			return
+		}
+		out = append(out, "@"+username)
+	}
+	add(primary)
+	for _, username := range others {
+		add(username)
+	}
+	return out
 }
 
 func stripBotMentions(text, botUser string) string {

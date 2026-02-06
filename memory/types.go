@@ -20,6 +20,7 @@ type Frontmatter struct {
 	Source    string   `yaml:"source,omitempty"`
 	Channel   string   `yaml:"channel,omitempty"`
 	Tags      []string `yaml:"tags,omitempty"`
+	Usernames []string `yaml:"usernames,omitempty"`
 	SubjectID string   `yaml:"subject_id,omitempty"`
 }
 

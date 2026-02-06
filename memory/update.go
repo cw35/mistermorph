@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -19,6 +20,7 @@ type WriteMeta struct {
 	SessionID string
 	Source    string
 	Channel   string
+	Usernames []string
 	SubjectID string
 }
 
@@ -275,7 +277,46 @@ func applyShortTermFrontmatter(existing Frontmatter, summary string, meta WriteM
 	if strings.TrimSpace(meta.Channel) != "" {
 		existing.Channel = strings.TrimSpace(meta.Channel)
 	}
+	if len(meta.Usernames) > 0 {
+		existing.Usernames = mergeUsernames(existing.Usernames, meta.Usernames)
+	}
 	return existing
+}
+
+func mergeUsernames(existing []string, incoming []string) []string {
+	if len(incoming) == 0 {
+		return existing
+	}
+	seen := make(map[string]bool, len(existing)+len(incoming))
+	out := make([]string, 0, len(existing)+len(incoming))
+	add := func(username string) {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			return
+		}
+		if strings.HasPrefix(username, "@") {
+			username = strings.TrimSpace(username[1:])
+		}
+		if username == "" {
+			return
+		}
+		key := strings.ToLower(username)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, "@"+username)
+	}
+	for _, username := range existing {
+		add(username)
+	}
+	for _, username := range incoming {
+		add(username)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i]) < strings.ToLower(out[j])
+	})
+	return out
 }
 
 func applyLongTermFrontmatter(existing Frontmatter, subjectID string, content LongTermContent, now time.Time, tasksDone int, tasksTotal int, followDone int, followTotal int) Frontmatter {
