@@ -1,4 +1,4 @@
-package main
+package daemoncmd
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func newSubmitCmd() *cobra.Command {
+func NewSubmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "submit",
 		Short: "Submit a task to a running mistermorph daemon",

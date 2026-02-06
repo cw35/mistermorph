@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
-	telegramcmd "github.com/quailyquaily/mistermorph/cmd/telegram"
+	telegramcmd "github.com/quailyquaily/mistermorph/cmd/mistermorph/telegramcmd"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"

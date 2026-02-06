@@ -1,3 +1,3 @@
-package telegram
+package telegramcmd
 
 const heartbeatFailureThreshold = 3

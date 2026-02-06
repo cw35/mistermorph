@@ -1,4 +1,4 @@
-package main
+package toolsutil
 
 import (
 	"github.com/quailyquaily/mistermorph/llm"
@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func registerPlanTool(reg *tools.Registry, client llm.Client, defaultModel string) {
+func RegisterPlanTool(reg *tools.Registry, client llm.Client, defaultModel string) {
 	if reg == nil {
 		return
 	}

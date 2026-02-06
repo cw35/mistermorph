@@ -1,4 +1,4 @@
-package telegram
+package telegramcmd
 
 import (
 	"bytes"

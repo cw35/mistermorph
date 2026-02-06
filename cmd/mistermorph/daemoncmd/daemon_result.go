@@ -1,4 +1,4 @@
-package main
+package daemoncmd
 
 import (
 	"github.com/quailyquaily/mistermorph/agent"

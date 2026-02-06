@@ -1,4 +1,4 @@
-package main
+package daemoncmd
 
 import (
 	"context"
@@ -20,6 +20,7 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/logutil"
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
+	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
@@ -27,7 +28,12 @@ import (
 	"github.com/spf13/viper"
 )
 
-func newServeCmd() *cobra.Command {
+type ServeDependencies struct {
+	RegistryFromViper func() *tools.Registry
+	GuardFromViper    func(*slog.Logger) *guard.Guard
+}
+
+func NewServeCmd(deps ServeDependencies) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run as a local daemon that accepts tasks over HTTP",
@@ -65,8 +71,14 @@ func newServeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			reg := registryFromViper()
-			registerPlanTool(reg, client, llmutil.ModelFromViper())
+			var reg *tools.Registry
+			if deps.RegistryFromViper != nil {
+				reg = deps.RegistryFromViper()
+			}
+			if reg == nil {
+				reg = tools.NewRegistry()
+			}
+			toolsutil.RegisterPlanTool(reg, client, llmutil.ModelFromViper())
 
 			logOpts := logutil.LogOptionsFromViper()
 
@@ -79,7 +91,10 @@ func newServeCmd() *cobra.Command {
 				IntentMaxHistory: viper.GetInt("intent.max_history"),
 			}
 
-			sharedGuard := guardFromViper(logger)
+			var sharedGuard *guard.Guard
+			if deps.GuardFromViper != nil {
+				sharedGuard = deps.GuardFromViper(logger)
+			}
 			hbState := &heartbeatutil.State{}
 
 			// Worker: process tasks sequentially.

@@ -18,7 +18,7 @@ Default roots (highest priority first):
 2. `~/.claude/skills`
 3. `~/.codex/skills`
 
-If the same skill `id` appears in multiple roots, the first root wins (higher priority). This avoids duplicates and allows you to override a built-in or shared skill by installing a modified copy into `~/.morph/skills`.
+If the same skill `name` appears in multiple roots, the first root wins (higher priority). This avoids duplicates and allows you to override a built-in or shared skill by installing a modified copy into `~/.morph/skills`.
 
 ## Listing and inspecting skills
 
