@@ -30,6 +30,7 @@ import (
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/contacts"
 	"github.com/quailyquaily/mistermorph/guard"
+	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
@@ -127,6 +128,30 @@ func newTelegramCmd() *cobra.Command {
 				return err
 			}
 			slog.SetDefault(logger)
+			busBackend := strings.ToLower(strings.TrimSpace(viper.GetString("bus.backend")))
+			logger.Debug("bus_config",
+				"backend", busBackend,
+				"max_inflight", viper.GetInt("bus.max_inflight"),
+				"retry_max_attempts", viper.GetInt("bus.retry.max_attempts"),
+				"retry_initial_backoff", viper.GetDuration("bus.retry.initial_backoff"),
+				"retry_max_backoff", viper.GetDuration("bus.retry.max_backoff"),
+			)
+			switch busBackend {
+			case "", "disabled":
+				logger.Debug("bus_disabled")
+			case "inproc":
+				inprocBus, inprocErr := busruntime.NewInproc(busruntime.InprocOptions{
+					MaxInFlight: viper.GetInt("bus.max_inflight"),
+					Logger:      logger,
+				})
+				if inprocErr != nil {
+					return fmt.Errorf("init telegram inproc bus: %w", inprocErr)
+				}
+				defer inprocBus.Close()
+				logger.Info("bus_ready", "backend", busBackend, "max_inflight", viper.GetInt("bus.max_inflight"))
+			default:
+				return fmt.Errorf("unsupported bus.backend: %q", busBackend)
+			}
 			withMAEP := configutil.FlagOrViperBool(cmd, "with-maep", "telegram.with_maep")
 			var maepNode *maep.Node
 			maepEventCh := make(chan maep.DataPushEvent, 64)

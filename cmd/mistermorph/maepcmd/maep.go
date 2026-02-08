@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quailyquaily/mistermorph/contacts"
+	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/maep"
@@ -480,6 +481,30 @@ func newServeCmd() *cobra.Command {
 			svc := serviceFromCmd(cmd)
 			contactsSvc := contacts.NewService(contacts.NewFileStore(statepaths.ContactsDir()))
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+			busBackend := strings.ToLower(strings.TrimSpace(viper.GetString("bus.backend")))
+			logger.Debug("bus_config",
+				"backend", busBackend,
+				"max_inflight", viper.GetInt("bus.max_inflight"),
+				"retry_max_attempts", viper.GetInt("bus.retry.max_attempts"),
+				"retry_initial_backoff", viper.GetDuration("bus.retry.initial_backoff"),
+				"retry_max_backoff", viper.GetDuration("bus.retry.max_backoff"),
+			)
+			switch busBackend {
+			case "", "disabled":
+				logger.Debug("bus_disabled")
+			case "inproc":
+				inprocBus, inprocErr := busruntime.NewInproc(busruntime.InprocOptions{
+					MaxInFlight: viper.GetInt("bus.max_inflight"),
+					Logger:      logger,
+				})
+				if inprocErr != nil {
+					return fmt.Errorf("init maep inproc bus: %w", inprocErr)
+				}
+				defer inprocBus.Close()
+				logger.Info("bus_ready", "backend", busBackend, "max_inflight", viper.GetInt("bus.max_inflight"))
+			default:
+				return fmt.Errorf("unsupported bus.backend: %q", busBackend)
+			}
 			node, err := maep.NewNode(runCtx, svc, maep.NodeOptions{
 				ListenAddrs: listenAddrs,
 				Logger:      logger,
