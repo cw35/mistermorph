@@ -1651,21 +1651,17 @@ func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client,
 		"steps_total":      total,
 		"progress_percent": int(float64(completed) / float64(total) * 100),
 	}
-	b, _ := json.Marshal(payload)
-
-	system := "You write very short, casual progress updates for a Telegram chat. " +
-		"Keep it conversational and concise (1 short sentence, max 2). " +
-		"Use the same language as the task. " +
-		"Use Telegram MarkdownV2 and wrap identifiers/paths in backticks. " +
-		"Do not mention tools, internal steps, or that you are an AI. " +
-		"Include the completed step and, if present, the next step."
+	systemPrompt, userPrompt, err := renderTelegramPlanProgressPrompts(payload)
+	if err != nil {
+		return "", err
+	}
 
 	req := llm.Request{
 		Model:     model,
 		ForceJSON: false,
 		Messages: []llm.Message{
-			{Role: "system", Content: system},
-			{Role: "user", Content: "Generate a progress update for this plan step:\n" + string(b)},
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
 		},
 		Parameters: map[string]any{
 			"max_tokens": 4096,

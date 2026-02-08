@@ -2,7 +2,6 @@ package telegramcmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -132,23 +131,17 @@ func buildInitQuestions(ctx context.Context, client llm.Client, model string, dr
 		},
 		"question_count": map[string]int{"min": 4, "max": 7},
 	}
-	rawPayload, _ := json.Marshal(payload)
-
-	systemPrompt := strings.Join([]string{
-		"You design onboarding questions for an assistant persona bootstrap.",
-		"Return JSON only: {\"questions\":[string,...]}.",
-		"Use the same language as user_text for all questions.",
-		"Questions must collect enough info to fill identity Name/Creature/Vibe/Emoji and soul Core Truths/Boundaries/Vibe.",
-		"If info is likely missing, ask preference-oriented questions that allow reasonable inference.",
-		"Do not include explanations, only concise questions.",
-	}, " ")
+	systemPrompt, userPrompt, err := renderInitQuestionsPrompts(payload)
+	if err != nil {
+		return defaultInitQuestions(userText), err
+	}
 
 	res, err := client.Chat(ctx, llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: true,
 		Messages: []llm.Message{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: string(rawPayload)},
+			{Role: "user", Content: userPrompt},
 		},
 		Parameters: map[string]any{
 			"temperature": 0.4,
@@ -216,22 +209,17 @@ func generatePostInitGreeting(ctx context.Context, client llm.Client, model stri
 			"user_answer":    strings.TrimSpace(userAnswer),
 		},
 	}
-	rawPayload, _ := json.Marshal(payload)
-
-	systemPrompt := strings.Join([]string{
-		"You are replying in Telegram private chat immediately after persona bootstrap.",
-		"Use identity_markdown and soul_markdown as authoritative persona.",
-		"Reply naturally in the same language as user_answer.",
-		"Keep it concise (1-3 short sentences), warm and conversational.",
-		"Do NOT mention initialization flow, files, status fields, or internal process.",
-	}, " ")
+	systemPrompt, userPrompt, err := renderInitPostGreetingPrompts(payload)
+	if err != nil {
+		return fallbackPostInitGreeting(userAnswer, fallback), err
+	}
 
 	res, err := client.Chat(ctx, llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: false,
 		Messages: []llm.Message{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: string(rawPayload)},
+			{Role: "user", Content: userPrompt},
 		},
 		Parameters: map[string]any{
 			"temperature": 0.7,
@@ -275,22 +263,17 @@ func generateInitQuestionMessage(ctx context.Context, client llm.Client, model s
 		"user_text": strings.TrimSpace(userText),
 		"questions": normalized,
 	}
-	rawPayload, _ := json.Marshal(payload)
-
-	systemPrompt := strings.Join([]string{
-		"You are sending a Telegram private message that asks persona-setup questions.",
-		"Use the same language as user_text.",
-		"Write naturally and conversationally, not as a workflow/status message.",
-		"Do not mention initialization, files, status fields, or internal process.",
-		"Ask the listed questions clearly and invite user to answer in one reply.",
-	}, " ")
+	systemPrompt, userPrompt, err := renderInitQuestionMessagePrompts(payload)
+	if err != nil {
+		return fallbackInitQuestionMessage(normalized, userText), err
+	}
 
 	res, err := client.Chat(ctx, llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: false,
 		Messages: []llm.Message{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: string(rawPayload)},
+			{Role: "user", Content: userPrompt},
 		},
 		Parameters: map[string]any{
 			"temperature": 0.7,
@@ -343,23 +326,17 @@ func buildInitFill(ctx context.Context, client llm.Client, model string, draft i
 			"soul":     []string{"core_truths", "boundaries", "vibe"},
 		},
 	}
-	rawPayload, _ := json.Marshal(payload)
-
-	systemPrompt := strings.Join([]string{
-		"You fill assistant persona fields from onboarding answers.",
-		"Return JSON only with schema:",
-		"{\"identity\":{\"name\":string,\"creature\":string,\"vibe\":string,\"emoji\":string},\"soul\":{\"core_truths\":[string],\"boundaries\":[string],\"vibe\":string}}.",
-		"Never leave required fields empty.",
-		"If user input is insufficient, infer plausible values from available context and produce complete output.",
-		"core_truths and boundaries should each contain 3-6 concise items.",
-	}, " ")
+	systemPrompt, userPrompt, err := renderInitFillPrompts(payload)
+	if err != nil {
+		return fallback, nil
+	}
 
 	res, err := client.Chat(ctx, llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: true,
 		Messages: []llm.Message{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: string(rawPayload)},
+			{Role: "user", Content: userPrompt},
 		},
 		Parameters: map[string]any{
 			"temperature": 0.5,

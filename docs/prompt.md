@@ -94,6 +94,16 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 | `agent/prompts/system.tmpl` | system | Renders the main system prompt (Identity, Blocks, Tools, response format, Rules). |
 | `agent/prompts/intent_system.tmpl` | system | Constrains intent inference output schema (JSON contract). |
 | `agent/prompts/intent_user.tmpl` | user | Carries `task/history` plus built-in intent inference rules. |
+| `telegramcmd/prompts/init_questions_system.tmpl` | system | Defines output contract for Telegram persona-bootstrap question generation. |
+| `telegramcmd/prompts/init_questions_user.tmpl` | user | Carries draft identity/soul context, user text, and required target fields for init question generation. |
+| `telegramcmd/prompts/init_fill_system.tmpl` | system | Defines output contract for Telegram persona field filling. |
+| `telegramcmd/prompts/init_fill_user.tmpl` | user | Carries draft identity/soul content, user answers, and Telegram context for persona field filling. |
+| `telegramcmd/prompts/init_question_message_system.tmpl` | system | Defines style/constraints for natural Telegram init question messages. |
+| `telegramcmd/prompts/init_question_message_user.tmpl` | user | Carries user text plus normalized question list for init question message generation. |
+| `telegramcmd/prompts/init_post_greeting_system.tmpl` | system | Defines style/constraints for immediate post-init Telegram greeting generation. |
+| `telegramcmd/prompts/init_post_greeting_user.tmpl` | user | Carries finalized identity/soul markdown plus init context for post-init greeting generation. |
+| `telegramcmd/prompts/plan_progress_system.tmpl` | system | Defines style/constraints for Telegram plan-progress rewrite messages. |
+| `telegramcmd/prompts/plan_progress_user.tmpl` | user | Carries plan progress payload (task, completed/next step, progress stats) for rewrite. |
 | `telegramcmd/prompts/memory_draft_system.tmpl` | system | Defines the output contract for single-session memory draft generation. |
 | `telegramcmd/prompts/memory_draft_user.tmpl` | user | Carries session context, dialogue snippets, existing tasks/follow-ups, and summarization rules. |
 | `telegramcmd/prompts/memory_merge_system.tmpl` | system | Defines the output contract for same-day short-term memory merge. |
@@ -172,6 +182,10 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 ### 8) Telegram init question generation
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `buildInitQuestions(...)`
+- Templates:
+  - `cmd/mistermorph/telegramcmd/prompts/init_questions_system.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/init_questions_user.tmpl`
+  - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
 - Purpose: generate onboarding questions for persona bootstrap
 - Primary input: draft `IDENTITY.md`, draft `SOUL.md`, user text, required target fields
 - Output: `{"questions": [...]}`
@@ -180,6 +194,10 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 ### 9) Telegram init field filling
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `buildInitFill(...)`
+- Templates:
+  - `cmd/mistermorph/telegramcmd/prompts/init_fill_system.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/init_fill_user.tmpl`
+  - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
 - Purpose: fill persona fields from onboarding answers
 - Primary input: draft identity/soul markdown, questions, user answer, telegram context
 - Output: `initFillOutput` (identity + soul field values)
@@ -188,6 +206,10 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 ### 10) Telegram init question message rewriting
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `generateInitQuestionMessage(...)`
+- Templates:
+  - `cmd/mistermorph/telegramcmd/prompts/init_question_message_system.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/init_question_message_user.tmpl`
+  - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
 - Purpose: rewrite question list into natural conversational Telegram text
 - Primary input: user text + normalized questions
 - Output: plain text message
@@ -196,6 +218,10 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 ### 11) Telegram post-init greeting generation
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `generatePostInitGreeting(...)`
+- Templates:
+  - `cmd/mistermorph/telegramcmd/prompts/init_post_greeting_system.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/init_post_greeting_user.tmpl`
+  - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
 - Purpose: generate immediate natural greeting after persona bootstrap
 - Primary input: finalized identity/soul markdown + init context
 - Output: plain text message
@@ -252,6 +278,10 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 ### 16) Telegram plan-progress message rewriting
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `generateTelegramPlanProgressMessage(...)`
+- Templates:
+  - `cmd/mistermorph/telegramcmd/prompts/plan_progress_system.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/plan_progress_user.tmpl`
+  - Renderer: `cmd/mistermorph/telegramcmd/plan_progress_prompts.go`
 - Purpose: rewrite step progress into short casual Telegram updates
 - Primary input: task text, plan summary/progress stats, completed/next step info
 - Output: plain text message
