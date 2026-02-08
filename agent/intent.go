@@ -38,36 +38,18 @@ func InferIntent(ctx context.Context, client llm.Client, model string, task stri
 	if task == "" {
 		return Intent{}, fmt.Errorf("empty task")
 	}
-	payload := map[string]any{
-		"task":    task,
-		"history": trimIntentHistory(history, maxHistory),
-		"rules": []string{
-			"Return a compact, structured intent summary.",
-			"Use the same language as the user for values.",
-			"goal: the user's true objective (not the literal request).",
-			"deliverable: the minimum acceptable output form (e.g., list of concrete items, decision, plan, code diff).",
-			"constraints: explicit constraints like time range, quantity, sources, format, language.",
-			"ambiguities: only material uncertainties that block a good answer.",
-			"question: true if the user message asks a question (explicit or implicit).",
-			"request: true if the user message asks the assistant to perform an action or produce an output.",
-			"question and request are independent; both may be true.",
-			"ask: default false; set true only if you cannot proceed safely or would risk irreversible harm without clarification.",
-			"Prefer proceeding with stated assumptions over asking questions.",
-			"Do not invent constraints or facts.",
-			"Do not copy these instruction bullets into output fields.",
-			"Do not include meta instructions about intent formatting in constraints.",
-		},
+	trimmedHistory := trimIntentHistory(history, maxHistory)
+	sys, user, err := renderIntentPrompts(task, trimmedHistory)
+	if err != nil {
+		return Intent{}, fmt.Errorf("render intent prompts: %w", err)
 	}
-	b, _ := json.Marshal(payload)
-	sys := "You infer user intent. Return ONLY JSON with keys: " +
-		"goal (string), deliverable (string), constraints (array of strings), ambiguities (array of strings), question (boolean), request (boolean), ask (boolean)."
 
 	res, err := client.Chat(ctx, llm.Request{
 		Model:     model,
 		ForceJSON: true,
 		Messages: []llm.Message{
 			{Role: "system", Content: sys},
-			{Role: "user", Content: string(b)},
+			{Role: "user", Content: user},
 		},
 		Parameters: map[string]any{
 			"max_tokens":  1024,

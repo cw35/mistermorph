@@ -237,7 +237,7 @@ intent:
   # If true, run a lightweight intent inference before the main task.
   enabled: true
   # Max history messages to include for intent inference.
-  max_history: 8
+  max_history: 3
   # Per-request timeout for intent inference.
   timeout: "8s"
 

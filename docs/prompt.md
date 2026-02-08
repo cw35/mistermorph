@@ -90,8 +90,12 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 ### 1) Intent inference
 
 - File/Function: `agent/intent.go` / `InferIntent(...)`
+- Templates:
+  - `agent/prompts/intent_system.tmpl`
+  - `agent/prompts/intent_user.tmpl`
+  - Renderer: `agent/intent_template.go` (via `internal/prompttmpl`)
 - Purpose: infer structured user intent and ambiguity level
-- Primary input: current `task`, trimmed recent `history`, intent extraction rules
+- Primary input: current `task`, trimmed recent `history`（规则由模板内置）
 - Output: `Intent{goal, deliverable, constraints, ambiguities, ask}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
