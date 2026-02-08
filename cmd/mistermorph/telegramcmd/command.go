@@ -31,6 +31,8 @@ import (
 	"github.com/quailyquaily/mistermorph/contacts"
 	"github.com/quailyquaily/mistermorph/guard"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
+	maepbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/maep"
+	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
 	"github.com/quailyquaily/mistermorph/internal/idempotency"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
@@ -138,26 +140,109 @@ func newTelegramCmd() *cobra.Command {
 				return err
 			}
 			defer inprocBus.Close()
+
+			contactsStore := contacts.NewFileStore(statepaths.ContactsDir())
+			contactsSvc := contacts.NewService(contactsStore)
+
 			withMAEP := configutil.FlagOrViperBool(cmd, "with-maep", "telegram.with_maep")
 			var maepNode *maep.Node
+			var maepInboundAdapter *maepbus.InboundAdapter
+			var telegramInboundAdapter *telegrambus.InboundAdapter
+			var maepDeliveryAdapter *maepbus.DeliveryAdapter
+			var telegramDeliveryAdapter *telegrambus.DeliveryAdapter
 			maepEventCh := make(chan maep.DataPushEvent, 64)
+			var enqueueTelegramInbound func(context.Context, busruntime.BusMessage) error
+			telegramInboundAdapter, err = telegrambus.NewInboundAdapter(telegrambus.InboundAdapterOptions{
+				Bus:   inprocBus,
+				Store: contactsStore,
+			})
+			if err != nil {
+				return err
+			}
+
+			busHandler := func(ctx context.Context, msg busruntime.BusMessage) error {
+				switch msg.Direction {
+				case busruntime.DirectionInbound:
+					switch msg.Channel {
+					case busruntime.ChannelTelegram:
+						if enqueueTelegramInbound == nil {
+							return fmt.Errorf("telegram inbound handler is not initialized")
+						}
+						return enqueueTelegramInbound(ctx, msg)
+					case busruntime.ChannelMAEP:
+						event, err := maepbus.EventFromBusMessage(msg)
+						if err != nil {
+							return err
+						}
+						select {
+						case maepEventCh <- event:
+							logger.Debug("telegram_bus_inbound_forwarded", "channel", msg.Channel, "topic", msg.Topic, "idempotency_key", msg.IdempotencyKey)
+							return nil
+						default:
+							return fmt.Errorf("maep inbound queue is full")
+						}
+					default:
+						return fmt.Errorf("unsupported inbound channel: %s", msg.Channel)
+					}
+				case busruntime.DirectionOutbound:
+					switch msg.Channel {
+					case busruntime.ChannelTelegram:
+						if telegramDeliveryAdapter == nil {
+							return fmt.Errorf("telegram delivery adapter is not initialized")
+						}
+						_, _, err := telegramDeliveryAdapter.Deliver(ctx, msg)
+						return err
+					case busruntime.ChannelMAEP:
+						if maepDeliveryAdapter == nil {
+							return fmt.Errorf("maep delivery adapter is not initialized")
+						}
+						_, _, err := maepDeliveryAdapter.Deliver(ctx, msg)
+						return err
+					default:
+						return fmt.Errorf("unsupported outbound channel: %s", msg.Channel)
+					}
+				default:
+					return fmt.Errorf("unsupported direction: %s", msg.Direction)
+				}
+			}
+			for _, topic := range busruntime.AllTopics() {
+				if err := inprocBus.Subscribe(topic, busHandler); err != nil {
+					return err
+				}
+			}
+
 			maepSvc := maep.NewService(maep.NewFileStore(statepaths.MAEPDir()))
 			if withMAEP {
+				maepInboundAdapter, err = maepbus.NewInboundAdapter(maepbus.InboundAdapterOptions{
+					Bus:   inprocBus,
+					Store: contactsStore,
+				})
+				if err != nil {
+					return err
+				}
 				maepListenAddrs := configutil.FlagOrViperStringArray(cmd, "maep-listen", "maep.listen_addrs")
 				maepNode, err = maepruntime.Start(cmd.Context(), maepruntime.StartOptions{
 					ListenAddrs: maepListenAddrs,
 					Logger:      logger,
 					OnDataPush: func(event maep.DataPushEvent) {
-						logger.Info("telegram_maep_data_push", "from_peer_id", event.FromPeerID, "topic", event.Topic, "deduped", event.Deduped)
-						select {
-						case maepEventCh <- event:
-						default:
-							logger.Warn("telegram_maep_event_dropped", "from_peer_id", event.FromPeerID, "topic", event.Topic)
+						accepted, publishErr := maepInboundAdapter.HandleDataPush(context.Background(), event)
+						if publishErr != nil {
+							logger.Warn("telegram_maep_bus_publish_error", "from_peer_id", event.FromPeerID, "topic", event.Topic, "bus_error_code", busErrorCodeString(publishErr), "error", publishErr.Error())
+							return
+						}
+						if !accepted {
+							logger.Debug("telegram_maep_bus_deduped", "from_peer_id", event.FromPeerID, "topic", event.Topic, "idempotency_key", event.IdempotencyKey)
 						}
 					},
 				})
 				if err != nil {
 					return fmt.Errorf("start embedded maep: %w", err)
+				}
+				maepDeliveryAdapter, err = maepbus.NewDeliveryAdapter(maepbus.DeliveryAdapterOptions{
+					Node: maepNode,
+				})
+				if err != nil {
+					return err
 				}
 				defer maepNode.Close()
 				logger.Info("telegram_maep_ready", "peer_id", maepNode.PeerID(), "addresses", maepNode.AddrStrings())
@@ -212,7 +297,6 @@ func newTelegramCmd() *cobra.Command {
 				IntentTimeout:    requestTimeout,
 				IntentMaxHistory: viper.GetInt("intent.max_history"),
 			}
-			contactsSvc := contacts.NewService(contacts.NewFileStore(statepaths.ContactsDir()))
 			var maepMemMgr *memory.Manager
 			if viper.GetBool("memory.enabled") {
 				maepMemMgr = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
@@ -254,6 +338,22 @@ func newTelegramCmd() *cobra.Command {
 
 			httpClient := &http.Client{Timeout: 60 * time.Second}
 			api := newTelegramAPI(httpClient, baseURL, token)
+			telegramDeliveryAdapter, err = telegrambus.NewDeliveryAdapter(telegrambus.DeliveryAdapterOptions{
+				SendText: func(ctx context.Context, target any, text string) error {
+					chatID, ok := target.(int64)
+					if !ok {
+						return fmt.Errorf("telegram target is invalid")
+					}
+					return api.sendMessageChunked(ctx, chatID, text)
+				},
+			})
+			if err != nil {
+				return err
+			}
+			publishTelegramText := func(ctx context.Context, chatID int64, text string, correlationID string) error {
+				_, err := publishTelegramBusOutbound(ctx, inprocBus, chatID, text, correlationID)
+				return err
+			}
 
 			fileCacheDir := strings.TrimSpace(configutil.FlagOrViperString(cmd, "file-cache-dir", "file_cache_dir"))
 			if fileCacheDir == "" {
@@ -488,7 +588,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, reactionCfg, allowed, job, model, h, sticky, requestTimeout)
+							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, reactionCfg, allowed, job, model, h, sticky, requestTimeout, publishTelegramText)
 							cancel()
 
 							if runErr != nil {
@@ -504,7 +604,9 @@ func newTelegramCmd() *cobra.Command {
 									}
 									mu.Unlock()
 									if strings.TrimSpace(alertMsg) != "" {
-										_ = api.sendMessageMarkdownV2(context.Background(), chatID, alertMsg, true)
+										if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, alertMsg, fmt.Sprintf("telegram:heartbeat_error:%d", chatID)); err != nil {
+											logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "bus_error_code", busErrorCodeString(err), "error", err.Error())
+										}
 										mu.Lock()
 										cur := history[chatID]
 										cur = append(cur, llm.Message{Role: "assistant", Content: alertMsg})
@@ -516,7 +618,9 @@ func newTelegramCmd() *cobra.Command {
 									}
 									return
 								}
-								_ = api.sendMessageMarkdownV2(context.Background(), chatID, "error: "+runErr.Error(), true)
+								if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, "error: "+runErr.Error(), fmt.Sprintf("telegram:error:%d:%d", chatID, job.MessageID)); err != nil {
+									logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "bus_error_code", busErrorCodeString(err), "error", err.Error())
+								}
 								return
 							}
 
@@ -529,12 +633,12 @@ func newTelegramCmd() *cobra.Command {
 									heartbeatFailures[chatID] = 0
 									lastHeartbeat[chatID] = time.Now()
 									mu.Unlock()
-									if err := api.sendMessageChunked(context.Background(), chatID, outText); err != nil {
-										logger.Warn("telegram_send_error", "error", err.Error())
+									if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, outText, fmt.Sprintf("telegram:heartbeat:%d", chatID)); err != nil {
+										logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "bus_error_code", busErrorCodeString(err), "error", err.Error())
 									}
 								} else {
-									if err := api.sendMessageChunked(context.Background(), chatID, outText); err != nil {
-										logger.Warn("telegram_send_error", "error", err.Error())
+									if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, outText, fmt.Sprintf("telegram:message:%d:%d", chatID, job.MessageID)); err != nil {
+										logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "bus_error_code", busErrorCodeString(err), "error", err.Error())
 									}
 								}
 							} else {
@@ -587,6 +691,69 @@ func newTelegramCmd() *cobra.Command {
 				}(chatID, w)
 
 				return w
+			}
+
+			enqueueTelegramInbound = func(ctx context.Context, msg busruntime.BusMessage) error {
+				inbound, err := telegrambus.InboundMessageFromBusMessage(msg)
+				if err != nil {
+					return err
+				}
+				text := strings.TrimSpace(inbound.Text)
+				if text == "" {
+					return fmt.Errorf("telegram inbound text is required")
+				}
+				mu.Lock()
+				w := getOrStartWorkerLocked(inbound.ChatID)
+				v := w.Version
+				lastActivity[inbound.ChatID] = time.Now()
+				if inbound.FromUserID > 0 {
+					lastFromUser[inbound.ChatID] = inbound.FromUserID
+					if inbound.FromUsername != "" {
+						lastFromUsername[inbound.ChatID] = inbound.FromUsername
+					}
+					if inbound.FromDisplayName != "" {
+						lastFromName[inbound.ChatID] = inbound.FromDisplayName
+					}
+					if inbound.FromFirstName != "" {
+						lastFromFirst[inbound.ChatID] = inbound.FromFirstName
+					}
+					if inbound.FromLastName != "" {
+						lastFromLast[inbound.ChatID] = inbound.FromLastName
+					}
+				}
+				if inbound.ChatType != "" {
+					lastChatType[inbound.ChatID] = inbound.ChatType
+				}
+				mu.Unlock()
+
+				logger.Info("telegram_task_enqueued",
+					"channel", msg.Channel,
+					"topic", msg.Topic,
+					"chat_id", inbound.ChatID,
+					"type", inbound.ChatType,
+					"idempotency_key", msg.IdempotencyKey,
+					"conversation_key", msg.ConversationKey,
+					"text_len", len(text),
+				)
+				job := telegramJob{
+					ChatID:          inbound.ChatID,
+					MessageID:       inbound.MessageID,
+					ChatType:        inbound.ChatType,
+					FromUserID:      inbound.FromUserID,
+					FromUsername:    inbound.FromUsername,
+					FromFirstName:   inbound.FromFirstName,
+					FromLastName:    inbound.FromLastName,
+					FromDisplayName: inbound.FromDisplayName,
+					Text:            text,
+					Version:         v,
+					MentionUsers:    append([]string(nil), inbound.MentionUsers...),
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case w.Jobs <- job:
+					return nil
+				}
 			}
 
 			hbEnabled := viper.GetBool("heartbeat.enabled")
@@ -837,31 +1004,15 @@ func newTelegramCmd() *cobra.Command {
 								}
 							}
 
-							replyMessageID := "msg_" + uuid.NewString()
-							payload := map[string]any{
-								"message_id": replyMessageID,
-								"text":       output,
-								"sent_at":    time.Now().UTC().Format(time.RFC3339),
-							}
-							if sessionID != "" {
-								payload["session_id"] = sessionID
-							}
-							payloadRaw, _ := json.Marshal(payload)
-							replyReq := maep.DataPushRequest{
-								Topic:          resolveMAEPReplyTopic(event.Topic),
-								ContentType:    "application/json",
-								PayloadBase64:  base64.RawURLEncoding.EncodeToString(payloadRaw),
-								IdempotencyKey: idempotency.MessageEnvelopeKey(replyMessageID),
-							}
-
 							pushCtx, pushCancel := context.WithTimeout(context.Background(), maepPushTimeout(requestTimeout))
-							replyResult, pushErr := maepNode.PushData(pushCtx, peerID, nil, replyReq, false)
+							replyTopic := resolveMAEPReplyTopic(event.Topic)
+							replyMessageID, pushErr := publishMAEPBusOutbound(pushCtx, inprocBus, peerID, replyTopic, output, sessionID, event.ReplyTo, fmt.Sprintf("maep:reply:%s", peerID))
 							pushCancel()
 							if pushErr != nil {
-								logger.Warn("telegram_maep_reply_error", "to_peer_id", peerID, "topic", replyReq.Topic, "error", pushErr.Error())
+								logger.Warn("telegram_maep_reply_queue_error", "to_peer_id", peerID, "topic", replyTopic, "bus_error_code", busErrorCodeString(pushErr), "error", pushErr.Error())
 								continue
 							}
-							logger.Info("telegram_maep_reply_sent", "to_peer_id", peerID, "topic", replyReq.Topic, "accepted", replyResult.Accepted, "deduped", replyResult.Deduped)
+							logger.Info("telegram_maep_reply_queued", "to_peer_id", peerID, "topic", replyTopic, "message_id", replyMessageID)
 
 							maepMu.Lock()
 							if currentVersion == maepVersion {
@@ -1224,7 +1375,9 @@ func newTelegramCmd() *cobra.Command {
 						downloaded, err = downloadTelegramMessageFiles(ctx, api, telegramCacheDir, filesMaxBytes, msg, chatID)
 						cancel()
 						if err != nil {
-							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "file download error: "+err.Error(), true)
+							if _, publishErr := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, "file download error: "+err.Error(), fmt.Sprintf("telegram:file_download_error:%d:%d", chatID, msg.MessageID)); publishErr != nil {
+								logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "message_id", msg.MessageID, "bus_error_code", busErrorCodeString(publishErr), "error", publishErr.Error())
+							}
 							continue
 						}
 					}
@@ -1252,36 +1405,13 @@ func newTelegramCmd() *cobra.Command {
 						}
 					}
 
-					// Enqueue to per-chat worker (per chat serial; across chats parallel).
-					mu.Lock()
-					w := getOrStartWorkerLocked(chatID)
-					v := w.Version
-					lastActivity[chatID] = time.Now()
-					if fromUserID > 0 {
-						lastFromUser[chatID] = fromUserID
-						if fromUsername != "" {
-							lastFromUsername[chatID] = fromUsername
-						}
-						if fromDisplay != "" {
-							lastFromName[chatID] = fromDisplay
-						}
-						if fromFirst != "" {
-							lastFromFirst[chatID] = fromFirst
-						}
-						if fromLast != "" {
-							lastFromLast[chatID] = fromLast
-						}
-					}
-					if strings.TrimSpace(chatType) != "" {
-						lastChatType[chatID] = chatType
-					}
 					var mentionUsers []string
 					if isGroup {
+						mu.Lock()
 						mentionUsers = mentionUsersSnapshot(knownMentions[chatID], mentionUserSnapshotLimit)
+						mu.Unlock()
 					}
-					mu.Unlock()
-					logger.Info("telegram_task_enqueued", "chat_id", chatID, "type", chatType, "text_len", len(text))
-					w.Jobs <- telegramJob{
+					accepted, publishErr := telegramInboundAdapter.HandleInboundMessage(context.Background(), telegrambus.InboundMessage{
 						ChatID:          chatID,
 						MessageID:       msg.MessageID,
 						ChatType:        chatType,
@@ -1291,8 +1421,15 @@ func newTelegramCmd() *cobra.Command {
 						FromLastName:    fromLast,
 						FromDisplayName: fromDisplay,
 						Text:            text,
-						Version:         v,
 						MentionUsers:    mentionUsers,
+					})
+					if publishErr != nil {
+						logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "message_id", msg.MessageID, "bus_error_code", busErrorCodeString(publishErr), "error", publishErr.Error())
+						continue
+					}
+					if !accepted {
+						logger.Debug("telegram_bus_inbound_deduped", "chat_id", chatID, "message_id", msg.MessageID)
+						continue
 					}
 				}
 
@@ -1343,7 +1480,10 @@ func newTelegramCmd() *cobra.Command {
 	return cmd
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []llm.Message, stickySkills []string, requestTimeout time.Duration) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []llm.Message, stickySkills []string, requestTimeout time.Duration, sendTelegramText func(context.Context, int64, string, string) error) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
+	if sendTelegramText == nil {
+		return nil, nil, nil, nil, fmt.Errorf("send telegram text callback is required")
+	}
 	task := job.Text
 	if baseReg == nil {
 		baseReg = registryFromViper()
@@ -1491,7 +1631,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	var planUpdateHook func(runCtx *agent.Context, update agent.PlanStepUpdate)
 	if !job.IsHeartbeat {
 		planUpdateHook = func(runCtx *agent.Context, update agent.PlanStepUpdate) {
-			if api == nil || runCtx == nil || runCtx.Plan == nil {
+			if runCtx == nil || runCtx.Plan == nil {
 				return
 			}
 			msg, err := generateTelegramPlanProgressMessage(ctx, client, model, task, runCtx.Plan, update, requestTimeout)
@@ -1502,8 +1642,9 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 			if strings.TrimSpace(msg) == "" {
 				return
 			}
-			if err := api.sendMessage(context.Background(), job.ChatID, msg, true); err != nil {
-				logger.Warn("telegram_send_error", "error", err.Error())
+			correlationID := fmt.Sprintf("telegram:plan:%d:%d", job.ChatID, job.MessageID)
+			if err := sendTelegramText(context.Background(), job.ChatID, msg, correlationID); err != nil {
+				logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", job.ChatID, "message_id", job.MessageID, "bus_error_code", busErrorCodeString(err), "error", err.Error())
 			}
 		}
 	}
@@ -3311,6 +3452,131 @@ func resolveMAEPReplyTopic(inboundTopic string) string {
 	default:
 		return "dm.reply.v1"
 	}
+}
+
+func busErrorCodeString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return string(busruntime.ErrorCodeOf(err))
+}
+
+func publishTelegramBusOutbound(ctx context.Context, inprocBus *busruntime.Inproc, chatID int64, text string, correlationID string) (string, error) {
+	if inprocBus == nil {
+		return "", fmt.Errorf("bus is required")
+	}
+	if ctx == nil {
+		return "", fmt.Errorf("context is required")
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("text is required")
+	}
+	now := time.Now().UTC()
+	messageID := "msg_" + uuid.NewString()
+	sessionUUID, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	sessionID := sessionUUID.String()
+	payloadBase64, err := busruntime.EncodeMessageEnvelope(busruntime.TopicChatMessage, busruntime.MessageEnvelope{
+		MessageID: messageID,
+		Text:      text,
+		SentAt:    now.Format(time.RFC3339),
+		SessionID: sessionID,
+	})
+	if err != nil {
+		return "", err
+	}
+	conversationKey, err := busruntime.BuildTelegramChatConversationKey(strconv.FormatInt(chatID, 10))
+	if err != nil {
+		return "", err
+	}
+	correlationID = strings.TrimSpace(correlationID)
+	if correlationID == "" {
+		correlationID = "telegram:" + messageID
+	}
+	outbound := busruntime.BusMessage{
+		ID:              "bus_" + uuid.NewString(),
+		Direction:       busruntime.DirectionOutbound,
+		Channel:         busruntime.ChannelTelegram,
+		Topic:           busruntime.TopicChatMessage,
+		ConversationKey: conversationKey,
+		IdempotencyKey:  idempotency.MessageEnvelopeKey(messageID),
+		CorrelationID:   correlationID,
+		PayloadBase64:   payloadBase64,
+		CreatedAt:       now,
+		Extensions: busruntime.MessageExtensions{
+			SessionID: sessionID,
+		},
+	}
+	if err := inprocBus.PublishValidated(ctx, outbound); err != nil {
+		return "", err
+	}
+	return messageID, nil
+}
+
+func publishMAEPBusOutbound(ctx context.Context, inprocBus *busruntime.Inproc, peerID string, topic string, text string, sessionID string, replyTo string, correlationID string) (string, error) {
+	if inprocBus == nil {
+		return "", fmt.Errorf("bus is required")
+	}
+	if ctx == nil {
+		return "", fmt.Errorf("context is required")
+	}
+	peerID = strings.TrimSpace(peerID)
+	if peerID == "" {
+		return "", fmt.Errorf("peer_id is required")
+	}
+	topic = strings.TrimSpace(topic)
+	if topic == "" {
+		return "", fmt.Errorf("topic is required")
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("text is required")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	replyTo = strings.TrimSpace(replyTo)
+	now := time.Now().UTC()
+	messageID := "msg_" + uuid.NewString()
+	payloadBase64, err := busruntime.EncodeMessageEnvelope(topic, busruntime.MessageEnvelope{
+		MessageID: messageID,
+		Text:      text,
+		SentAt:    now.Format(time.RFC3339),
+		SessionID: sessionID,
+		ReplyTo:   replyTo,
+	})
+	if err != nil {
+		return "", err
+	}
+	conversationKey, err := busruntime.BuildMAEPPeerConversationKey(peerID)
+	if err != nil {
+		return "", err
+	}
+	correlationID = strings.TrimSpace(correlationID)
+	if correlationID == "" {
+		correlationID = "maep:" + messageID
+	}
+	outbound := busruntime.BusMessage{
+		ID:              "bus_" + uuid.NewString(),
+		Direction:       busruntime.DirectionOutbound,
+		Channel:         busruntime.ChannelMAEP,
+		Topic:           topic,
+		ConversationKey: conversationKey,
+		ParticipantKey:  peerID,
+		IdempotencyKey:  idempotency.MessageEnvelopeKey(messageID),
+		CorrelationID:   correlationID,
+		PayloadBase64:   payloadBase64,
+		CreatedAt:       now,
+		Extensions: busruntime.MessageExtensions{
+			SessionID: sessionID,
+			ReplyTo:   replyTo,
+		},
+	}
+	if err := inprocBus.PublishValidated(ctx, outbound); err != nil {
+		return "", err
+	}
+	return messageID, nil
 }
 
 func extractMAEPTask(event maep.DataPushEvent) (string, string) {

@@ -164,7 +164,7 @@ func (b *Inproc) Publish(ctx context.Context, msg BusMessage) error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return publishCtxError(ctx.Err())
 	case <-b.done:
 		return wrapError(CodeBusClosed, ErrBusClosed)
 	case <-b.tokens:
@@ -173,7 +173,7 @@ func (b *Inproc) Publish(ctx context.Context, msg BusMessage) error {
 	select {
 	case <-ctx.Done():
 		b.releaseToken()
-		return ctx.Err()
+		return publishCtxError(ctx.Err())
 	case <-b.done:
 		b.releaseToken()
 		return wrapError(CodeBusClosed, ErrBusClosed)
@@ -188,6 +188,16 @@ func (b *Inproc) Publish(ctx context.Context, msg BusMessage) error {
 		)
 		return nil
 	}
+}
+
+func publishCtxError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return wrapError(CodeQueueFull, err)
+	}
+	return err
 }
 
 func (b *Inproc) Close() error {

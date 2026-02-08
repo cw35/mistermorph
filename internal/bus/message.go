@@ -24,9 +24,16 @@ const (
 )
 
 type MessageExtensions struct {
-	PlatformMessageID string `json:"platform_message_id,omitempty"`
-	ReplyTo           string `json:"reply_to,omitempty"`
-	SessionID         string `json:"session_id,omitempty"`
+	PlatformMessageID string   `json:"platform_message_id,omitempty"`
+	ReplyTo           string   `json:"reply_to,omitempty"`
+	SessionID         string   `json:"session_id,omitempty"`
+	ChatType          string   `json:"chat_type,omitempty"`
+	FromUserID        int64    `json:"from_user_id,omitempty"`
+	FromUsername      string   `json:"from_username,omitempty"`
+	FromFirstName     string   `json:"from_first_name,omitempty"`
+	FromLastName      string   `json:"from_last_name,omitempty"`
+	FromDisplayName   string   `json:"from_display_name,omitempty"`
+	MentionUsers      []string `json:"mention_users,omitempty"`
 }
 
 type BusMessage struct {
@@ -109,6 +116,36 @@ func (m BusMessage) Validate() error {
 	}
 	if m.Extensions.SessionID != "" {
 		if err := validateUUIDv7Field("extensions.session_id", m.Extensions.SessionID); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.ChatType != "" {
+		if err := validateOptionalCanonicalString("extensions.chat_type", m.Extensions.ChatType); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.FromUsername != "" {
+		if err := validateOptionalCanonicalString("extensions.from_username", m.Extensions.FromUsername); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.FromFirstName != "" {
+		if err := validateOptionalCanonicalString("extensions.from_first_name", m.Extensions.FromFirstName); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.FromLastName != "" {
+		if err := validateOptionalCanonicalString("extensions.from_last_name", m.Extensions.FromLastName); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.FromDisplayName != "" {
+		if err := validateOptionalCanonicalString("extensions.from_display_name", m.Extensions.FromDisplayName); err != nil {
+			return err
+		}
+	}
+	for i, mention := range m.Extensions.MentionUsers {
+		if err := validateRequiredCanonicalString(fmt.Sprintf("extensions.mention_users[%d]", i), mention); err != nil {
 			return err
 		}
 	}

@@ -10,6 +10,7 @@ type ErrorCode string
 const (
 	CodeBusClosed           ErrorCode = "BUS_CLOSED"
 	CodeNoSubscriber        ErrorCode = "NO_SUBSCRIBER"
+	CodeQueueFull           ErrorCode = "QUEUE_FULL"
 	CodeTopicAlreadyHandled ErrorCode = "TOPIC_ALREADY_HANDLED"
 	CodeTopicFrozen         ErrorCode = "TOPIC_FROZEN"
 	CodeInvalidMessage      ErrorCode = "INVALID_MESSAGE"

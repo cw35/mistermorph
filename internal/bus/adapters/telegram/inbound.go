@@ -1,0 +1,214 @@
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
+	baseadapters "github.com/quailyquaily/mistermorph/internal/bus/adapters"
+	"github.com/quailyquaily/mistermorph/internal/idempotency"
+)
+
+type InboundAdapterOptions struct {
+	Bus   *busruntime.Inproc
+	Store baseadapters.InboundStore
+	Now   func() time.Time
+}
+
+type InboundMessage struct {
+	ChatID          int64
+	MessageID       int64
+	ChatType        string
+	FromUserID      int64
+	FromUsername    string
+	FromFirstName   string
+	FromLastName    string
+	FromDisplayName string
+	Text            string
+	MentionUsers    []string
+}
+
+type InboundAdapter struct {
+	flow  *baseadapters.InboundFlow
+	nowFn func() time.Time
+}
+
+func NewInboundAdapter(opts InboundAdapterOptions) (*InboundAdapter, error) {
+	flow, err := baseadapters.NewInboundFlow(baseadapters.InboundFlowOptions{
+		Bus:     opts.Bus,
+		Store:   opts.Store,
+		Channel: string(busruntime.ChannelTelegram),
+		Now:     opts.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	nowFn := opts.Now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	return &InboundAdapter{
+		flow:  flow,
+		nowFn: nowFn,
+	}, nil
+}
+
+func (a *InboundAdapter) HandleInboundMessage(ctx context.Context, msg InboundMessage) (bool, error) {
+	if a == nil || a.flow == nil {
+		return false, fmt.Errorf("telegram inbound adapter is not initialized")
+	}
+	if ctx == nil {
+		return false, fmt.Errorf("context is required")
+	}
+	chatID := msg.ChatID
+	if chatID == 0 {
+		return false, fmt.Errorf("chat_id is required")
+	}
+	messageID := msg.MessageID
+	if messageID == 0 {
+		return false, fmt.Errorf("message_id is required")
+	}
+	text := strings.TrimSpace(msg.Text)
+	if text == "" {
+		return false, fmt.Errorf("text is required")
+	}
+
+	now := a.nowFn().UTC()
+	sessionUUID, err := uuid.NewV7()
+	if err != nil {
+		return false, err
+	}
+	sessionID := sessionUUID.String()
+	envelopeMessageID := fmt.Sprintf("telegram:%d:%d", chatID, messageID)
+	payloadBase64, err := busruntime.EncodeMessageEnvelope(busruntime.TopicChatMessage, busruntime.MessageEnvelope{
+		MessageID: envelopeMessageID,
+		Text:      text,
+		SentAt:    now.Format(time.RFC3339),
+		SessionID: sessionID,
+	})
+	if err != nil {
+		return false, err
+	}
+	conversationKey, err := busruntime.BuildTelegramChatConversationKey(strconv.FormatInt(chatID, 10))
+	if err != nil {
+		return false, err
+	}
+
+	participantKey := ""
+	if msg.FromUserID != 0 {
+		participantKey = strconv.FormatInt(msg.FromUserID, 10)
+	}
+	chatType := strings.TrimSpace(msg.ChatType)
+	if chatType == "" {
+		return false, fmt.Errorf("chat_type is required")
+	}
+	mentionUsers, err := normalizeMentionUsers(msg.MentionUsers)
+	if err != nil {
+		return false, err
+	}
+
+	busMsg := busruntime.BusMessage{
+		ID:              "bus_" + uuid.NewString(),
+		Direction:       busruntime.DirectionInbound,
+		Channel:         busruntime.ChannelTelegram,
+		Topic:           busruntime.TopicChatMessage,
+		ConversationKey: conversationKey,
+		ParticipantKey:  participantKey,
+		IdempotencyKey:  idempotency.MessageEnvelopeKey(envelopeMessageID),
+		CorrelationID:   fmt.Sprintf("telegram:%d:%d", chatID, messageID),
+		PayloadBase64:   payloadBase64,
+		CreatedAt:       now,
+		Extensions: busruntime.MessageExtensions{
+			PlatformMessageID: fmt.Sprintf("%d:%d", chatID, messageID),
+			SessionID:         sessionID,
+			ChatType:          chatType,
+			FromUserID:        msg.FromUserID,
+			FromUsername:      strings.TrimSpace(msg.FromUsername),
+			FromFirstName:     strings.TrimSpace(msg.FromFirstName),
+			FromLastName:      strings.TrimSpace(msg.FromLastName),
+			FromDisplayName:   strings.TrimSpace(msg.FromDisplayName),
+			MentionUsers:      mentionUsers,
+		},
+	}
+	platformMessageID := fmt.Sprintf("%d:%d", chatID, messageID)
+	return a.flow.PublishValidatedInbound(ctx, platformMessageID, busMsg)
+}
+
+func InboundMessageFromBusMessage(msg busruntime.BusMessage) (InboundMessage, error) {
+	if msg.Direction != busruntime.DirectionInbound {
+		return InboundMessage{}, fmt.Errorf("direction must be inbound")
+	}
+	if msg.Channel != busruntime.ChannelTelegram {
+		return InboundMessage{}, fmt.Errorf("channel must be telegram")
+	}
+	chatID, err := chatIDFromConversationKey(msg.ConversationKey)
+	if err != nil {
+		return InboundMessage{}, err
+	}
+	messageID, err := parseTelegramMessageID(msg.Extensions.PlatformMessageID)
+	if err != nil {
+		return InboundMessage{}, err
+	}
+	envelope, err := msg.Envelope()
+	if err != nil {
+		return InboundMessage{}, err
+	}
+	if strings.TrimSpace(msg.Extensions.ChatType) == "" {
+		return InboundMessage{}, fmt.Errorf("chat_type is required")
+	}
+	mentionUsers, err := normalizeMentionUsers(msg.Extensions.MentionUsers)
+	if err != nil {
+		return InboundMessage{}, err
+	}
+
+	return InboundMessage{
+		ChatID:          chatID,
+		MessageID:       messageID,
+		ChatType:        strings.TrimSpace(msg.Extensions.ChatType),
+		FromUserID:      msg.Extensions.FromUserID,
+		FromUsername:    strings.TrimSpace(msg.Extensions.FromUsername),
+		FromFirstName:   strings.TrimSpace(msg.Extensions.FromFirstName),
+		FromLastName:    strings.TrimSpace(msg.Extensions.FromLastName),
+		FromDisplayName: strings.TrimSpace(msg.Extensions.FromDisplayName),
+		Text:            strings.TrimSpace(envelope.Text),
+		MentionUsers:    mentionUsers,
+	}, nil
+}
+
+func parseTelegramMessageID(platformMessageID string) (int64, error) {
+	platformMessageID = strings.TrimSpace(platformMessageID)
+	if platformMessageID == "" {
+		return 0, fmt.Errorf("platform_message_id is required")
+	}
+	parts := strings.Split(platformMessageID, ":")
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("platform_message_id is invalid")
+	}
+	messageID, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("platform_message_id is invalid: %w", err)
+	}
+	if messageID == 0 {
+		return 0, fmt.Errorf("platform_message_id is invalid")
+	}
+	return messageID, nil
+}
+
+func normalizeMentionUsers(items []string) ([]string, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(items))
+	for _, raw := range items {
+		item := strings.TrimSpace(raw)
+		if item == "" {
+			return nil, fmt.Errorf("mention user is required")
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}

@@ -16,6 +16,15 @@ var topicSet = map[string]struct{}{
 	TopicChatMessage:      {},
 }
 
+func AllTopics() []string {
+	return []string{
+		TopicShareProactiveV1,
+		TopicDMCheckinV1,
+		TopicDMReplyV1,
+		TopicChatMessage,
+	}
+}
+
 func IsKnownTopic(topic string) bool {
 	_, ok := topicSet[topic]
 	return ok

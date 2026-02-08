@@ -146,6 +146,9 @@ func TestInprocBackpressure(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Publish(second) error = %v, want context deadline exceeded", err)
 	}
+	if code := ErrorCodeOf(err); code != CodeQueueFull {
+		t.Fatalf("Publish(second) code = %q, want %q", code, CodeQueueFull)
+	}
 	close(block)
 }
 

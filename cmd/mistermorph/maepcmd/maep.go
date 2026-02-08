@@ -21,6 +21,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quailyquaily/mistermorph/contacts"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
+	maepbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/maep"
 	"github.com/quailyquaily/mistermorph/internal/idempotency"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
@@ -480,7 +481,8 @@ func newServeCmd() *cobra.Command {
 			defer stop()
 
 			svc := serviceFromCmd(cmd)
-			contactsSvc := contacts.NewService(contacts.NewFileStore(statepaths.ContactsDir()))
+			contactsStore := contacts.NewFileStore(statepaths.ContactsDir())
+			contactsSvc := contacts.NewService(contactsStore)
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelInfo}))
 			inprocBus, err := busruntime.StartInproc(busruntime.BootstrapOptions{
 				MaxInFlight: viper.GetInt("bus.max_inflight"),
@@ -491,15 +493,51 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 			defer inprocBus.Close()
+
+			maepInboundAdapter, err := maepbus.NewInboundAdapter(maepbus.InboundAdapterOptions{
+				Bus:   inprocBus,
+				Store: contactsStore,
+			})
+			if err != nil {
+				return err
+			}
+			busHandler := func(ctx context.Context, msg busruntime.BusMessage) error {
+				if msg.Direction != busruntime.DirectionInbound {
+					return fmt.Errorf("unsupported direction: %s", msg.Direction)
+				}
+				if msg.Channel != busruntime.ChannelMAEP {
+					return fmt.Errorf("unsupported inbound channel: %s", msg.Channel)
+				}
+				event, err := maepbus.EventFromBusMessage(msg)
+				if err != nil {
+					return err
+				}
+				printDataPushEvent(cmd, event, outputJSON)
+				if syncBusinessContacts {
+					if err := observeMAEPContact(context.Background(), svc, contactsSvc, event, time.Now().UTC()); err != nil {
+						logger.Warn("contacts_observe_maep_error", "peer_id", event.FromPeerID, "error", err.Error())
+						return err
+					}
+				}
+				return nil
+			}
+			for _, topic := range busruntime.AllTopics() {
+				if err := inprocBus.Subscribe(topic, busHandler); err != nil {
+					return err
+				}
+			}
+
 			node, err := maep.NewNode(runCtx, svc, maep.NodeOptions{
 				ListenAddrs: listenAddrs,
 				Logger:      logger,
 				OnDataPush: func(event maep.DataPushEvent) {
-					printDataPushEvent(cmd, event, outputJSON)
-					if syncBusinessContacts {
-						if err := observeMAEPContact(context.Background(), svc, contactsSvc, event, time.Now().UTC()); err != nil {
-							logger.Warn("contacts_observe_maep_error", "peer_id", event.FromPeerID, "error", err.Error())
-						}
+					accepted, publishErr := maepInboundAdapter.HandleDataPush(context.Background(), event)
+					if publishErr != nil {
+						logger.Warn("maep_bus_publish_error", "peer_id", event.FromPeerID, "topic", event.Topic, "bus_error_code", busruntime.ErrorCodeOf(publishErr), "error", publishErr.Error())
+						return
+					}
+					if !accepted {
+						logger.Debug("maep_bus_deduped", "peer_id", event.FromPeerID, "topic", event.Topic, "idempotency_key", event.IdempotencyKey)
 					}
 				},
 			})
