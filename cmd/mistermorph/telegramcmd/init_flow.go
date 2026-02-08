@@ -34,6 +34,7 @@ type initProfileDraft struct {
 
 type initQuestionsOutput struct {
 	Questions []string `json:"questions"`
+	Message   string   `json:"message"`
 }
 
 type initFillOutput struct {
@@ -117,9 +118,11 @@ func ensureFileFromTemplate(path string, templatePath string) error {
 	return nil
 }
 
-func buildInitQuestions(ctx context.Context, client llm.Client, model string, draft initProfileDraft, userText string) ([]string, error) {
+func buildInitQuestions(ctx context.Context, client llm.Client, model string, draft initProfileDraft, userText string) ([]string, string, error) {
+	defaultQuestions := defaultInitQuestions(userText)
+	defaultMessage := fallbackInitQuestionMessage(defaultQuestions, userText)
 	if client == nil || strings.TrimSpace(model) == "" {
-		return defaultInitQuestions(userText), nil
+		return defaultQuestions, defaultMessage, nil
 	}
 	payload := map[string]any{
 		"identity_markdown": draft.IdentityRaw,
@@ -133,7 +136,7 @@ func buildInitQuestions(ctx context.Context, client llm.Client, model string, dr
 	}
 	systemPrompt, userPrompt, err := renderInitQuestionsPrompts(payload)
 	if err != nil {
-		return defaultInitQuestions(userText), err
+		return defaultQuestions, defaultMessage, err
 	}
 
 	res, err := client.Chat(ctx, llm.Request{
@@ -149,18 +152,22 @@ func buildInitQuestions(ctx context.Context, client llm.Client, model string, dr
 		},
 	})
 	if err != nil {
-		return defaultInitQuestions(userText), err
+		return defaultQuestions, defaultMessage, err
 	}
 
 	var out initQuestionsOutput
 	if err := jsonutil.DecodeWithFallback(strings.TrimSpace(res.Text), &out); err != nil {
-		return defaultInitQuestions(userText), err
+		return defaultQuestions, defaultMessage, err
 	}
 	questions := normalizeInitQuestions(out.Questions)
 	if len(questions) == 0 {
-		questions = defaultInitQuestions(userText)
+		questions = defaultQuestions
 	}
-	return questions, nil
+	message := strings.TrimSpace(out.Message)
+	if message == "" {
+		message = fallbackInitQuestionMessage(questions, userText)
+	}
+	return questions, message, nil
 }
 
 func applyInitFromAnswer(ctx context.Context, client llm.Client, model string, draft initProfileDraft, session telegramInitSession, answer string, username string, displayName string) (initApplyResult, error) {
@@ -248,46 +255,6 @@ func fallbackPostInitGreeting(userAnswer string, result initApplyResult) string 
 		return fmt.Sprintf("Hi, I’m %s. Great to meet you. Let’s keep going.", name)
 	}
 	return "Hi. Great to meet you. Let’s keep going."
-}
-
-func generateInitQuestionMessage(ctx context.Context, client llm.Client, model string, questions []string, userText string) (string, error) {
-	normalized := normalizeInitQuestions(questions)
-	if len(normalized) == 0 {
-		normalized = defaultInitQuestions(userText)
-	}
-	if client == nil || strings.TrimSpace(model) == "" {
-		return fallbackInitQuestionMessage(normalized, userText), nil
-	}
-
-	payload := map[string]any{
-		"user_text": strings.TrimSpace(userText),
-		"questions": normalized,
-	}
-	systemPrompt, userPrompt, err := renderInitQuestionMessagePrompts(payload)
-	if err != nil {
-		return fallbackInitQuestionMessage(normalized, userText), err
-	}
-
-	res, err := client.Chat(ctx, llm.Request{
-		Model:     strings.TrimSpace(model),
-		ForceJSON: false,
-		Messages: []llm.Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-		Parameters: map[string]any{
-			"temperature": 0.7,
-			"max_tokens":  280,
-		},
-	})
-	if err != nil {
-		return fallbackInitQuestionMessage(normalized, userText), err
-	}
-	text := strings.TrimSpace(res.Text)
-	if text == "" {
-		return fallbackInitQuestionMessage(normalized, userText), nil
-	}
-	return text, nil
 }
 
 func fallbackInitQuestionMessage(questions []string, userText string) string {

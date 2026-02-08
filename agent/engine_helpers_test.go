@@ -29,20 +29,8 @@ func TestToolArgsSummary_ContactsSendSafeSummary(t *testing.T) {
 	}
 }
 
-func TestToolArgsSummary_ContactsFeedbackAndList(t *testing.T) {
+func TestToolArgsSummary_ContactsList(t *testing.T) {
 	opts := DefaultLogOptions()
-
-	feedback := toolArgsSummary("contacts_feedback_update", map[string]any{
-		"contact_id":  "telegram:alice",
-		"signal":      "positive",
-		"end_session": true,
-	}, opts)
-	if feedback == nil {
-		t.Fatalf("feedback summary should not be nil")
-	}
-	if feedback["signal"] != "positive" {
-		t.Fatalf("unexpected signal summary: %#v", feedback["signal"])
-	}
 
 	list := toolArgsSummary("contacts_list", map[string]any{
 		"status": "active",

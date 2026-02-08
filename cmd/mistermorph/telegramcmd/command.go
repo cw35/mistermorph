@@ -85,6 +85,8 @@ const (
 	maepInterestStopThreshold     = 0.30
 	maepInterestLowRoundsLimit    = 2
 	maepWrapUpConfidenceThreshold = 0.70
+	maepFeedbackNegativeThreshold = 0.55
+	maepFeedbackPositiveThreshold = 0.60
 )
 
 type maepFeedbackClassification struct {
@@ -334,6 +336,7 @@ func newTelegramCmd() *cobra.Command {
 				"reactions_enabled", reactionCfg.Enabled,
 				"reactions_allow_count", len(reactionCfg.Allow),
 				"group_trigger_mode", groupTriggerMode,
+				"group_reply_policy", "humanlike",
 				"smart_addressing_max_chars", smartAddressingMaxChars,
 				"smart_addressing_confidence", smartAddressingConfidence,
 			)
@@ -718,8 +721,11 @@ func newTelegramCmd() *cobra.Command {
 								feedback = classified
 							}
 
-							maepMu.Lock()
 							now := time.Now().UTC()
+							if err := applyMAEPInboundFeedback(context.Background(), contactsSvc, maepSvc, peerID, event.Topic, sessionID, feedback, now); err != nil {
+								logger.Warn("contacts_feedback_maep_error", "peer_id", peerID, "topic", event.Topic, "error", err.Error())
+							}
+							maepMu.Lock()
 							sessionState := maepSessions[sessionKey]
 							sessionState = applyMAEPFeedback(sessionState, feedback)
 							nextSessionState, blockedByFeedback, blockedReason := maybeLimitMAEPSessionByFeedback(now, sessionState, feedback, maepSessionCooldown)
@@ -936,7 +942,7 @@ func newTelegramCmd() *cobra.Command {
 							} else {
 								typingStop := startTypingTicker(context.Background(), api, chatID, "typing", 4*time.Second)
 								initCtx, cancel := context.WithTimeout(context.Background(), initFlowTimeout(requestTimeout))
-								questions, err := buildInitQuestions(initCtx, client, model, draft, text)
+								questions, questionMsg, err := buildInitQuestions(initCtx, client, model, draft, text)
 								cancel()
 								typingStop()
 								if err != nil {
@@ -945,20 +951,15 @@ func newTelegramCmd() *cobra.Command {
 								if len(questions) == 0 {
 									questions = defaultInitQuestions(text)
 								}
+								if strings.TrimSpace(questionMsg) == "" {
+									questionMsg = fallbackInitQuestionMessage(questions, text)
+								}
 								mu.Lock()
 								initSessions[chatID] = telegramInitSession{
 									Questions: questions,
 									StartedAt: time.Now().UTC(),
 								}
 								mu.Unlock()
-								typingStop2 := startTypingTicker(context.Background(), api, chatID, "typing", 4*time.Second)
-								msgCtx, msgCancel := context.WithTimeout(context.Background(), initFlowTimeout(requestTimeout))
-								questionMsg, msgErr := generateInitQuestionMessage(msgCtx, client, model, questions, text)
-								msgCancel()
-								typingStop2()
-								if msgErr != nil {
-									logger.Warn("telegram_init_question_message_error", "error", msgErr.Error())
-								}
 								_ = api.sendMessage(context.Background(), chatID, questionMsg, true)
 								continue
 							}
@@ -1210,8 +1211,11 @@ func newTelegramCmd() *cobra.Command {
 						}
 					}
 					if fromUserID > 0 {
-						if err := observeTelegramContact(context.Background(), contactsSvc, chatID, chatType, fromUserID, fromUsername, fromFirst, fromLast, fromDisplay, time.Now().UTC()); err != nil {
+						observedAt := time.Now().UTC()
+						if err := observeTelegramContact(context.Background(), contactsSvc, chatID, chatType, fromUserID, fromUsername, fromFirst, fromLast, fromDisplay, observedAt); err != nil {
 							logger.Warn("contacts_observe_telegram_error", "chat_id", chatID, "user_id", fromUserID, "error", err.Error())
+						} else if err := applyTelegramInboundFeedback(context.Background(), contactsSvc, chatID, chatType, fromUserID, fromUsername, observedAt); err != nil {
+							logger.Warn("contacts_feedback_telegram_error", "chat_id", chatID, "user_id", fromUserID, "error", err.Error())
 						}
 					}
 
@@ -1364,6 +1368,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		return nil, nil, nil, nil, err
 	}
 	promptprofile.ApplyPersonaIdentity(&promptSpec, logger)
+	promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
 	applyChatPersonaRules(&promptSpec)
 
 	// Telegram replies are rendered using Telegram Markdown (MarkdownV2 first; fallback to Markdown/plain).
@@ -1372,21 +1377,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	promptSpec.Rules = append(promptSpec.Rules,
 		"In your final.output string, write for Telegram MarkdownV2 with LIMITED syntax only: *bold*, _italic_, __underline__, ~strikethrough~, ||spoiler||. Avoid inline code, code blocks, or any other Markdown features. If unsure, output plain text. Escape underscores in identifiers (e.g., new\\_york) instead of using backticks.",
 	)
-	if isGroupChat(job.ChatType) {
-		if len(job.MentionUsers) > 0 {
-			promptSpec.Blocks = append(promptSpec.Blocks, agent.PromptBlock{
-				Title:   "Group Usernames",
-				Content: strings.Join(job.MentionUsers, "\n"),
-			})
-			promptSpec.Rules = append(promptSpec.Rules,
-				"When replying in a group chat and you need to address someone directly, mention their username with @ using only the usernames listed in Group Usernames. Do not invent usernames.",
-			)
-		} else {
-			promptSpec.Rules = append(promptSpec.Rules,
-				"When replying in a group chat, only @mention someone if you are confident of their username from the conversation; otherwise avoid @mentions.",
-			)
-		}
-	}
+	applyTelegramGroupRuntimePromptRules(&promptSpec, job.ChatType, job.MentionUsers, reactionCfg.Enabled)
 	promptSpec.Rules = append(promptSpec.Rules,
 		"If you need to send a Telegram voice message: call telegram_send_voice. If you do not already have a voice file path, do NOT ask the user for one; instead call telegram_send_voice without path and provide a short `text` to synthesize from the current context.",
 	)
@@ -1517,6 +1508,50 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	return final, agentCtx, loadedSkills, reaction, nil
 }
 
+func applyTelegramGroupRuntimePromptRules(spec *agent.PromptSpec, chatType string, mentionUsers []string, reactionsEnabled bool) {
+	if spec == nil || !isGroupChat(chatType) {
+		return
+	}
+	if len(mentionUsers) > 0 {
+		spec.Blocks = append(spec.Blocks, agent.PromptBlock{
+			Title:   "Group Usernames",
+			Content: strings.Join(mentionUsers, "\n"),
+		})
+		spec.Rules = append(spec.Rules,
+			"When replying in a group chat and you need to address someone directly, mention their username with @ using only the usernames listed in Group Usernames. Do not invent usernames.",
+		)
+	} else {
+		spec.Rules = append(spec.Rules,
+			"When replying in a group chat, only @mention someone if you are confident of their username from the conversation; otherwise avoid @mentions.",
+		)
+	}
+
+	notes := []string{
+		"Mode: humanlike",
+		"- Participate, but do not dominate the group thread.",
+		"- Send text only when it adds clear incremental value beyond prior context.",
+		"- If no incremental value, prefer lightweight acknowledgement instead of text.",
+		"- Avoid triple-tap: never split one thought across multiple short follow-up messages.",
+	}
+	spec.Rules = append(spec.Rules,
+		"In group chats (humanlike mode), send text only when it adds clear incremental value; otherwise prefer a lightweight acknowledgement.",
+		"Never send multiple fragmented follow-up messages for one incoming group message; combine into one concise reply (anti triple-tap).",
+	)
+	if reactionsEnabled {
+		spec.Rules = append(spec.Rules,
+			"In group chats, when there is no clear incremental value in text, prefer telegram_react and do not send extra text.",
+		)
+	} else {
+		spec.Rules = append(spec.Rules,
+			"In group chats, when there is no clear incremental value in text, keep acknowledgement minimal and avoid extra chatter.",
+		)
+	}
+	spec.Blocks = append(spec.Blocks, agent.PromptBlock{
+		Title:   "Group Reply Policy",
+		Content: strings.Join(notes, "\n"),
+	})
+}
+
 func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, sharedGuard *guard.Guard, cfg agent.Config, model string, peerID string, memManager *memory.Manager, history []llm.Message, stickySkills []string, task string) (*agent.Final, *agent.Context, []string, error) {
 	if strings.TrimSpace(task) == "" {
 		return nil, nil, nil, fmt.Errorf("empty maep task")
@@ -1532,6 +1567,7 @@ func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOpti
 		return nil, nil, nil, err
 	}
 	promptprofile.ApplyPersonaIdentity(&promptSpec, logger)
+	promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
 	applyChatPersonaRules(&promptSpec)
 	// applyMAEPReplyPromptRules(&promptSpec)
 	if memManager != nil && viper.GetBool("memory.injection.enabled") {
@@ -2955,6 +2991,9 @@ type telegramGroupTriggerDecision struct {
 	MatchedAliasKeyword string
 }
 
+// groupTriggerDecision belongs to the trigger layer.
+// It decides only whether this group message should enter an agent run and what task text to pass.
+// It must not decide output modality (text reply vs reaction), which is handled in the generation layer.
 func groupTriggerDecision(msg *telegramMessage, botUser string, botID int64, aliases []string, mode string, aliasPrefixMaxChars int) (telegramGroupTriggerDecision, bool) {
 	if msg == nil {
 		return telegramGroupTriggerDecision{}, false
@@ -3393,6 +3432,110 @@ func allowMAEPSessionTurn(now time.Time, state maepSessionState, maxTurns int, c
 	}
 	state.UpdatedAt = now
 	return state, true
+}
+
+func applyMAEPInboundFeedback(
+	ctx context.Context,
+	contactsSvc *contacts.Service,
+	maepSvc *maep.Service,
+	peerID string,
+	inboundTopic string,
+	sessionID string,
+	feedback maepFeedbackClassification,
+	now time.Time,
+) error {
+	if contactsSvc == nil {
+		return nil
+	}
+	contact, found, err := lookupMAEPBusinessContact(ctx, maepSvc, contactsSvc, peerID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	signal, endSession, reason := maepFeedbackToContactSignal(feedback)
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(peerID)
+	}
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(contact.ContactID)
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	_, _, err = contactsSvc.UpdateFeedback(ctx, now, contacts.FeedbackUpdateInput{
+		ContactID:  contact.ContactID,
+		SessionID:  sessionID,
+		Signal:     signal,
+		Topic:      normalizeInboundFeedbackTopic(inboundTopic, "maep.inbound"),
+		Reason:     reason,
+		EndSession: endSession,
+	})
+	return err
+}
+
+func maepFeedbackToContactSignal(feedback maepFeedbackClassification) (contacts.FeedbackSignal, bool, string) {
+	feedback = normalizeMAEPFeedback(feedback)
+	if feedback.NextAction == "wrap_up" && feedback.Confidence >= maepWrapUpConfidenceThreshold {
+		return contacts.FeedbackNegative, true, "maep_feedback_wrap_up"
+	}
+	if feedback.SignalNegative >= maepFeedbackNegativeThreshold || feedback.SignalBored >= maepFeedbackNegativeThreshold {
+		return contacts.FeedbackNegative, false, "maep_feedback_negative"
+	}
+	if feedback.SignalPositive >= maepFeedbackPositiveThreshold && feedback.SignalPositive > feedback.SignalNegative {
+		return contacts.FeedbackPositive, false, "maep_feedback_positive"
+	}
+	return contacts.FeedbackNeutral, false, "maep_feedback_neutral"
+}
+
+func applyTelegramInboundFeedback(
+	ctx context.Context,
+	svc *contacts.Service,
+	chatID int64,
+	chatType string,
+	userID int64,
+	username string,
+	now time.Time,
+) error {
+	if svc == nil || userID <= 0 || chatID == 0 {
+		return nil
+	}
+	contactID := telegramMemoryContactID(username, userID)
+	if strings.TrimSpace(contactID) == "" {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	_, _, err := svc.UpdateFeedback(ctx, now, contacts.FeedbackUpdateInput{
+		ContactID: contactID,
+		SessionID: fmt.Sprintf("telegram:%d", chatID),
+		Signal:    contacts.FeedbackPositive,
+		Topic:     normalizeInboundFeedbackTopic("telegram."+strings.ToLower(strings.TrimSpace(chatType))+".inbound", "telegram.inbound"),
+		Reason:    "telegram_inbound_message",
+	})
+	return err
+}
+
+func normalizeInboundFeedbackTopic(raw string, fallback string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return strings.ToLower(strings.TrimSpace(fallback))
+	}
+	for strings.Contains(value, "..") {
+		value = strings.ReplaceAll(value, "..", ".")
+	}
+	value = strings.Trim(value, ".")
+	if value == "" {
+		return strings.ToLower(strings.TrimSpace(fallback))
+	}
+	return value
 }
 
 func clampUnit(v float64) float64 {

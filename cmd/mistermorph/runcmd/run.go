@@ -156,6 +156,7 @@ func New(deps Dependencies) *cobra.Command {
 				return err
 			}
 			promptprofile.ApplyPersonaIdentity(&promptSpec, logger)
+			promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
 
 			var memManager *memory.Manager
 			var memIdentity memory.Identity

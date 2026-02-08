@@ -102,3 +102,16 @@ func TestLoadSoulTemplate(t *testing.T) {
 		t.Fatalf("SOUL template seems invalid")
 	}
 }
+
+func TestLoadToolsTemplate(t *testing.T) {
+	body, err := loadToolsTemplate()
+	if err != nil {
+		t.Fatalf("loadToolsTemplate() error = %v", err)
+	}
+	if body == "" {
+		t.Fatalf("expected non-empty TOOLS template")
+	}
+	if !strings.Contains(body, "# TOOLS.md - Local Tool Notes") {
+		t.Fatalf("TOOLS template seems invalid")
+	}
+}

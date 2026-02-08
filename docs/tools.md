@@ -16,7 +16,6 @@
   - `contacts_list`
   - `contacts_candidate_rank`
   - `contacts_send`
-  - `contacts_feedback_update`
 - 条件注册
   - `plan_create`（在 `run` / `telegram` / `daemon serve` 模式通过 `internal/toolsutil.RegisterPlanTool` 注入）
 
@@ -190,15 +189,14 @@
 |---|---|---|---|---|
 | `limit` | `integer` | 否 | 配置默认 | 返回决策上限。 |
 | `freshness_window` | `string` | 否 | 配置默认 | 时长字符串，如 `72h`。 |
-| `freshness_window_hours` | `number` | 否 | 无 | 按小时指定 freshness。 |
 | `max_linked_history_items` | `integer` | 否 | `4` | 每条决策关联历史上限。 |
-| `human_enabled` | `boolean` | 否 | 配置默认 | 是否纳入人类联系人。 |
 | `human_public_send_enabled` | `boolean` | 否 | 配置默认 | 是否允许面向公开聊天目标。 |
 | `push_topic` | `string` | 否 | `share.proactive.v1` | 决策里填充的推送 topic。 |
 
 说明：
 
 - 本工具默认启用 LLM 特征抽取，使用全局 `llm.*` 配置。
+- 人类联系人候选默认始终参与排序（等效 `human_enabled=true`）。
 
 ## `contacts_send`
 
@@ -225,21 +223,6 @@
 - 若提供 `payload_base64`，其解码结果必须是 envelope JSON，并包含 `message_id` / `text` / `sent_at(RFC3339)`。
 - 对话类 topic（`share.proactive.v1` / `dm.checkin.v1` / `dm.reply.v1` / `chat.message`）必须携带 `session_id`（UUIDv7）。
 - 人类联系人发送受 `contacts.human.send.*` 策略约束。
-
-## `contacts_feedback_update`
-
-用途：根据反馈信号更新联系人偏好、会话兴趣和关系深度。
-
-参数：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `contact_id` | `string` | 是 | 无 | 目标联系人 ID。 |
-| `signal` | `string` | 是 | 无 | `positive` / `neutral` / `negative`。 |
-| `topic` | `string` | 否 | 空 | 用于 topic 偏好更新。 |
-| `session_id` | `string` | 否 | `contact_id` | 会话 ID。 |
-| `reason` | `string` | 否 | 空 | 审计原因描述。 |
-| `end_session` | `boolean` | 否 | `false` | 是否结束会话。 |
 
 ## `plan_create`
 

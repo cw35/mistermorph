@@ -164,7 +164,6 @@ func registryFromViper() *tools.Registry {
 			DefaultLimit:                 viper.GetInt("contacts.proactive.max_targets"),
 			DefaultFreshnessWindow:       contactsDefaultFreshnessWindow(),
 			DefaultMaxLinkedHistoryItems: 4,
-			DefaultHumanEnabled:          viper.GetBool("contacts.human.enabled"),
 			DefaultHumanPublicSend:       viper.GetBool("contacts.human.send.public_enabled"),
 			DefaultLLMProvider:           llmutil.ProviderFromViper(),
 			DefaultLLMEndpoint:           llmutil.EndpointFromViper(),
@@ -182,7 +181,6 @@ func registryFromViper() *tools.Registry {
 			AllowHumanPublicSend: viper.GetBool("contacts.human.send.public_enabled"),
 			FailureCooldown:      contactsFailureCooldown(),
 		}))
-		r.Register(builtin.NewContactsFeedbackUpdateTool(true, statepaths.ContactsDir()))
 	}
 
 	return r

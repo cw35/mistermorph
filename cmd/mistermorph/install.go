@@ -20,7 +20,7 @@ import (
 func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install [dir]",
-		Short: "Install config.yaml, HEARTBEAT.md, IDENTITY.md, SOUL.md, and built-in skills",
+		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, and built-in skills",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "~/.morph/"
@@ -53,6 +53,11 @@ func newInstallCmd() *cobra.Command {
 			writeHeartbeat := true
 			if _, err := os.Stat(hbPath); err == nil {
 				writeHeartbeat = false
+			}
+			toolsPath := filepath.Join(dir, "TOOLS.md")
+			writeTools := true
+			if _, err := os.Stat(toolsPath); err == nil {
+				writeTools = false
 			}
 
 			identityPath := filepath.Join(workspaceRoot, "IDENTITY.md")
@@ -90,6 +95,12 @@ func newInstallCmd() *cobra.Command {
 					Path:   hbPath,
 					Write:  writeHeartbeat,
 					Loader: loadHeartbeatTemplate,
+				},
+				{
+					Name:   "TOOLS.md",
+					Path:   toolsPath,
+					Write:  writeTools,
+					Loader: loadToolsTemplate,
 				},
 				{
 					Name:   "IDENTITY.md",
@@ -181,6 +192,14 @@ func loadIdentityTemplate() (string, error) {
 	data, err := assets.ConfigFS.ReadFile("config/IDENTITY.md")
 	if err != nil {
 		return "", fmt.Errorf("read embedded IDENTITY.md: %w", err)
+	}
+	return string(data), nil
+}
+
+func loadToolsTemplate() (string, error) {
+	data, err := assets.ConfigFS.ReadFile("config/TOOLS.md")
+	if err != nil {
+		return "", fmt.Errorf("read embedded TOOLS.md: %w", err)
 	}
 	return string(data), nil
 }

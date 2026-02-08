@@ -45,22 +45,22 @@ status: draft
 
 ### A.2 任务拆解
 
-- [ ] 新增模板 `assets/config/TOOLS.md`
+- [x] 新增模板 `assets/config/TOOLS.md`
   - 内容定位：本地环境映射、示例、与 skills 分离原则。
-- [ ] 安装流程补充 `TOOLS.md`
+- [x] 安装流程补充 `TOOLS.md`
   - 文件：`cmd/mistermorph/install.go`
   - 补充 loader：`loadToolsTemplate()`
   - 在 `filePlans` 中新增 `TOOLS.md`（存在则跳过）。
-- [ ] prompt 组装链路补充 `TOOLS.md` 注入
+- [x] prompt 组装链路补充 `TOOLS.md` 注入
   - 建议方式：新增 `internal/promptprofile/context.go`（或在现有 `identity.go` 扩展），读取 `TOOLS.md` 后以 `PromptBlock` 注入，而不是覆盖 `spec.Identity`。
   - block title 建议：`Local Tool Notes`。
-- [ ] 文档更新
+- [x] 文档更新
   - `docs/prompt.md`：增加 “TOOLS.md context block” 的来源与注入时机。
 
 ### A.3 关键决策点
 
-- [ ] 决定 `TOOLS.md` 读取路径基准（`file_state_dir` 或 workspace root）并统一到代码和安装行为。
-- [ ] 约束最大注入长度（例如 4KB/8KB）避免 prompt 膨胀。
+- [x] 决定 `TOOLS.md` 读取路径基准（`file_state_dir` 或 workspace root）并统一到代码和安装行为。
+- [x] 约束最大注入长度（例如 4KB/8KB）避免 prompt 膨胀。
 
 ### A.4 验收标准
 
@@ -71,8 +71,8 @@ status: draft
 
 ### A.5 测试清单
 
-- [ ] `cmd/mistermorph/install_test.go`：新增 `loadToolsTemplate` 相关测试。
-- [ ] `internal/promptprofile/*_test.go`：验证 `TOOLS.md` 缺失/空/有效内容注入行为。
+- [x] `cmd/mistermorph/install_test.go`：新增 `loadToolsTemplate` 相关测试。
+- [x] `internal/promptprofile/*_test.go`：验证 `TOOLS.md` 缺失/空/有效内容注入行为。
 
 ## 4) 工作流 B: 群聊发言规则增强
 
@@ -82,18 +82,18 @@ status: draft
 
 ### B.2 任务拆解
 
-- [ ] 提炼群聊规则并注入 Telegram prompt
+- [x] 提炼群聊规则并注入 Telegram prompt
   - 文件：`cmd/mistermorph/telegramcmd/command.go`
   - 注入点：`runTelegramTask(...)` 的群聊分支（现有 `isGroupChat(...)` 附近）。
   - 规则覆盖：
     - 仅在被点名/被提问/确有增量价值时发文本；
     - 无增量价值时优先 emoji reaction；
     - 同一条消息不多次碎片化回复（anti triple-tap）。
-- [ ] humanlike 应该为 telegram 群聊下的默认策略
-- [ ] 触发层与生成层职责分离
+- [x] humanlike 应该为 telegram 群聊下的默认策略
+- [x] 触发层与生成层职责分离
   - 触发层继续决定“是否进入 agent run”（现有 `groupTriggerDecision`）。
   - 生成层决定“文本回复 vs reaction”。
-- [ ] 更新文档
+- [x] 更新文档
   - `docs/prompt.md`：补充 Telegram 群聊行为规则来源。
   - `docs/feat/feat_20260205_telegram_reactions.md`：补充与 reaction 策略的关系。
 
@@ -105,9 +105,9 @@ status: draft
 
 ### B.4 测试清单
 
-- [ ] `groupTriggerDecision` 相关单测补充（点名/回复/普通闲聊路径）。
-- [ ] prompt rules 单测：群聊时规则存在，私聊时不注入群聊规则。
-- [ ] reaction 相关回归：可 reaction 时不发送冗余文本。
+- [x] `groupTriggerDecision` 相关单测补充（点名/回复/普通闲聊路径）。
+- [x] prompt rules 单测：群聊时规则存在，私聊时不注入群聊规则。
+- [x] reaction 相关回归：可 reaction 时不发送冗余文本。
 
 ## 5) 工作流 C: contacts 画像字段扩展
 
@@ -237,7 +237,7 @@ status: draft
 
 ## 8) 开放问题（实现前确认）
 
-- [ ] `TOOLS.md` 与 `IDENTITY/SOUL` 的统一路径基准最终选哪一个？
+- [x] `TOOLS.md` 与 `IDENTITY/SOUL` 的统一路径基准最终选哪一个？（已定：统一按 `file_state_dir` 读取）
 - [ ] `timezone` 非法值策略：拒绝写入 vs 容忍写入并打告警？
 - [ ] `preference_context` 是否需要单独“摘要字段”供公共场景安全注入？
 
@@ -245,44 +245,42 @@ status: draft
 
 ### PR-1: `TOOLS.md` 模板 + 安装 + Prompt 注入
 
-- [ ] 新增文件 `assets/config/TOOLS.md`，写入本地环境笔记模板（含示例与边界说明）。
-- [ ] 更新 `cmd/mistermorph/install.go`：
-  - [ ] 增加 `loadToolsTemplate()`。
-  - [ ] 在 `filePlans` 中增加 `TOOLS.md`。
-  - [ ] 保持“已存在即跳过”行为与现有模板一致。
-- [ ] 更新 `cmd/mistermorph/install_test.go`：
-  - [ ] 增加 `loadToolsTemplate()` 返回非空与标题校验。
-- [ ] 更新 prompt 组装逻辑（建议新建 `internal/promptprofile/context.go`）：
-  - [ ] 读取 `TOOLS.md`（与 `IDENTITY/SOUL` 同路径基准）。
-  - [ ] 当文件非空时注入 `PromptBlock{Title: "Local Tool Notes"}`。
-  - [ ] 增加注入内容长度上限（避免 prompt 膨胀）。
-- [ ] 更新 `docs/prompt.md`：
-  - [ ] 增加 `TOOLS.md` 注入来源与时机说明。
-- [ ] 验证：
-  - [ ] `go test ./cmd/mistermorph/... ./internal/promptprofile/...`
+- [x] 新增文件 `assets/config/TOOLS.md`，写入本地环境笔记模板（含示例与边界说明）。
+- [x] 更新 `cmd/mistermorph/install.go`：
+  - [x] 增加 `loadToolsTemplate()`。
+  - [x] 在 `filePlans` 中增加 `TOOLS.md`。
+  - [x] 保持“已存在即跳过”行为与现有模板一致。
+- [x] 更新 `cmd/mistermorph/install_test.go`：
+  - [x] 增加 `loadToolsTemplate()` 返回非空与标题校验。
+- [x] 更新 prompt 组装逻辑（建议新建 `internal/promptprofile/context.go`）：
+  - [x] 读取 `TOOLS.md`（与 `IDENTITY/SOUL` 同路径基准）。
+  - [x] 当文件非空时注入 `PromptBlock{Title: "Local Tool Notes"}`。
+  - [x] 增加注入内容长度上限（避免 prompt 膨胀）。
+- [x] 更新 `docs/prompt.md`：
+  - [x] 增加 `TOOLS.md` 注入来源与时机说明。
+- [x] 验证：
+  - [x] `go test ./cmd/mistermorph/... ./internal/promptprofile/...`
 
 ### PR-2: 群聊规则增强（触发层/生成层分离）
 
-- [ ] 明确触发层职责（只决定是否 run）：
-  - [ ] 在 `cmd/mistermorph/telegramcmd/command.go` 注释/文档化 `groupTriggerDecision(...)`。
-  - [ ] 禁止触发层承载“文本还是 reaction”的策略。
-- [ ] 明确生成层职责（只决定响应形式）：
-  - [ ] 在 `runTelegramTask(...)` 增加群聊规则 prompt 条款：
-    - [ ] 仅在有增量价值时发文本。
-    - [ ] 无增量价值优先 reaction。
-    - [ ] 禁止同消息多次碎片化回复（anti triple-tap）。
-- [ ] 增加配置项：
-  - [ ] `telegram.group.reply_policy`（建议：`strict|humanlike`）。
-  - [ ] 默认设为 `humanlike`（群聊）。
-- [ ] 更新文档：
-  - [ ] `docs/prompt.md` 补充群聊行为规则注入点。
-  - [ ] `docs/feat/feat_20260205_telegram_reactions.md` 补充与 reaction 的职责边界。
-- [ ] 测试：
-  - [ ] 补充 `groupTriggerDecision` 触发路径测试。
-  - [ ] 补充“群聊规则只在群聊注入”的测试。
-  - [ ] 回归 reaction 场景，确保不发送冗余文本。
-- [ ] 验证：
-  - [ ] `go test ./cmd/mistermorph/telegramcmd/...`
+- [x] 明确触发层职责（只决定是否 run）：
+  - [x] 在 `cmd/mistermorph/telegramcmd/command.go` 注释/文档化 `groupTriggerDecision(...)`。
+  - [x] 禁止触发层承载“文本还是 reaction”的策略。
+- [x] 明确生成层职责（只决定响应形式）：
+  - [x] 在 `runTelegramTask(...)` 增加群聊规则 prompt 条款：
+    - [x] 仅在有增量价值时发文本。
+    - [x] 无增量价值优先 reaction。
+    - [x] 禁止同消息多次碎片化回复（anti triple-tap）。
+- [x] 群聊 reply policy 固定为 `humanlike`（不开放配置项）。
+- [x] 更新文档：
+  - [x] `docs/prompt.md` 补充群聊行为规则注入点。
+  - [x] `docs/feat/feat_20260205_telegram_reactions.md` 补充与 reaction 的职责边界。
+- [x] 测试：
+  - [x] 补充 `groupTriggerDecision` 触发路径测试。
+  - [x] 补充“群聊规则只在群聊注入”的测试。
+  - [x] 回归 reaction 场景，确保不发送冗余文本。
+- [x] 验证：
+  - [x] `go test ./cmd/mistermorph/telegramcmd/...`
 
 ### PR-3: `contacts` 字段扩展（`pronouns/timezone/preference_context`）
 

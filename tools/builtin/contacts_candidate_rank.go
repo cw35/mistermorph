@@ -20,7 +20,6 @@ type ContactsCandidateRankToolOptions struct {
 	DefaultLimit                 int
 	DefaultFreshnessWindow       time.Duration
 	DefaultMaxLinkedHistoryItems int
-	DefaultHumanEnabled          bool
 	DefaultHumanPublicSend       bool
 	DefaultLLMProvider           string
 	DefaultLLMEndpoint           string
@@ -67,17 +66,9 @@ func (t *ContactsCandidateRankTool) ParameterSchema() string {
 				"type":        "string",
 				"description": "Freshness window duration, e.g. 72h.",
 			},
-			"freshness_window_hours": map[string]any{
-				"type":        "number",
-				"description": "Alternative freshness window in hours.",
-			},
 			"max_linked_history_items": map[string]any{
 				"type":        "integer",
 				"description": "Max linked history ids per decision.",
-			},
-			"human_enabled": map[string]any{
-				"type":        "boolean",
-				"description": "Enable human contacts in ranking.",
 			},
 			"human_public_send_enabled": map[string]any{
 				"type":        "boolean",
@@ -105,14 +96,11 @@ func (t *ContactsCandidateRankTool) Execute(ctx context.Context, params map[stri
 
 	limit := parseIntDefault(params["limit"], t.opts.DefaultLimit)
 	maxLinkedHistoryItems := parseIntDefault(params["max_linked_history_items"], t.opts.DefaultMaxLinkedHistoryItems)
-	humanEnabled := parseBoolDefault(params["human_enabled"], t.opts.DefaultHumanEnabled)
+	humanEnabled := true
 	humanPublicEnabled := parseBoolDefault(params["human_public_send_enabled"], t.opts.DefaultHumanPublicSend)
 	pushTopic, _ := params["push_topic"].(string)
 
 	freshnessWindow := t.opts.DefaultFreshnessWindow
-	if hours := parseFloatDefault(params["freshness_window_hours"], 0); hours > 0 {
-		freshnessWindow = time.Duration(hours * float64(time.Hour))
-	}
 	if d, err := parseDuration(params["freshness_window"], freshnessWindow); err != nil {
 		return "", fmt.Errorf("invalid freshness_window: %w", err)
 	} else if d > 0 {

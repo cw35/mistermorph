@@ -93,6 +93,9 @@ status: draft
   - 若输出为 reaction，则不发送文本。
   - 若 reaction 失败，自动 fallback 为文本。
  - 先跑 intent 推断，再判断是否适合轻回复（reaction）。不适合则走正常文本输出。
+- 职责边界（Telegram 群聊）：
+  - 触发层（`groupTriggerDecision`）只决定“是否进入 agent run”。
+  - 生成层（`runTelegramTask` prompt + tool）只决定“文本回复 vs reaction”。
 
 ### 5.3 工具与规则
 在系统 prompt 里新增规则：

@@ -20,12 +20,6 @@ var initFillSystemPromptTemplateSource string
 //go:embed prompts/init_fill_user.tmpl
 var initFillUserPromptTemplateSource string
 
-//go:embed prompts/init_question_message_system.tmpl
-var initQuestionMessageSystemPromptTemplateSource string
-
-//go:embed prompts/init_question_message_user.tmpl
-var initQuestionMessageUserPromptTemplateSource string
-
 //go:embed prompts/init_post_greeting_system.tmpl
 var initPostGreetingSystemPromptTemplateSource string
 
@@ -46,8 +40,6 @@ var initQuestionsSystemPromptTemplate = prompttmpl.MustParse("telegram_init_ques
 var initQuestionsUserPromptTemplate = prompttmpl.MustParse("telegram_init_questions_user", initQuestionsUserPromptTemplateSource, initPromptTemplateFuncs)
 var initFillSystemPromptTemplate = prompttmpl.MustParse("telegram_init_fill_system", initFillSystemPromptTemplateSource, nil)
 var initFillUserPromptTemplate = prompttmpl.MustParse("telegram_init_fill_user", initFillUserPromptTemplateSource, initPromptTemplateFuncs)
-var initQuestionMessageSystemPromptTemplate = prompttmpl.MustParse("telegram_init_question_message_system", initQuestionMessageSystemPromptTemplateSource, nil)
-var initQuestionMessageUserPromptTemplate = prompttmpl.MustParse("telegram_init_question_message_user", initQuestionMessageUserPromptTemplateSource, initPromptTemplateFuncs)
 var initPostGreetingSystemPromptTemplate = prompttmpl.MustParse("telegram_init_post_greeting_system", initPostGreetingSystemPromptTemplateSource, nil)
 var initPostGreetingUserPromptTemplate = prompttmpl.MustParse("telegram_init_post_greeting_user", initPostGreetingUserPromptTemplateSource, initPromptTemplateFuncs)
 
@@ -69,18 +61,6 @@ func renderInitFillPrompts(payload map[string]any) (string, string, error) {
 		return "", "", err
 	}
 	userPrompt, err := prompttmpl.Render(initFillUserPromptTemplate, payload)
-	if err != nil {
-		return "", "", err
-	}
-	return systemPrompt, userPrompt, nil
-}
-
-func renderInitQuestionMessagePrompts(payload map[string]any) (string, string, error) {
-	systemPrompt, err := prompttmpl.Render(initQuestionMessageSystemPromptTemplate, struct{}{})
-	if err != nil {
-		return "", "", err
-	}
-	userPrompt, err := prompttmpl.Render(initQuestionMessageUserPromptTemplate, payload)
 	if err != nil {
 		return "", "", err
 	}

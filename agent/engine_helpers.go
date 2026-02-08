@@ -133,12 +133,6 @@ func toolArgsSummary(toolName string, params map[string]any, opts LogOptions) ma
 		if v, ok := params["freshness_window"].(string); ok && strings.TrimSpace(v) != "" {
 			out["freshness_window"] = truncateString(strings.TrimSpace(v), 40)
 		}
-		if v, ok := summaryFloat(params, "freshness_window_hours"); ok {
-			out["freshness_window_hours"] = v
-		}
-		if v, ok := params["human_enabled"].(bool); ok {
-			out["human_enabled"] = v
-		}
 		if v, ok := params["human_public_send_enabled"].(bool); ok {
 			out["human_public_send_enabled"] = v
 		}
@@ -166,22 +160,6 @@ func toolArgsSummary(toolName string, params map[string]any, opts LogOptions) ma
 		}
 		if v, ok := params["source_chat_type"].(string); ok && strings.TrimSpace(v) != "" {
 			out["source_chat_type"] = truncateString(strings.TrimSpace(v), 32)
-		}
-	case "contacts_feedback_update":
-		if v, ok := params["contact_id"].(string); ok && strings.TrimSpace(v) != "" {
-			out["contact_id"] = truncateString(strings.TrimSpace(v), opts.MaxStringValueChars)
-		}
-		if v, ok := params["signal"].(string); ok && strings.TrimSpace(v) != "" {
-			out["signal"] = truncateString(strings.TrimSpace(v), 32)
-		}
-		if v, ok := params["topic"].(string); ok && strings.TrimSpace(v) != "" {
-			out["topic"] = truncateString(strings.TrimSpace(v), 80)
-		}
-		if v, ok := params["session_id"].(string); ok && strings.TrimSpace(v) != "" {
-			out["session_id"] = truncateString(strings.TrimSpace(v), 120)
-		}
-		if v, ok := params["end_session"].(bool); ok {
-			out["end_session"] = v
 		}
 	case "echo":
 		if v, ok := params["value"].(string); ok && strings.TrimSpace(v) != "" {

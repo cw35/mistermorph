@@ -7,6 +7,9 @@ This document tracks where prompts are defined, how they are composed at runtime
 - Base spec starts from `agent.DefaultPromptSpec()` in `agent/prompt.go`.
 - Persona identity is optionally **overridden** by `promptprofile.ApplyPersonaIdentity(...)` in `internal/promptprofile/identity.go`.
   - If local `IDENTITY.md` / `SOUL.md` are loaded and not `status: draft`, `spec.Identity` is replaced.
+- Local tool/workspace notes are optionally appended by `promptprofile.AppendLocalToolNotesBlock(...)` in `internal/promptprofile/context.go`.
+  - If local `TOOLS.md` (under `file_state_dir`) is non-empty, it is injected as `PromptBlock{Title: "Local Tool Notes"}`.
+  - Injection is size-limited to 8192 bytes (fixed constant).
 - Runtime prompt blocks/rules are then appended:
   - URL/task-specific rules (`agent/prompt_rules.go`)
   - Registry-aware rules (`agent/prompt_rules.go`, e.g. `plan_create` rules only when tool exists)
@@ -35,6 +38,14 @@ This document tracks where prompts are defined, how they are composed at runtime
 - Definition:
   - `ApplyPersonaIdentity(...)` loads local persona docs and may replace `spec.Identity`
 
+### 2.5) Local tool-notes injection
+
+- File: `internal/promptprofile/context.go`
+- Definition:
+  - `AppendLocalToolNotesBlock(...)` loads local `TOOLS.md` from `file_state_dir`
+  - When non-empty, appends `PromptBlock{Title: "Local Tool Notes"}`
+  - Content is truncated by configured byte limit before injection
+
 ### 3) Task-based dynamic rules (URL-aware)
 
 - File: `agent/prompt_rules.go`
@@ -62,6 +73,10 @@ This document tracks where prompts are defined, how they are composed at runtime
 - File: `cmd/mistermorph/telegramcmd/command.go`
 - Definition:
   - Appends Telegram-specific rules (MarkdownV2 style limits, mention behavior, voice/reaction guidance, optional memory/group blocks)
+  - In group chats, injects fixed `humanlike` policy rules:
+    - text only when there is incremental value
+    - prefer reaction for lightweight acknowledgement
+    - avoid fragmented multi-message "triple-tap" replies
 
 ### 7) Heartbeat task prompt template
 
@@ -98,8 +113,6 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 | `telegramcmd/prompts/init_questions_user.tmpl` | user | Carries draft identity/soul context, user text, and required target fields for init question generation. |
 | `telegramcmd/prompts/init_fill_system.tmpl` | system | Defines output contract for Telegram persona field filling. |
 | `telegramcmd/prompts/init_fill_user.tmpl` | user | Carries draft identity/soul content, user answers, and Telegram context for persona field filling. |
-| `telegramcmd/prompts/init_question_message_system.tmpl` | system | Defines style/constraints for natural Telegram init question messages. |
-| `telegramcmd/prompts/init_question_message_user.tmpl` | user | Carries user text plus normalized question list for init question message generation. |
 | `telegramcmd/prompts/init_post_greeting_system.tmpl` | system | Defines style/constraints for immediate post-init Telegram greeting generation. |
 | `telegramcmd/prompts/init_post_greeting_user.tmpl` | user | Carries finalized identity/soul markdown plus init context for post-init greeting generation. |
 | `telegramcmd/prompts/plan_progress_system.tmpl` | system | Defines style/constraints for Telegram plan-progress rewrite messages. |
@@ -186,9 +199,9 @@ These are prompts sent through separate `llm.Request` calls outside the main too
   - `cmd/mistermorph/telegramcmd/prompts/init_questions_system.tmpl`
   - `cmd/mistermorph/telegramcmd/prompts/init_questions_user.tmpl`
   - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
-- Purpose: generate onboarding questions for persona bootstrap
+- Purpose: generate onboarding questions and a natural Telegram question message for persona bootstrap
 - Primary input: draft `IDENTITY.md`, draft `SOUL.md`, user text, required target fields
-- Output: `{"questions": [...]}`
+- Output: `{"questions": [...], "message": "..."}` (message is sent directly; fallback text is used when empty)
 - JSON required: **Yes** (`ForceJSON=true`)
 
 ### 9) Telegram init field filling
@@ -203,19 +216,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `initFillOutput` (identity + soul field values)
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 10) Telegram init question message rewriting
-
-- File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `generateInitQuestionMessage(...)`
-- Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/init_question_message_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/init_question_message_user.tmpl`
-  - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
-- Purpose: rewrite question list into natural conversational Telegram text
-- Primary input: user text + normalized questions
-- Output: plain text message
-- JSON required: **No** (`ForceJSON=false`)
-
-### 11) Telegram post-init greeting generation
+### 10) Telegram post-init greeting generation
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `generatePostInitGreeting(...)`
 - Templates:
@@ -227,7 +228,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: plain text message
 - JSON required: **No** (`ForceJSON=false`)
 
-### 12) Telegram memory draft generation
+### 11) Telegram memory draft generation
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `BuildMemoryDraft(...)`
 - Templates:
@@ -239,7 +240,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `memory.SessionDraft`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 13) Telegram semantic merge for short-term memory
+### 12) Telegram semantic merge for short-term memory
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `SemanticMergeShortTerm(...)`
 - Templates:
@@ -251,7 +252,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: merged `memory.ShortTermContent` + summary string
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 14) Telegram semantic task matching
+### 13) Telegram semantic task matching
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `semanticMatchTasks(...)`
 - Templates:
@@ -263,7 +264,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `[]taskMatch{update_index, match_index}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 15) Telegram semantic task deduplication
+### 14) Telegram semantic task deduplication
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `semanticDedupTaskItems(...)`
 - Templates:
@@ -275,7 +276,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: deduplicated `[]memory.TaskItem`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 16) Telegram plan-progress message rewriting
+### 15) Telegram plan-progress message rewriting
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `generateTelegramPlanProgressMessage(...)`
 - Templates:
@@ -287,7 +288,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: plain text message
 - JSON required: **No** (`ForceJSON=false`)
 
-### 17) MAEP feedback classifier
+### 16) MAEP feedback classifier
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `classifyMAEPFeedback(...)`
 - Templates:
@@ -299,7 +300,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `maepFeedbackClassification{signal_positive, signal_negative, signal_bored, next_action, confidence}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 18) Telegram addressing classifier
+### 17) Telegram addressing classifier
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `addressingDecisionViaLLM(...)`
 - Templates:
@@ -311,7 +312,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `telegramAddressingLLMDecision{addressed, confidence, task_text, reason}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 19) Telegram reaction-category classifier
+### 18) Telegram reaction-category classifier
 
 - File/Function: `cmd/mistermorph/telegramcmd/reactions.go` / `classifyReactionCategoryViaIntent(...)`
 - Templates:

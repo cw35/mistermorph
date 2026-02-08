@@ -20,6 +20,9 @@ func TestRenderInitQuestionsPrompts(t *testing.T) {
 	if !strings.Contains(sys, "Return JSON only") {
 		t.Fatalf("system prompt missing contract: %q", sys)
 	}
+	if !strings.Contains(sys, "\"message\"") {
+		t.Fatalf("system prompt missing message contract: %q", sys)
+	}
 	if !strings.Contains(user, "\"user_text\":\"hello\"") {
 		t.Fatalf("user prompt missing payload: %q", user)
 	}
@@ -38,23 +41,6 @@ func TestRenderInitFillPrompts(t *testing.T) {
 	}
 	if !strings.Contains(user, "\"user_answer\":\"I want you to be concise.\"") {
 		t.Fatalf("user prompt missing payload: %q", user)
-	}
-}
-
-func TestRenderInitQuestionMessagePrompts(t *testing.T) {
-	payload := map[string]any{
-		"user_text": "Hi",
-		"questions": []string{"Q1", "Q2"},
-	}
-	sys, user, err := renderInitQuestionMessagePrompts(payload)
-	if err != nil {
-		t.Fatalf("renderInitQuestionMessagePrompts() error = %v", err)
-	}
-	if !strings.Contains(sys, "persona-setup questions") {
-		t.Fatalf("system prompt missing intent: %q", sys)
-	}
-	if !strings.Contains(user, "\"questions\":[\"Q1\",\"Q2\"]") {
-		t.Fatalf("user prompt missing questions: %q", user)
 	}
 }
 
