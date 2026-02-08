@@ -2,6 +2,8 @@
 
 Unified Agent CLI + reusable Go agent core.
 
+Other languages: [简体中文](docs/zh-CN/README.md) | [日本語](docs/ja-JP/README.md)
+
 ## Table of contents
 
 - [Why Mister Morph](#why-mistermorph)
