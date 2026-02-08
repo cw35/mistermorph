@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/quailyquaily/mistermorph/internal/channels"
 )
 
 type BusDeliveryStatus string
@@ -12,7 +14,6 @@ const (
 	BusDeliveryStatusPending BusDeliveryStatus = "pending"
 	BusDeliveryStatusSent    BusDeliveryStatus = "sent"
 	BusDeliveryStatusFailed  BusDeliveryStatus = "failed"
-	BusDeliveryStatusDead    BusDeliveryStatus = "dead"
 )
 
 type BusInboxRecord struct {
@@ -42,24 +43,10 @@ type BusOutboxRecord struct {
 	SentAt         *time.Time        `json:"sent_at,omitempty"`
 }
 
-type BusDeliveryRecord struct {
-	Channel        string            `json:"channel"`
-	IdempotencyKey string            `json:"idempotency_key"`
-	Status         BusDeliveryStatus `json:"status"`
-	Attempts       int               `json:"attempts"`
-	Accepted       bool              `json:"accepted,omitempty"`
-	Deduped        bool              `json:"deduped,omitempty"`
-	LastError      string            `json:"last_error,omitempty"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	LastAttemptAt  *time.Time        `json:"last_attempt_at,omitempty"`
-	SentAt         *time.Time        `json:"sent_at,omitempty"`
-}
-
 func normalizeBusChannel(channel string) (string, error) {
 	value := strings.ToLower(strings.TrimSpace(channel))
 	switch value {
-	case ChannelTelegram, ChannelMAEP, "slack", "discord":
+	case channels.Telegram, channels.MAEP, channels.Slack, channels.Discord:
 		return value, nil
 	default:
 		return "", fmt.Errorf("unsupported bus channel: %q", channel)
@@ -68,7 +55,7 @@ func normalizeBusChannel(channel string) (string, error) {
 
 func normalizeBusDeliveryStatus(status BusDeliveryStatus) (BusDeliveryStatus, error) {
 	switch status {
-	case BusDeliveryStatusPending, BusDeliveryStatusSent, BusDeliveryStatusFailed, BusDeliveryStatusDead:
+	case BusDeliveryStatusPending, BusDeliveryStatusSent, BusDeliveryStatusFailed:
 		return status, nil
 	default:
 		return "", fmt.Errorf("unsupported bus delivery status: %q", status)

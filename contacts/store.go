@@ -21,8 +21,6 @@ type Store interface {
 	PutBusInboxRecord(ctx context.Context, record BusInboxRecord) error
 	GetBusOutboxRecord(ctx context.Context, channel string, idempotencyKey string) (BusOutboxRecord, bool, error)
 	PutBusOutboxRecord(ctx context.Context, record BusOutboxRecord) error
-	GetBusDeliveryRecord(ctx context.Context, channel string, idempotencyKey string) (BusDeliveryRecord, bool, error)
-	PutBusDeliveryRecord(ctx context.Context, record BusDeliveryRecord) error
 
 	AppendAuditEvent(ctx context.Context, event AuditEvent) error
 	ListAuditEvents(ctx context.Context, tickID string, contactID string, action string, limit int) ([]AuditEvent, error)

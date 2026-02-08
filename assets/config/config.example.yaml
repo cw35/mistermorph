@@ -211,6 +211,11 @@ memory:
 maep:
   listen_addrs: ["/ip4/0.0.0.0/tcp/4021"]
 
+# Message bus
+bus:
+  # In-process bus (M1).
+  max_inflight: 1024
+
 # Contacts business state (proactive sharing profiles/candidates/audit).
 contacts:
   # Directory name under file_state_dir for contacts domain storage.

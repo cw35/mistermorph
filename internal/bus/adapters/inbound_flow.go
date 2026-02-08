@@ -1,0 +1,106 @@
+package adapters
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/quailyquaily/mistermorph/contacts"
+	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
+	"github.com/quailyquaily/mistermorph/internal/channels"
+)
+
+type InboundStore interface {
+	GetBusInboxRecord(ctx context.Context, channel string, platformMessageID string) (contacts.BusInboxRecord, bool, error)
+	PutBusInboxRecord(ctx context.Context, record contacts.BusInboxRecord) error
+}
+
+type InboundFlowOptions struct {
+	Bus     *busruntime.Inproc
+	Store   InboundStore
+	Channel string
+	Now     func() time.Time
+}
+
+type InboundFlow struct {
+	bus     *busruntime.Inproc
+	store   InboundStore
+	channel string
+	nowFn   func() time.Time
+}
+
+func NewInboundFlow(opts InboundFlowOptions) (*InboundFlow, error) {
+	if opts.Bus == nil {
+		return nil, fmt.Errorf("bus is required")
+	}
+	if opts.Store == nil {
+		return nil, fmt.Errorf("store is required")
+	}
+	channel := strings.ToLower(strings.TrimSpace(opts.Channel))
+	switch channel {
+	case channels.Telegram, channels.MAEP, channels.Slack, channels.Discord:
+	default:
+		return nil, fmt.Errorf("unsupported channel: %q", opts.Channel)
+	}
+	nowFn := opts.Now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	return &InboundFlow{
+		bus:     opts.Bus,
+		store:   opts.Store,
+		channel: channel,
+		nowFn:   nowFn,
+	}, nil
+}
+
+func (f *InboundFlow) Channel() string {
+	if f == nil {
+		return ""
+	}
+	return f.channel
+}
+
+// PublishValidatedInbound applies the shared inbound path:
+// validate+publish via bus, inbox dedupe by (channel, platform_message_id), and persist seen record.
+func (f *InboundFlow) PublishValidatedInbound(ctx context.Context, platformMessageID string, msg busruntime.BusMessage) (bool, error) {
+	if f == nil {
+		return false, fmt.Errorf("inbound flow is not initialized")
+	}
+	if ctx == nil {
+		return false, fmt.Errorf("context is required")
+	}
+	platformMessageID = strings.TrimSpace(platformMessageID)
+	if platformMessageID == "" {
+		return false, fmt.Errorf("platform_message_id is required")
+	}
+	if msg.Channel != "" && strings.ToLower(strings.TrimSpace(string(msg.Channel))) != f.channel {
+		return false, fmt.Errorf("message channel mismatch: flow=%s message=%s", f.channel, msg.Channel)
+	}
+
+	existing, found, err := f.store.GetBusInboxRecord(ctx, f.channel, platformMessageID)
+	if err != nil {
+		return false, err
+	}
+	if found {
+		_ = existing
+		return false, nil
+	}
+
+	if err := f.bus.PublishValidated(ctx, msg); err != nil {
+		return false, err
+	}
+
+	seenAt := f.nowFn().UTC()
+	record := contacts.BusInboxRecord{
+		Channel:           f.channel,
+		PlatformMessageID: platformMessageID,
+		ConversationKey:   msg.ConversationKey,
+		SeenAt:            seenAt,
+	}
+	if err := f.store.PutBusInboxRecord(ctx, record); err != nil {
+		return false, err
+	}
+	return true, nil
+}

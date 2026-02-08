@@ -112,12 +112,37 @@ func TestMessageValidate_RejectsInvalidDirection(t *testing.T) {
 	}
 }
 
-func TestMessageValidate_RejectsInvalidContentType(t *testing.T) {
+func TestMessageValidate_AllowsMinimalRequiredFields(t *testing.T) {
+	conversationKey, err := BuildTelegramChatConversationKey("123")
+	if err != nil {
+		t.Fatalf("BuildTelegramChatConversationKey() error = %v", err)
+	}
+	payload, err := EncodeMessageEnvelope(TopicChatMessage, MessageEnvelope{
+		MessageID: "msg_01",
+		Text:      "hello",
+		SentAt:    "2026-02-08T10:00:00Z",
+		SessionID: mustUUIDv7(t),
+	})
+	if err != nil {
+		t.Fatalf("EncodeMessageEnvelope() error = %v", err)
+	}
+	msg := BusMessage{
+		Topic:           TopicChatMessage,
+		ConversationKey: conversationKey,
+		IdempotencyKey:  "idem_01",
+		PayloadBase64:   payload,
+	}
+	if err := msg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestMessageValidate_RejectsUnknownTopic(t *testing.T) {
 	msg := validMessage(t)
-	msg.ContentType = "text/plain"
+	msg.Topic = "agent.status.v1"
 	err := msg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "content_type must start with application/json") {
-		t.Fatalf("Validate() error = %v, want content_type error", err)
+	if err == nil || !strings.Contains(err.Error(), "INVALID_TOPIC") {
+		t.Fatalf("Validate() error = %v, want invalid topic code", err)
 	}
 }
 
@@ -156,18 +181,16 @@ func validMessage(t *testing.T) BusMessage {
 	return BusMessage{
 		ID:              "bus_01",
 		Direction:       DirectionInbound,
-		Source:          SourceTelegram,
 		Channel:         ChannelTelegram,
 		Topic:           TopicChatMessage,
-		ConversationKey: "tg:chat:123",
+		ConversationKey: "telegram:chat:123",
 		ParticipantKey:  "tg:user:42",
 		IdempotencyKey:  "idem_01",
 		CorrelationID:   "corr_01",
-		ContentType:     "application/json",
 		PayloadBase64:   payload,
 		CreatedAt:       time.Date(2026, 2, 8, 10, 0, 0, 0, time.UTC),
-		Metadata: map[string]string{
-			"platform_message_id": "1001",
+		Extensions: MessageExtensions{
+			PlatformMessageID: "1001",
 		},
 	}
 }

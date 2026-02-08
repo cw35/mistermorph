@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/quailyquaily/mistermorph/internal/idempotency"
 )
 
 const (
@@ -56,8 +57,54 @@ type ServiceOptions struct {
 	FailureCooldown time.Duration
 }
 
+type EnsureStore interface {
+	Ensure(ctx context.Context) error
+}
+
+type ContactStore interface {
+	GetContact(ctx context.Context, contactID string) (Contact, bool, error)
+	PutContact(ctx context.Context, contact Contact) error
+	ListContacts(ctx context.Context, status Status) ([]Contact, error)
+}
+
+type CandidateStore interface {
+	GetCandidate(ctx context.Context, itemID string) (ShareCandidate, bool, error)
+	PutCandidate(ctx context.Context, candidate ShareCandidate) error
+	ListCandidates(ctx context.Context) ([]ShareCandidate, error)
+}
+
+type SessionStore interface {
+	GetSessionState(ctx context.Context, sessionID string) (SessionState, bool, error)
+	PutSessionState(ctx context.Context, state SessionState) error
+	ListSessionStates(ctx context.Context) ([]SessionState, error)
+}
+
+type AuditStore interface {
+	AppendAuditEvent(ctx context.Context, event AuditEvent) error
+	ListAuditEvents(ctx context.Context, tickID string, contactID string, action string, limit int) ([]AuditEvent, error)
+}
+
+type OutboxStore interface {
+	GetBusOutboxRecord(ctx context.Context, channel string, idempotencyKey string) (BusOutboxRecord, bool, error)
+	PutBusOutboxRecord(ctx context.Context, record BusOutboxRecord) error
+}
+
+type ServiceDeps struct {
+	Ensure     EnsureStore
+	Contacts   ContactStore
+	Candidates CandidateStore
+	Sessions   SessionStore
+	Audit      AuditStore
+	Outbox     OutboxStore
+}
+
 type Service struct {
-	store           Store
+	ensureStore     EnsureStore
+	contactStore    ContactStore
+	candidateStore  CandidateStore
+	sessionStore    SessionStore
+	auditStore      AuditStore
+	outboxStore     OutboxStore
 	failureCooldown time.Duration
 }
 
@@ -66,11 +113,36 @@ func NewService(store Store) *Service {
 }
 
 func NewServiceWithOptions(store Store, opts ServiceOptions) *Service {
+	return NewServiceWithDeps(ServiceDeps{
+		Ensure:     store,
+		Contacts:   store,
+		Candidates: store,
+		Sessions:   store,
+		Audit:      store,
+		Outbox:     store,
+	}, opts)
+}
+
+func NewServiceWithDeps(deps ServiceDeps, opts ServiceOptions) *Service {
 	opts = normalizeServiceOptions(opts)
 	return &Service{
-		store:           store,
+		ensureStore:     deps.Ensure,
+		contactStore:    deps.Contacts,
+		candidateStore:  deps.Candidates,
+		sessionStore:    deps.Sessions,
+		auditStore:      deps.Audit,
+		outboxStore:     deps.Outbox,
 		failureCooldown: opts.FailureCooldown,
 	}
+}
+
+func (s *Service) ready() bool {
+	return s != nil &&
+		s.ensureStore != nil &&
+		s.contactStore != nil &&
+		s.candidateStore != nil &&
+		s.sessionStore != nil &&
+		s.auditStore != nil
 }
 
 func normalizeServiceOptions(opts ServiceOptions) ServiceOptions {
@@ -81,11 +153,11 @@ func normalizeServiceOptions(opts ServiceOptions) ServiceOptions {
 }
 
 func (s *Service) UpsertContact(ctx context.Context, contact Contact, now time.Time) (Contact, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return Contact{}, fmt.Errorf("nil contacts service")
 	}
 	now = normalizeNow(now)
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return Contact{}, err
 	}
 	contact = normalizeContact(contact, now)
@@ -96,7 +168,7 @@ func (s *Service) UpsertContact(ctx context.Context, contact Contact, now time.T
 		return Contact{}, fmt.Errorf("contact_id is required")
 	}
 
-	existing, ok, err := s.store.GetContact(ctx, contact.ContactID)
+	existing, ok, err := s.contactStore.GetContact(ctx, contact.ContactID)
 	if err != nil {
 		return Contact{}, err
 	}
@@ -124,32 +196,32 @@ func (s *Service) UpsertContact(ctx context.Context, contact Contact, now time.T
 			contact.PersonaTraits[k] = v
 		}
 	}
-	if err := s.store.PutContact(ctx, contact); err != nil {
+	if err := s.contactStore.PutContact(ctx, contact); err != nil {
 		return Contact{}, err
 	}
 	return contact, nil
 }
 
 func (s *Service) ListContacts(ctx context.Context, status Status) ([]Contact, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return nil, fmt.Errorf("nil contacts service")
 	}
-	return s.store.ListContacts(ctx, status)
+	return s.contactStore.ListContacts(ctx, status)
 }
 
 func (s *Service) GetContact(ctx context.Context, contactID string) (Contact, bool, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return Contact{}, false, fmt.Errorf("nil contacts service")
 	}
 	contactID = strings.TrimSpace(contactID)
 	if contactID == "" {
 		return Contact{}, false, fmt.Errorf("contact_id is required")
 	}
-	return s.store.GetContact(ctx, contactID)
+	return s.contactStore.GetContact(ctx, contactID)
 }
 
 func (s *Service) SetContactStatus(ctx context.Context, contactID string, status Status) (Contact, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return Contact{}, fmt.Errorf("nil contacts service")
 	}
 	contactID = strings.TrimSpace(contactID)
@@ -157,11 +229,11 @@ func (s *Service) SetContactStatus(ctx context.Context, contactID string, status
 		return Contact{}, fmt.Errorf("contact_id is required")
 	}
 	status = normalizeStatus(status)
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return Contact{}, err
 	}
 
-	contact, ok, err := s.store.GetContact(ctx, contactID)
+	contact, ok, err := s.contactStore.GetContact(ctx, contactID)
 	if err != nil {
 		return Contact{}, err
 	}
@@ -169,18 +241,18 @@ func (s *Service) SetContactStatus(ctx context.Context, contactID string, status
 		return Contact{}, fmt.Errorf("contact not found: %s", contactID)
 	}
 	contact.Status = status
-	if err := s.store.PutContact(ctx, contact); err != nil {
+	if err := s.contactStore.PutContact(ctx, contact); err != nil {
 		return Contact{}, err
 	}
 	return contact, nil
 }
 
 func (s *Service) AddCandidate(ctx context.Context, candidate ShareCandidate, now time.Time) (ShareCandidate, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return ShareCandidate{}, fmt.Errorf("nil contacts service")
 	}
 	now = normalizeNow(now)
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return ShareCandidate{}, err
 	}
 	candidate = normalizeCandidate(candidate, now)
@@ -202,43 +274,43 @@ func (s *Service) AddCandidate(ctx context.Context, candidate ShareCandidate, no
 	if _, err := base64.RawURLEncoding.DecodeString(candidate.PayloadBase64); err != nil {
 		return ShareCandidate{}, fmt.Errorf("payload_base64 decode failed: %w", err)
 	}
-	if err := s.store.PutCandidate(ctx, candidate); err != nil {
+	if err := s.candidateStore.PutCandidate(ctx, candidate); err != nil {
 		return ShareCandidate{}, err
 	}
 	return candidate, nil
 }
 
 func (s *Service) ListCandidates(ctx context.Context) ([]ShareCandidate, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return nil, fmt.Errorf("nil contacts service")
 	}
-	return s.store.ListCandidates(ctx)
+	return s.candidateStore.ListCandidates(ctx)
 }
 
 func (s *Service) ListAuditEvents(ctx context.Context, tickID string, contactID string, action string, limit int) ([]AuditEvent, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return nil, fmt.Errorf("nil contacts service")
 	}
-	return s.store.ListAuditEvents(ctx, tickID, contactID, action, limit)
+	return s.auditStore.ListAuditEvents(ctx, tickID, contactID, action, limit)
 }
 
 // RankCandidates computes proactive share decisions without sending or mutating contact/session state.
 func (s *Service) RankCandidates(ctx context.Context, now time.Time, opts TickOptions) ([]ShareDecision, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return nil, fmt.Errorf("nil contacts service")
 	}
 	now = normalizeNow(now)
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return nil, err
 	}
 	opts = normalizeTickOptions(opts)
 	opts.Send = false
 
-	contactsList, err := s.store.ListContacts(ctx, StatusActive)
+	contactsList, err := s.contactStore.ListContacts(ctx, StatusActive)
 	if err != nil {
 		return nil, err
 	}
-	candidates, err := s.store.ListCandidates(ctx)
+	candidates, err := s.candidateStore.ListCandidates(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -272,14 +344,14 @@ func (s *Service) RankCandidates(ctx context.Context, now time.Time, opts TickOp
 // SendDecision sends one prepared decision through sender and persists outcome effects
 // (cooldown/last_shared/share_count/retain_score + audit).
 func (s *Service) SendDecision(ctx context.Context, now time.Time, decision ShareDecision, sender Sender) (ShareOutcome, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return ShareOutcome{}, fmt.Errorf("nil contacts service")
 	}
 	if sender == nil {
 		return ShareOutcome{}, fmt.Errorf("sender is required")
 	}
 	now = normalizeNow(now)
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return ShareOutcome{}, err
 	}
 
@@ -287,7 +359,7 @@ func (s *Service) SendDecision(ctx context.Context, now time.Time, decision Shar
 	if decision.ContactID == "" {
 		return ShareOutcome{}, fmt.Errorf("contact_id is required")
 	}
-	contact, ok, err := s.store.GetContact(ctx, decision.ContactID)
+	contact, ok, err := s.contactStore.GetContact(ctx, decision.ContactID)
 	if err != nil {
 		return ShareOutcome{}, err
 	}
@@ -327,7 +399,7 @@ func (s *Service) SendDecision(ctx context.Context, now time.Time, decision Shar
 	}
 	decision.IdempotencyKey = strings.TrimSpace(decision.IdempotencyKey)
 	if decision.IdempotencyKey == "" {
-		decision.IdempotencyKey = fmt.Sprintf("manual:%s:%s", sanitizeToken(contact.ContactID), uuid.NewString())
+		decision.IdempotencyKey = idempotency.ManualContactKey(contact.ContactID)
 	}
 
 	outcome, attempted, err := s.sendWithBusOutbox(ctx, now, contact, decision, sender)
@@ -346,7 +418,7 @@ func (s *Service) SendDecision(ctx context.Context, now time.Time, decision Shar
 			contact.ShareCount++
 		}
 		contact = recomputeRetainScore(contact, now)
-		if err := s.store.PutContact(ctx, contact); err != nil {
+		if err := s.contactStore.PutContact(ctx, contact); err != nil {
 			return ShareOutcome{}, err
 		}
 	}
@@ -359,7 +431,7 @@ func (s *Service) SendDecision(ctx context.Context, now time.Time, decision Shar
 		action = "proactive_share_send_failed"
 		reason = outcome.Error
 	}
-	_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+	_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 		EventID:   "evt_" + uuid.NewString(),
 		Action:    action,
 		ContactID: decision.ContactID,
@@ -391,6 +463,9 @@ func resolveDecisionChannel(contact Contact, decision ShareDecision) (string, er
 }
 
 func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact Contact, decision ShareDecision, sender Sender) (ShareOutcome, bool, error) {
+	if s == nil || s.outboxStore == nil {
+		return ShareOutcome{}, false, fmt.Errorf("outbox store is required")
+	}
 	channel, err := resolveDecisionChannel(contact, decision)
 	if err != nil {
 		return ShareOutcome{}, false, err
@@ -407,7 +482,7 @@ func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact 
 		SentAt:         now,
 	}
 
-	existing, exists, err := s.store.GetBusOutboxRecord(ctx, channel, decision.IdempotencyKey)
+	existing, exists, err := s.outboxStore.GetBusOutboxRecord(ctx, channel, decision.IdempotencyKey)
 	if err != nil {
 		return ShareOutcome{}, false, err
 	}
@@ -420,19 +495,9 @@ func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact 
 			}
 			return outcome, false, nil
 		}
-		if existing.Status == BusDeliveryStatusDead {
-			return ShareOutcome{}, false, fmt.Errorf("outbox record is dead: channel=%s idempotency_key=%s", channel, decision.IdempotencyKey)
-		}
 	}
 
-	attempts := 1
-	createdAt := now
-	if exists {
-		attempts = existing.Attempts + 1
-		createdAt = existing.CreatedAt.UTC()
-	}
-	lastAttemptAt := now
-	pendingRecord := BusOutboxRecord{
+	baseRecord := BusOutboxRecord{
 		Channel:        channel,
 		IdempotencyKey: decision.IdempotencyKey,
 		ContactID:      decision.ContactID,
@@ -441,47 +506,32 @@ func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact 
 		Topic:          decision.Topic,
 		ContentType:    decision.ContentType,
 		PayloadBase64:  decision.PayloadBase64,
-		Status:         BusDeliveryStatusPending,
-		Attempts:       attempts,
-		CreatedAt:      createdAt,
-		UpdatedAt:      now,
-		LastAttemptAt:  &lastAttemptAt,
 	}
-	if err := s.store.PutBusOutboxRecord(ctx, pendingRecord); err != nil {
+	var current *BusOutboxRecord
+	if exists {
+		current = &existing
+	}
+	pendingRecord, err := NextOutboxRecord(current, baseRecord, OutboxTransition{
+		Type: OutboxTransitionStartAttempt,
+	}, now)
+	if err != nil {
 		return ShareOutcome{}, false, err
 	}
-	pendingDelivery := BusDeliveryRecord{
-		Channel:        channel,
-		IdempotencyKey: decision.IdempotencyKey,
-		Status:         BusDeliveryStatusPending,
-		Attempts:       attempts,
-		CreatedAt:      createdAt,
-		UpdatedAt:      now,
-		LastAttemptAt:  &lastAttemptAt,
-	}
-	if err := s.store.PutBusDeliveryRecord(ctx, pendingDelivery); err != nil {
+	if err := s.outboxStore.PutBusOutboxRecord(ctx, pendingRecord); err != nil {
 		return ShareOutcome{}, false, err
 	}
 
 	accepted, deduped, sendErr := sender.Send(ctx, contact, decision)
 	if sendErr != nil {
 		outcome.Error = sendErr.Error()
-		failedRecord := pendingRecord
-		failedRecord.Status = BusDeliveryStatusFailed
-		failedRecord.LastError = outcome.Error
-		failedRecord.Accepted = false
-		failedRecord.Deduped = false
-		failedRecord.UpdatedAt = now
-		failedRecord.SentAt = nil
-		if err := s.store.PutBusOutboxRecord(ctx, failedRecord); err != nil {
+		failedRecord, err := NextOutboxRecord(&pendingRecord, baseRecord, OutboxTransition{
+			Type:      OutboxTransitionMarkFailed,
+			ErrorText: outcome.Error,
+		}, now)
+		if err != nil {
 			return ShareOutcome{}, false, err
 		}
-		failedDelivery := pendingDelivery
-		failedDelivery.Status = BusDeliveryStatusFailed
-		failedDelivery.LastError = outcome.Error
-		failedDelivery.UpdatedAt = now
-		failedDelivery.SentAt = nil
-		if err := s.store.PutBusDeliveryRecord(ctx, failedDelivery); err != nil {
+		if err := s.outboxStore.PutBusOutboxRecord(ctx, failedRecord); err != nil {
 			return ShareOutcome{}, false, err
 		}
 		return outcome, true, nil
@@ -489,36 +539,26 @@ func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact 
 
 	outcome.Accepted = accepted
 	outcome.Deduped = deduped
-	sentAt := now
-	sentRecord := pendingRecord
-	sentRecord.Status = BusDeliveryStatusSent
-	sentRecord.Accepted = accepted
-	sentRecord.Deduped = deduped
-	sentRecord.LastError = ""
-	sentRecord.SentAt = &sentAt
-	sentRecord.UpdatedAt = now
-	if err := s.store.PutBusOutboxRecord(ctx, sentRecord); err != nil {
+	sentRecord, err := NextOutboxRecord(&pendingRecord, baseRecord, OutboxTransition{
+		Type:     OutboxTransitionMarkSent,
+		Accepted: accepted,
+		Deduped:  deduped,
+	}, now)
+	if err != nil {
 		return ShareOutcome{}, false, err
 	}
-	sentDelivery := pendingDelivery
-	sentDelivery.Status = BusDeliveryStatusSent
-	sentDelivery.Accepted = accepted
-	sentDelivery.Deduped = deduped
-	sentDelivery.LastError = ""
-	sentDelivery.SentAt = &sentAt
-	sentDelivery.UpdatedAt = now
-	if err := s.store.PutBusDeliveryRecord(ctx, sentDelivery); err != nil {
+	if err := s.outboxStore.PutBusOutboxRecord(ctx, sentRecord); err != nil {
 		return ShareOutcome{}, false, err
 	}
 	return outcome, true, nil
 }
 
 func (s *Service) UpdateFeedback(ctx context.Context, now time.Time, input FeedbackUpdateInput) (Contact, SessionState, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return Contact{}, SessionState{}, fmt.Errorf("nil contacts service")
 	}
 	now = normalizeNow(now)
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return Contact{}, SessionState{}, err
 	}
 
@@ -533,7 +573,7 @@ func (s *Service) UpdateFeedback(ctx context.Context, now time.Time, input Feedb
 	input.Topic = strings.ToLower(strings.TrimSpace(input.Topic))
 	input.Reason = strings.TrimSpace(input.Reason)
 
-	contact, ok, err := s.store.GetContact(ctx, input.ContactID)
+	contact, ok, err := s.contactStore.GetContact(ctx, input.ContactID)
 	if err != nil {
 		return Contact{}, SessionState{}, err
 	}
@@ -545,7 +585,7 @@ func (s *Service) UpdateFeedback(ctx context.Context, now time.Time, input Feedb
 	if sessionID == "" {
 		sessionID = input.ContactID
 	}
-	session, ok, err := s.store.GetSessionState(ctx, sessionID)
+	session, ok, err := s.sessionStore.GetSessionState(ctx, sessionID)
 	if err != nil {
 		return Contact{}, SessionState{}, err
 	}
@@ -613,10 +653,10 @@ func (s *Service) UpdateFeedback(ctx context.Context, now time.Time, input Feedb
 	contact.LastInteractionAt = &ts
 	contact = recomputeRetainScore(contact, now)
 
-	if err := s.store.PutSessionState(ctx, session); err != nil {
+	if err := s.sessionStore.PutSessionState(ctx, session); err != nil {
 		return Contact{}, SessionState{}, err
 	}
-	if err := s.store.PutContact(ctx, contact); err != nil {
+	if err := s.contactStore.PutContact(ctx, contact); err != nil {
 		return Contact{}, SessionState{}, err
 	}
 
@@ -634,7 +674,7 @@ func (s *Service) UpdateFeedback(ctx context.Context, now time.Time, input Feedb
 		metadata["topic"] = input.Topic
 		metadata["topic_weight"] = fmt.Sprintf("%.3f", contact.TopicWeights[input.Topic])
 	}
-	_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+	_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 		EventID:   "evt_" + uuid.NewString(),
 		Action:    "contact_feedback_update",
 		ContactID: input.ContactID,
@@ -657,7 +697,7 @@ func (s *Service) RefreshContactPreferences(
 	extractor PreferenceExtractor,
 	reason string,
 ) (Contact, bool, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return Contact{}, false, fmt.Errorf("nil contacts service")
 	}
 	if extractor == nil {
@@ -668,10 +708,10 @@ func (s *Service) RefreshContactPreferences(
 	if contactID == "" {
 		return Contact{}, false, fmt.Errorf("contact_id is required")
 	}
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return Contact{}, false, err
 	}
-	contact, ok, err := s.store.GetContact(ctx, contactID)
+	contact, ok, err := s.contactStore.GetContact(ctx, contactID)
 	if err != nil {
 		return Contact{}, false, err
 	}
@@ -712,7 +752,7 @@ func (s *Service) RefreshContactPreferences(
 	after := updated[0]
 	changed := contactPreferenceChanged(before, after)
 	if !changed {
-		_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+		_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 			EventID:   "evt_" + uuid.NewString(),
 			TickID:    tickID,
 			Action:    "contact_preference_extract_no_change",
@@ -730,11 +770,11 @@ func (s *Service) RefreshContactPreferences(
 }
 
 func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, sender Sender) (TickResult, error) {
-	if s == nil || s.store == nil {
+	if s == nil || !s.ready() {
 		return TickResult{}, fmt.Errorf("nil contacts service")
 	}
 	now = normalizeNow(now)
-	if err := s.store.Ensure(ctx); err != nil {
+	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return TickResult{}, err
 	}
 	opts = normalizeTickOptions(opts)
@@ -747,14 +787,14 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 		TickID:    tickID,
 		StartedAt: now,
 	}
-	_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+	_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 		EventID:   "evt_" + uuid.NewString(),
 		TickID:    tickID,
 		Action:    "proactive_share_tick_start",
 		CreatedAt: now,
 	})
 
-	contacts, err := s.store.ListContacts(ctx, StatusActive)
+	contacts, err := s.contactStore.ListContacts(ctx, StatusActive)
 	if err != nil {
 		return TickResult{}, err
 	}
@@ -764,7 +804,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 			return TickResult{}, err
 		}
 	}
-	candidates, err := s.store.ListCandidates(ctx)
+	candidates, err := s.candidateStore.ListCandidates(ctx)
 	if err != nil {
 		return TickResult{}, err
 	}
@@ -795,7 +835,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 		for _, contact := range eligible {
 			features, featureErr := opts.FeatureExtractor.EvaluateCandidateFeatures(ctx, contact, freshCandidates)
 			if featureErr != nil {
-				_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+				_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 					EventID:   "evt_" + uuid.NewString(),
 					TickID:    tickID,
 					Action:    "proactive_share_llm_features_failed",
@@ -807,7 +847,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 				continue
 			}
 			featuresByContact[contact.ContactID] = features
-			_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+			_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 				EventID:   "evt_" + uuid.NewString(),
 				TickID:    tickID,
 				Action:    "proactive_share_llm_features_ok",
@@ -827,7 +867,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 	result.Planned = len(decisions)
 
 	for _, decision := range decisions {
-		_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+		_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 			EventID:        "evt_" + uuid.NewString(),
 			TickID:         tickID,
 			Action:         "proactive_share_decision",
@@ -861,7 +901,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 					result.Sent++
 				}
 				contact = recomputeRetainScore(contact, now)
-				if err := s.store.PutContact(ctx, contact); err != nil {
+				if err := s.contactStore.PutContact(ctx, contact); err != nil {
 					return TickResult{}, err
 				}
 			}
@@ -875,7 +915,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 				action = "proactive_share_send_failed"
 				reason = outcome.Error
 			}
-			_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+			_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 				EventID:   "evt_" + uuid.NewString(),
 				TickID:    tickID,
 				Action:    action,
@@ -893,7 +933,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 	}
 
 	result.EndedAt = normalizeNow(time.Now().UTC())
-	_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+	_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 		EventID:   "evt_" + uuid.NewString(),
 		TickID:    tickID,
 		Action:    "proactive_share_tick_end",
@@ -904,7 +944,7 @@ func (s *Service) RunTick(ctx context.Context, now time.Time, opts TickOptions, 
 }
 
 func (s *Service) rebalanceActiveContacts(ctx context.Context, now time.Time) error {
-	contacts, err := s.store.ListContacts(ctx, "")
+	contacts, err := s.contactStore.ListContacts(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -935,7 +975,7 @@ func (s *Service) rebalanceActiveContacts(ctx context.Context, now time.Time) er
 		} else {
 			updated.Status = StatusInactive
 		}
-		if err := s.store.PutContact(ctx, updated); err != nil {
+		if err := s.contactStore.PutContact(ctx, updated); err != nil {
 			return err
 		}
 	}
@@ -976,7 +1016,12 @@ func buildDecisions(
 		if bestScore <= 0 {
 			continue
 		}
-		idempotencyKey := proactiveIdempotencyKey(contact, bestCandidate)
+		idempotencyKey := idempotency.ProactiveShareKey(
+			contact.ContactID,
+			bestCandidate.ItemID,
+			bestCandidate.SourceChatID,
+			bestCandidate.SourceChatType,
+		)
 		topic := strings.TrimSpace(pushTopic)
 		if topic == "" {
 			topic = "share.proactive.v1"
@@ -1004,17 +1049,6 @@ func buildDecisions(
 		return decisions[i].Score > decisions[j].Score
 	})
 	return decisions
-}
-
-func proactiveIdempotencyKey(contact Contact, candidate ShareCandidate) string {
-	sourceChatType := strings.ToLower(strings.TrimSpace(candidate.SourceChatType))
-	return fmt.Sprintf(
-		"proactive:%s:%s:%d:%s",
-		sanitizeToken(contact.ContactID),
-		sanitizeToken(candidate.ItemID),
-		candidate.SourceChatID,
-		sanitizeToken(sourceChatType),
-	)
 }
 
 func scoreCandidate(contact Contact, candidate ShareCandidate, feature CandidateFeature) (float64, ScoreBreakdown) {
@@ -1317,24 +1351,6 @@ func deriveContactID(contact Contact) string {
 	return ""
 }
 
-func sanitizeToken(input string) string {
-	input = strings.TrimSpace(strings.ToLower(input))
-	if input == "" {
-		return "x"
-	}
-	var b strings.Builder
-	b.Grow(len(input))
-	for _, r := range input {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
-		}
-	}
-	return strings.Trim(b.String(), "_")
-}
-
 func normalizeNow(now time.Time) time.Time {
 	if now.IsZero() {
 		return time.Now().UTC()
@@ -1359,7 +1375,7 @@ func (s *Service) applyContactPreferences(
 		contact := out[i]
 		features, err := extractor.EvaluateContactPreferences(ctx, contact, candidates)
 		if err != nil {
-			_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+			_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 				EventID:   "evt_" + uuid.NewString(),
 				TickID:    tickID,
 				Action:    "contact_preference_extract_failed",
@@ -1373,7 +1389,7 @@ func (s *Service) applyContactPreferences(
 
 		features.Confidence = clamp(features.Confidence, 0, 1)
 		if features.Confidence < preferenceMinConfidence {
-			_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+			_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 				EventID:   "evt_" + uuid.NewString(),
 				TickID:    tickID,
 				Action:    "contact_preference_extract_skipped",
@@ -1443,11 +1459,11 @@ func (s *Service) applyContactPreferences(
 		if topicUpdates == 0 && !personaBriefUpdated && personaTraitsUpdates == 0 {
 			continue
 		}
-		if err := s.store.PutContact(ctx, contact); err != nil {
+		if err := s.contactStore.PutContact(ctx, contact); err != nil {
 			return nil, err
 		}
 		out[i] = contact
-		_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+		_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 			EventID:   "evt_" + uuid.NewString(),
 			TickID:    tickID,
 			Action:    "contact_preference_extract_applied",
@@ -1489,7 +1505,7 @@ func (s *Service) assignNicknames(
 		}
 		nickname, confidence, err := generator.SuggestNickname(ctx, contact)
 		if err != nil {
-			_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+			_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 				EventID:   "evt_" + uuid.NewString(),
 				TickID:    tickID,
 				Action:    auditActionNicknameAutoFailed,
@@ -1506,11 +1522,11 @@ func (s *Service) assignNicknames(
 			continue
 		}
 		contact.ContactNickname = nickname
-		if err := s.store.PutContact(ctx, contact); err != nil {
+		if err := s.contactStore.PutContact(ctx, contact); err != nil {
 			return nil, err
 		}
 		out[i] = contact
-		_ = s.store.AppendAuditEvent(ctx, AuditEvent{
+		_ = s.auditStore.AppendAuditEvent(ctx, AuditEvent{
 			EventID:   "evt_" + uuid.NewString(),
 			TickID:    tickID,
 			Action:    auditActionNicknameAutoAssigned,

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -16,7 +18,7 @@ type seenPair struct {
 }
 
 func TestInprocPublishSubscribe(t *testing.T) {
-	b, err := NewInproc(InprocOptions{MaxInFlight: 8})
+	b, err := NewInproc(InprocOptions{MaxInFlight: 8, Logger: newTestLogger()})
 	if err != nil {
 		t.Fatalf("NewInproc() error = %v", err)
 	}
@@ -62,7 +64,7 @@ func TestInprocPublishSubscribe(t *testing.T) {
 }
 
 func TestInprocConversationOrder(t *testing.T) {
-	b, err := NewInproc(InprocOptions{MaxInFlight: 16})
+	b, err := NewInproc(InprocOptions{MaxInFlight: 16, Logger: newTestLogger()})
 	if err != nil {
 		t.Fatalf("NewInproc() error = %v", err)
 	}
@@ -118,7 +120,7 @@ func TestInprocConversationOrder(t *testing.T) {
 }
 
 func TestInprocBackpressure(t *testing.T) {
-	b, err := NewInproc(InprocOptions{MaxInFlight: 1})
+	b, err := NewInproc(InprocOptions{MaxInFlight: 1, Logger: newTestLogger()})
 	if err != nil {
 		t.Fatalf("NewInproc() error = %v", err)
 	}
@@ -148,7 +150,7 @@ func TestInprocBackpressure(t *testing.T) {
 }
 
 func TestInprocPublishWithoutSubscriberFails(t *testing.T) {
-	b, err := NewInproc(InprocOptions{MaxInFlight: 2})
+	b, err := NewInproc(InprocOptions{MaxInFlight: 2, Logger: newTestLogger()})
 	if err != nil {
 		t.Fatalf("NewInproc() error = %v", err)
 	}
@@ -159,10 +161,13 @@ func TestInprocPublishWithoutSubscriberFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), ErrNoSubscriberForTopic.Error()) {
 		t.Fatalf("Publish() error = %v, want ErrNoSubscriberForTopic", err)
 	}
+	if code := ErrorCodeOf(err); code != CodeNoSubscriber {
+		t.Fatalf("Publish() code = %q, want %q", code, CodeNoSubscriber)
+	}
 }
 
 func TestInprocPublishAfterCloseFails(t *testing.T) {
-	b, err := NewInproc(InprocOptions{MaxInFlight: 2})
+	b, err := NewInproc(InprocOptions{MaxInFlight: 2, Logger: newTestLogger()})
 	if err != nil {
 		t.Fatalf("NewInproc() error = %v", err)
 	}
@@ -176,35 +181,70 @@ func TestInprocPublishAfterCloseFails(t *testing.T) {
 	if !errors.Is(err, ErrBusClosed) {
 		t.Fatalf("Publish() error = %v, want ErrBusClosed", err)
 	}
+	if code := ErrorCodeOf(err); code != CodeBusClosed {
+		t.Fatalf("Publish() code = %q, want %q", code, CodeBusClosed)
+	}
 }
 
-func TestRouterHandleAndPublish(t *testing.T) {
-	b, err := NewInproc(InprocOptions{MaxInFlight: 4})
+func TestInprocSubscribeDuplicateTopicFails(t *testing.T) {
+	b, err := NewInproc(InprocOptions{MaxInFlight: 2, Logger: newTestLogger()})
 	if err != nil {
 		t.Fatalf("NewInproc() error = %v", err)
 	}
 	defer b.Close()
 
-	router, err := NewRouter(b)
+	first := func(ctx context.Context, msg BusMessage) error { return nil }
+	second := func(ctx context.Context, msg BusMessage) error { return nil }
+	if err := b.Subscribe(TopicChatMessage, first); err != nil {
+		t.Fatalf("Subscribe(first) error = %v", err)
+	}
+	err = b.Subscribe(TopicChatMessage, second)
+	if err == nil || !strings.Contains(err.Error(), ErrTopicAlreadyHandled.Error()) {
+		t.Fatalf("Subscribe(second) error = %v, want ErrTopicAlreadyHandled", err)
+	}
+	if code := ErrorCodeOf(err); code != CodeTopicAlreadyHandled {
+		t.Fatalf("Subscribe(second) code = %q, want %q", code, CodeTopicAlreadyHandled)
+	}
+}
+
+func TestInprocSubscribeAfterPublishFails(t *testing.T) {
+	b, err := NewInproc(InprocOptions{MaxInFlight: 2, Logger: newTestLogger()})
 	if err != nil {
-		t.Fatalf("NewRouter() error = %v", err)
+		t.Fatalf("NewInproc() error = %v", err)
 	}
-
-	done := make(chan struct{})
-	if err := router.Handle(TopicChatMessage, func(ctx context.Context, msg BusMessage) error {
-		close(done)
-		return nil
-	}); err != nil {
-		t.Fatalf("Handle() error = %v", err)
+	defer b.Close()
+	if err := b.Subscribe(TopicChatMessage, func(ctx context.Context, msg BusMessage) error { return nil }); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
 	}
-
-	if err := router.Publish(context.Background(), validMessage(t)); err != nil {
+	if err := b.Publish(context.Background(), validMessage(t)); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("timed out waiting for router delivery")
+	err = b.Subscribe(TopicDMReplyV1, func(ctx context.Context, msg BusMessage) error { return nil })
+	if err == nil || !errors.Is(err, ErrTopicFrozen) {
+		t.Fatalf("Subscribe() error = %v, want ErrTopicFrozen", err)
+	}
+	if code := ErrorCodeOf(err); code != CodeTopicFrozen {
+		t.Fatalf("Subscribe() code = %q, want %q", code, CodeTopicFrozen)
+	}
+}
+
+func TestInprocPublishValidatedRejectsInvalidMessage(t *testing.T) {
+	b, err := NewInproc(InprocOptions{MaxInFlight: 2, Logger: newTestLogger()})
+	if err != nil {
+		t.Fatalf("NewInproc() error = %v", err)
+	}
+	defer b.Close()
+	if err := b.Subscribe(TopicChatMessage, func(ctx context.Context, msg BusMessage) error { return nil }); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	msg := validMessage(t)
+	msg.IdempotencyKey = ""
+	err = b.PublishValidated(context.Background(), msg)
+	if err == nil {
+		t.Fatalf("PublishValidated() expected error")
+	}
+	if code := ErrorCodeOf(err); code != CodeInvalidMessage {
+		t.Fatalf("PublishValidated() code = %q, want %q", code, CodeInvalidMessage)
 	}
 }
 
@@ -225,4 +265,8 @@ func extractIDs(pairs []seenPair, conv string) string {
 		}
 	}
 	return strings.Join(out, ",")
+}
+
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }

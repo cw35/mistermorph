@@ -283,31 +283,6 @@ func TestFileStoreBusRecordsRoundTrip(t *testing.T) {
 	if outbox.Status != BusDeliveryStatusPending {
 		t.Fatalf("outbox status mismatch: got %q", outbox.Status)
 	}
-
-	sentAt := now.Add(2 * time.Minute)
-	if err := store.PutBusDeliveryRecord(ctx, BusDeliveryRecord{
-		Channel:        ChannelMAEP,
-		IdempotencyKey: "manual:k1",
-		Status:         BusDeliveryStatusSent,
-		Attempts:       1,
-		Accepted:       true,
-		CreatedAt:      now,
-		UpdatedAt:      sentAt,
-		LastAttemptAt:  &lastAttemptAt,
-		SentAt:         &sentAt,
-	}); err != nil {
-		t.Fatalf("PutBusDeliveryRecord() error = %v", err)
-	}
-	delivery, ok, err := store.GetBusDeliveryRecord(ctx, ChannelMAEP, "manual:k1")
-	if err != nil {
-		t.Fatalf("GetBusDeliveryRecord() error = %v", err)
-	}
-	if !ok {
-		t.Fatalf("GetBusDeliveryRecord() expected ok=true")
-	}
-	if delivery.Status != BusDeliveryStatusSent || !delivery.Accepted {
-		t.Fatalf("delivery mismatch: got status=%q accepted=%v", delivery.Status, delivery.Accepted)
-	}
 }
 
 func TestFileStoreBusOutboxRejectsUnknownField(t *testing.T) {

@@ -32,6 +32,7 @@ import (
 	"github.com/quailyquaily/mistermorph/guard"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/idempotency"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
@@ -128,30 +129,15 @@ func newTelegramCmd() *cobra.Command {
 				return err
 			}
 			slog.SetDefault(logger)
-			busBackend := strings.ToLower(strings.TrimSpace(viper.GetString("bus.backend")))
-			logger.Debug("bus_config",
-				"backend", busBackend,
-				"max_inflight", viper.GetInt("bus.max_inflight"),
-				"retry_max_attempts", viper.GetInt("bus.retry.max_attempts"),
-				"retry_initial_backoff", viper.GetDuration("bus.retry.initial_backoff"),
-				"retry_max_backoff", viper.GetDuration("bus.retry.max_backoff"),
-			)
-			switch busBackend {
-			case "", "disabled":
-				logger.Debug("bus_disabled")
-			case "inproc":
-				inprocBus, inprocErr := busruntime.NewInproc(busruntime.InprocOptions{
-					MaxInFlight: viper.GetInt("bus.max_inflight"),
-					Logger:      logger,
-				})
-				if inprocErr != nil {
-					return fmt.Errorf("init telegram inproc bus: %w", inprocErr)
-				}
-				defer inprocBus.Close()
-				logger.Info("bus_ready", "backend", busBackend, "max_inflight", viper.GetInt("bus.max_inflight"))
-			default:
-				return fmt.Errorf("unsupported bus.backend: %q", busBackend)
+			inprocBus, err := busruntime.StartInproc(busruntime.BootstrapOptions{
+				MaxInFlight: viper.GetInt("bus.max_inflight"),
+				Logger:      logger,
+				Component:   "telegram",
+			})
+			if err != nil {
+				return err
 			}
+			defer inprocBus.Close()
 			withMAEP := configutil.FlagOrViperBool(cmd, "with-maep", "telegram.with_maep")
 			var maepNode *maep.Node
 			maepEventCh := make(chan maep.DataPushEvent, 64)
@@ -851,8 +837,9 @@ func newTelegramCmd() *cobra.Command {
 								}
 							}
 
+							replyMessageID := "msg_" + uuid.NewString()
 							payload := map[string]any{
-								"message_id": "msg_" + uuid.NewString(),
+								"message_id": replyMessageID,
 								"text":       output,
 								"sent_at":    time.Now().UTC().Format(time.RFC3339),
 							}
@@ -864,7 +851,7 @@ func newTelegramCmd() *cobra.Command {
 								Topic:          resolveMAEPReplyTopic(event.Topic),
 								ContentType:    "application/json",
 								PayloadBase64:  base64.RawURLEncoding.EncodeToString(payloadRaw),
-								IdempotencyKey: "reply:" + uuid.NewString(),
+								IdempotencyKey: idempotency.MessageEnvelopeKey(replyMessageID),
 							}
 
 							pushCtx, pushCancel := context.WithTimeout(context.Background(), maepPushTimeout(requestTimeout))

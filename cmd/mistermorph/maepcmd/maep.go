@@ -21,6 +21,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quailyquaily/mistermorph/contacts"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
+	"github.com/quailyquaily/mistermorph/internal/idempotency"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/maep"
@@ -481,30 +482,15 @@ func newServeCmd() *cobra.Command {
 			svc := serviceFromCmd(cmd)
 			contactsSvc := contacts.NewService(contacts.NewFileStore(statepaths.ContactsDir()))
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelInfo}))
-			busBackend := strings.ToLower(strings.TrimSpace(viper.GetString("bus.backend")))
-			logger.Debug("bus_config",
-				"backend", busBackend,
-				"max_inflight", viper.GetInt("bus.max_inflight"),
-				"retry_max_attempts", viper.GetInt("bus.retry.max_attempts"),
-				"retry_initial_backoff", viper.GetDuration("bus.retry.initial_backoff"),
-				"retry_max_backoff", viper.GetDuration("bus.retry.max_backoff"),
-			)
-			switch busBackend {
-			case "", "disabled":
-				logger.Debug("bus_disabled")
-			case "inproc":
-				inprocBus, inprocErr := busruntime.NewInproc(busruntime.InprocOptions{
-					MaxInFlight: viper.GetInt("bus.max_inflight"),
-					Logger:      logger,
-				})
-				if inprocErr != nil {
-					return fmt.Errorf("init maep inproc bus: %w", inprocErr)
-				}
-				defer inprocBus.Close()
-				logger.Info("bus_ready", "backend", busBackend, "max_inflight", viper.GetInt("bus.max_inflight"))
-			default:
-				return fmt.Errorf("unsupported bus.backend: %q", busBackend)
+			inprocBus, err := busruntime.StartInproc(busruntime.BootstrapOptions{
+				MaxInFlight: viper.GetInt("bus.max_inflight"),
+				Logger:      logger,
+				Component:   "maep",
+			})
+			if err != nil {
+				return err
 			}
+			defer inprocBus.Close()
 			node, err := maep.NewNode(runCtx, svc, maep.NodeOptions{
 				ListenAddrs: listenAddrs,
 				Logger:      logger,
@@ -692,7 +678,7 @@ func newPushCmd() *cobra.Command {
 
 			idempotencyKey = strings.TrimSpace(idempotencyKey)
 			if idempotencyKey == "" {
-				idempotencyKey = messageID
+				idempotencyKey = idempotency.MessageEnvelopeKey(messageID)
 			}
 
 			req := maep.DataPushRequest{
@@ -732,7 +718,7 @@ func newPushCmd() *cobra.Command {
 	cmd.Flags().StringVar(&topic, "topic", "chat.message", "Data topic")
 	cmd.Flags().StringVar(&text, "text", "", "Text payload")
 	cmd.Flags().StringVar(&contentType, "content-type", "application/json", "Content type (must be application/json envelope)")
-	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", "", "Idempotency key (default: generated message id)")
+	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", "", "Idempotency key (default: derived from message_id)")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "Session id for JSON payload")
 	cmd.Flags().BoolVar(&notify, "notify", false, "Send as JSON-RPC notification (no response expected)")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Print as JSON")

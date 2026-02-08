@@ -12,12 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/internal/channels"
 	"github.com/quailyquaily/mistermorph/internal/fsstore"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 )
 
 const (
-	ChannelTelegram = "telegram"
+	ChannelTelegram = channels.Telegram
 )
 
 type SessionState struct {

@@ -19,14 +19,13 @@ import (
 )
 
 const (
-	candidatesFileVersion  = 1
-	sessionsFileVersion    = 1
-	busInboxFileVersion    = 1
-	busOutboxFileVersion   = 1
-	busDeliveryFileVersion = 1
-	contactPronounsMaxLen  = 64
-	contactTZMaxLen        = 64
-	contactPrefMaxLen      = 2000
+	candidatesFileVersion = 1
+	sessionsFileVersion   = 1
+	busInboxFileVersion   = 1
+	busOutboxFileVersion  = 1
+	contactPronounsMaxLen = 64
+	contactTZMaxLen       = 64
+	contactPrefMaxLen     = 2000
 )
 
 type candidatesFile struct {
@@ -47,11 +46,6 @@ type busInboxFile struct {
 type busOutboxFile struct {
 	Version int               `json:"version"`
 	Records []BusOutboxRecord `json:"records"`
-}
-
-type busDeliveryFile struct {
-	Version int                 `json:"version"`
-	Records []BusDeliveryRecord `json:"records"`
 }
 
 type FileStore struct {
@@ -436,75 +430,6 @@ func (s *FileStore) PutBusOutboxRecord(ctx context.Context, record BusOutboxReco
 	})
 }
 
-func (s *FileStore) GetBusDeliveryRecord(ctx context.Context, channel string, idempotencyKey string) (BusDeliveryRecord, bool, error) {
-	if err := ensureNotCanceled(ctx); err != nil {
-		return BusDeliveryRecord{}, false, err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	records, err := s.loadBusDeliveryLocked()
-	if err != nil {
-		return BusDeliveryRecord{}, false, err
-	}
-	key, err := busOutboxRecordKey(channel, idempotencyKey)
-	if err != nil {
-		return BusDeliveryRecord{}, false, err
-	}
-	for _, item := range records {
-		itemKey, keyErr := busOutboxRecordKey(item.Channel, item.IdempotencyKey)
-		if keyErr != nil {
-			return BusDeliveryRecord{}, false, keyErr
-		}
-		if itemKey == key {
-			return item, true, nil
-		}
-	}
-	return BusDeliveryRecord{}, false, nil
-}
-
-func (s *FileStore) PutBusDeliveryRecord(ctx context.Context, record BusDeliveryRecord) error {
-	if err := ensureNotCanceled(ctx); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.withStateLock(ctx, func() error {
-		records, err := s.loadBusDeliveryLocked()
-		if err != nil {
-			return err
-		}
-		normalized, err := normalizeBusDeliveryRecord(record)
-		if err != nil {
-			return err
-		}
-		key, err := busOutboxRecordKey(normalized.Channel, normalized.IdempotencyKey)
-		if err != nil {
-			return err
-		}
-		replaced := false
-		for i := range records {
-			itemKey, keyErr := busOutboxRecordKey(records[i].Channel, records[i].IdempotencyKey)
-			if keyErr != nil {
-				return keyErr
-			}
-			if itemKey != key {
-				continue
-			}
-			if records[i].CreatedAt.IsZero() {
-				records[i].CreatedAt = normalized.CreatedAt
-			}
-			normalized.CreatedAt = records[i].CreatedAt
-			records[i] = normalized
-			replaced = true
-			break
-		}
-		if !replaced {
-			records = append(records, normalized)
-		}
-		return s.saveBusDeliveryLocked(records)
-	})
-}
-
 func (s *FileStore) AppendAuditEvent(ctx context.Context, event AuditEvent) error {
 	if err := ensureNotCanceled(ctx); err != nil {
 		return err
@@ -833,50 +758,6 @@ func (s *FileStore) saveBusOutboxLocked(records []BusOutboxRecord) error {
 	return writeJSONFileAtomic(s.busOutboxPath(), file)
 }
 
-func (s *FileStore) loadBusDeliveryLocked() ([]BusDeliveryRecord, error) {
-	var file busDeliveryFile
-	ok, err := readJSONFileStrict(s.busDeliveryPath(), &file)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return []BusDeliveryRecord{}, nil
-	}
-	if file.Version != busDeliveryFileVersion {
-		return nil, fmt.Errorf("unsupported bus delivery file version: %d", file.Version)
-	}
-	out := make([]BusDeliveryRecord, 0, len(file.Records))
-	for _, item := range file.Records {
-		normalized, normalizeErr := normalizeBusDeliveryRecord(item)
-		if normalizeErr != nil {
-			return nil, normalizeErr
-		}
-		out = append(out, normalized)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
-			iKey, _ := busOutboxRecordKey(out[i].Channel, out[i].IdempotencyKey)
-			jKey, _ := busOutboxRecordKey(out[j].Channel, out[j].IdempotencyKey)
-			return iKey < jKey
-		}
-		return out[i].UpdatedAt.After(out[j].UpdatedAt)
-	})
-	return out, nil
-}
-
-func (s *FileStore) saveBusDeliveryLocked(records []BusDeliveryRecord) error {
-	sort.Slice(records, func(i, j int) bool {
-		if records[i].UpdatedAt.Equal(records[j].UpdatedAt) {
-			iKey, _ := busOutboxRecordKey(records[i].Channel, records[i].IdempotencyKey)
-			jKey, _ := busOutboxRecordKey(records[j].Channel, records[j].IdempotencyKey)
-			return iKey < jKey
-		}
-		return records[i].UpdatedAt.After(records[j].UpdatedAt)
-	})
-	file := busDeliveryFile{Version: busDeliveryFileVersion, Records: records}
-	return writeJSONFileAtomic(s.busDeliveryPath(), file)
-}
-
 func (s *FileStore) readAuditEventsJSONL(path string) ([]AuditEvent, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -957,10 +838,6 @@ func (s *FileStore) busInboxPath() string {
 
 func (s *FileStore) busOutboxPath() string {
 	return filepath.Join(s.rootPath(), "bus_outbox.json")
-}
-
-func (s *FileStore) busDeliveryPath() string {
-	return filepath.Join(s.rootPath(), "bus_delivery.json")
 }
 
 func (s *FileStore) auditPathJSONL() string {
@@ -1388,73 +1265,6 @@ func normalizeBusOutboxRecord(record BusOutboxRecord) (BusOutboxRecord, error) {
 	}
 	if normalized.Status != BusDeliveryStatusFailed && normalized.LastError != "" {
 		return BusOutboxRecord{}, fmt.Errorf("last_error must be empty when status is not failed")
-	}
-	return normalized, nil
-}
-
-func normalizeBusDeliveryRecord(record BusDeliveryRecord) (BusDeliveryRecord, error) {
-	channel, err := normalizeBusChannel(record.Channel)
-	if err != nil {
-		return BusDeliveryRecord{}, err
-	}
-	idempotencyKey := strings.TrimSpace(record.IdempotencyKey)
-	if idempotencyKey == "" {
-		return BusDeliveryRecord{}, fmt.Errorf("idempotency_key is required")
-	}
-	status, err := normalizeBusDeliveryStatus(record.Status)
-	if err != nil {
-		return BusDeliveryRecord{}, err
-	}
-	if record.Attempts <= 0 {
-		return BusDeliveryRecord{}, fmt.Errorf("attempts must be > 0")
-	}
-	createdAt := record.CreatedAt.UTC()
-	updatedAt := record.UpdatedAt.UTC()
-	if createdAt.IsZero() {
-		return BusDeliveryRecord{}, fmt.Errorf("created_at is required")
-	}
-	if updatedAt.IsZero() {
-		return BusDeliveryRecord{}, fmt.Errorf("updated_at is required")
-	}
-	if updatedAt.Before(createdAt) {
-		return BusDeliveryRecord{}, fmt.Errorf("updated_at must be >= created_at")
-	}
-	normalized := BusDeliveryRecord{
-		Channel:        channel,
-		IdempotencyKey: idempotencyKey,
-		Status:         status,
-		Attempts:       record.Attempts,
-		Accepted:       record.Accepted,
-		Deduped:        record.Deduped,
-		LastError:      strings.TrimSpace(record.LastError),
-		CreatedAt:      createdAt,
-		UpdatedAt:      updatedAt,
-	}
-	if record.LastAttemptAt != nil {
-		ts := record.LastAttemptAt.UTC()
-		if ts.IsZero() {
-			return BusDeliveryRecord{}, fmt.Errorf("last_attempt_at must not be zero")
-		}
-		normalized.LastAttemptAt = &ts
-	}
-	if record.SentAt != nil {
-		ts := record.SentAt.UTC()
-		if ts.IsZero() {
-			return BusDeliveryRecord{}, fmt.Errorf("sent_at must not be zero")
-		}
-		normalized.SentAt = &ts
-	}
-	if normalized.Status == BusDeliveryStatusSent && normalized.SentAt == nil {
-		return BusDeliveryRecord{}, fmt.Errorf("sent_at is required when status=sent")
-	}
-	if normalized.Status != BusDeliveryStatusSent && normalized.SentAt != nil {
-		return BusDeliveryRecord{}, fmt.Errorf("sent_at must be empty when status is not sent")
-	}
-	if normalized.Status == BusDeliveryStatusFailed && normalized.LastError == "" {
-		return BusDeliveryRecord{}, fmt.Errorf("last_error is required when status=failed")
-	}
-	if normalized.Status != BusDeliveryStatusFailed && normalized.LastError != "" {
-		return BusDeliveryRecord{}, fmt.Errorf("last_error must be empty when status is not failed")
 	}
 	return normalized, nil
 }

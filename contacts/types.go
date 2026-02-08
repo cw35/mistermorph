@@ -1,6 +1,10 @@
 package contacts
 
-import "time"
+import (
+	"time"
+
+	"github.com/quailyquaily/mistermorph/internal/channels"
+)
 
 const (
 	DefaultFreshnessWindow   = 72 * time.Hour
@@ -23,8 +27,8 @@ const (
 )
 
 const (
-	ChannelTelegram = "telegram"
-	ChannelMAEP     = "maep"
+	ChannelTelegram = channels.Telegram
+	ChannelMAEP     = channels.MAEP
 )
 
 type Contact struct {
