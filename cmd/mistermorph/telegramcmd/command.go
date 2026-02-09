@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -2092,7 +2091,6 @@ func updateSessionMemory(
 	} else {
 		mergedContent = memory.MergeShortTerm(existingContent, draft)
 	}
-	mergedContent, replacedRefs := normalizeCounterpartyReferencesInTasks(mergedContent, ctxInfo.CounterpartyLabel)
 
 	_, err = mgr.WriteShortTerm(date, mergedContent, summary, meta)
 	if err != nil {
@@ -2102,9 +2100,6 @@ func updateSessionMemory(
 		return err
 	}
 	if logger != nil {
-		if replacedRefs > 0 {
-			logger.Debug("memory_counterparty_ref_normalized", "replacements", replacedRefs, "counterparty_label", ctxInfo.CounterpartyLabel)
-		}
 		logger.Debug("memory_update_ok", "subject_id", subjectID)
 	}
 	return nil
@@ -2120,8 +2115,6 @@ type MemoryDraftContext struct {
 	CounterpartyLabel  string `json:"counterparty_label,omitempty"`
 	TimestampUTC       string `json:"timestamp_utc,omitempty"`
 }
-
-var genericUserRefPattern = regexp.MustCompile(`(?i)\b(?:the\s+)?user\b`)
 
 func buildMemoryCounterpartyLabel(meta memory.WriteMeta, ctxInfo MemoryDraftContext) string {
 	contactID := firstNonEmptyString(meta.ContactIDs...)
@@ -2154,58 +2147,13 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func normalizeCounterpartyReferencesInTasks(content memory.ShortTermContent, counterpartyLabel string) (memory.ShortTermContent, int) {
-	label := strings.TrimSpace(counterpartyLabel)
-	if label == "" {
-		return content, 0
-	}
-	replaced := 0
-	content.Tasks, replaced = rewriteTaskActorReferences(content.Tasks, label)
-	followUps, n := rewriteTaskActorReferences(content.FollowUps, label)
-	content.FollowUps = followUps
-	replaced += n
-	return content, replaced
-}
-
-func rewriteTaskActorReferences(items []memory.TaskItem, label string) ([]memory.TaskItem, int) {
-	if len(items) == 0 {
-		return items, 0
-	}
-	out := make([]memory.TaskItem, len(items))
-	copy(out, items)
-	replaced := 0
-	for i := range out {
-		oldText := strings.TrimSpace(out[i].Text)
-		if oldText == "" {
-			continue
-		}
-		newText := rewriteGenericActorReference(oldText, label)
-		if newText != oldText {
-			out[i].Text = newText
-			replaced++
-		}
-	}
-	return out, replaced
-}
-
-func rewriteGenericActorReference(text string, label string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	text = strings.ReplaceAll(text, "用户", label)
-	text = strings.ReplaceAll(text, "对方", label)
-	text = genericUserRefPattern.ReplaceAllString(text, label)
-	return strings.TrimSpace(text)
-}
-
 func BuildMemoryDraft(ctx context.Context, client llm.Client, model string, history []llm.Message, task string, output string, existing memory.ShortTermContent, ctxInfo MemoryDraftContext) (memory.SessionDraft, error) {
 	if client == nil {
 		return memory.SessionDraft{}, fmt.Errorf("nil llm client")
 	}
 
 	conversation := buildMemoryContextMessages(history, task, output)
-	sys, user, err := renderMemoryDraftPrompts(ctxInfo, conversation, existing.Tasks, existing.FollowUps)
+	sys, user, err := renderMemoryDraftPrompts(ctxInfo, conversation, existing)
 	if err != nil {
 		return memory.SessionDraft{}, fmt.Errorf("render memory draft prompts: %w", err)
 	}
@@ -2323,18 +2271,14 @@ func firstKVItem(items []memory.KVItem) (memory.KVItem, bool) {
 }
 
 type semanticMergeContent struct {
-	SessionSummary []memory.KVItem   `json:"session_summary"`
-	TemporaryFacts []memory.KVItem   `json:"temporary_facts"`
-	Tasks          []memory.TaskItem `json:"tasks"`
-	FollowUps      []memory.TaskItem `json:"follow_ups"`
+	SessionSummary []memory.KVItem `json:"session_summary"`
+	TemporaryFacts []memory.KVItem `json:"temporary_facts"`
 }
 
 type semanticMergeResult struct {
-	Summary        string            `json:"summary"`
-	SessionSummary []memory.KVItem   `json:"session_summary"`
-	TemporaryFacts []memory.KVItem   `json:"temporary_facts"`
-	Tasks          []memory.TaskItem `json:"tasks"`
-	FollowUps      []memory.TaskItem `json:"follow_ups"`
+	Summary        string          `json:"summary"`
+	SessionSummary []memory.KVItem `json:"session_summary"`
+	TemporaryFacts []memory.KVItem `json:"temporary_facts"`
 }
 
 func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string, existing memory.ShortTermContent, draft memory.SessionDraft) (memory.ShortTermContent, string, error) {
@@ -2345,14 +2289,10 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	existingContent := semanticMergeContent{
 		SessionSummary: existing.SessionSummary,
 		TemporaryFacts: existing.TemporaryFacts,
-		Tasks:          existing.Tasks,
-		FollowUps:      existing.FollowUps,
 	}
 	incomingContent := semanticMergeContent{
 		SessionSummary: draft.SessionSummary,
 		TemporaryFacts: draft.TemporaryFacts,
-		Tasks:          draft.Tasks,
-		FollowUps:      draft.FollowUps,
 	}
 	sys, user, err := renderMemoryMergePrompts(existingContent, incomingContent)
 	if err != nil {
@@ -2387,16 +2327,9 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	merged := memory.ShortTermContent{
 		SessionSummary: out.SessionSummary,
 		TemporaryFacts: out.TemporaryFacts,
-		Tasks:          out.Tasks,
-		FollowUps:      out.FollowUps,
 		RelatedLinks:   existing.RelatedLinks,
 	}
-	merged.Tasks = applyTaskUpdatesSemantic(ctx, client, model, merged.Tasks, draft.Tasks)
-	merged.FollowUps = applyTaskUpdatesSemantic(ctx, client, model, merged.FollowUps, draft.FollowUps)
-	merged = repairSemanticMerge(existing, draft, merged)
 	merged = memory.NormalizeShortTermContent(merged)
-	merged.Tasks = semanticDedupTaskItems(ctx, client, model, merged.Tasks)
-	merged.FollowUps = semanticDedupTaskItems(ctx, client, model, merged.FollowUps)
 	summary := strings.TrimSpace(out.Summary)
 	if summary == "" {
 		summary = strings.TrimSpace(draft.Summary)
@@ -2404,195 +2337,8 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	return merged, summary, nil
 }
 
-func repairSemanticMerge(existing memory.ShortTermContent, draft memory.SessionDraft, merged memory.ShortTermContent) memory.ShortTermContent {
-	merged.Tasks = ensureMergedTasks(existing.Tasks, draft.Tasks, merged.Tasks)
-	merged.FollowUps = ensureMergedTasks(existing.FollowUps, draft.FollowUps, merged.FollowUps)
-	merged.RelatedLinks = existing.RelatedLinks
-	return merged
-}
-
-func ensureMergedTasks(existing []memory.TaskItem, incoming []memory.TaskItem, merged []memory.TaskItem) []memory.TaskItem {
-	out := append([]memory.TaskItem(nil), merged...)
-	for _, it := range existing {
-		if !taskItemCovered(it, out) {
-			out = append(out, it)
-		}
-	}
-	for _, it := range incoming {
-		if !taskItemCovered(it, out) {
-			out = append(out, it)
-		}
-	}
-	return out
-}
-
-func taskItemCovered(item memory.TaskItem, items []memory.TaskItem) bool {
-	key := normalizeTaskText(item.Text)
-	if key == "" {
-		return true
-	}
-	for _, it := range items {
-		if normalizeTaskText(it.Text) == key {
-			return true
-		}
-	}
-	return false
-}
-
 func HasDraftContent(draft memory.SessionDraft) bool {
-	return len(draft.SessionSummary) > 0 || len(draft.TemporaryFacts) > 0 || len(draft.Tasks) > 0 || len(draft.FollowUps) > 0
-}
-
-func applyTaskUpdatesSemantic(ctx context.Context, client llm.Client, model string, base []memory.TaskItem, updates []memory.TaskItem) []memory.TaskItem {
-	if len(updates) == 0 {
-		return base
-	}
-	index := make(map[string]int, len(base))
-	for i, it := range base {
-		key := normalizeTaskText(it.Text)
-		if key == "" {
-			continue
-		}
-		index[key] = i
-	}
-
-	unmatched := make([]memory.TaskItem, 0, len(updates))
-	for _, u := range updates {
-		key := normalizeTaskText(u.Text)
-		if key == "" {
-			continue
-		}
-		if i, ok := index[key]; ok {
-			base[i].Done = u.Done
-			continue
-		}
-		unmatched = append(unmatched, u)
-	}
-	if len(unmatched) == 0 {
-		return base
-	}
-	if len(base) == 0 || client == nil {
-		return append(base, unmatched...)
-	}
-	matches := semanticMatchTasks(ctx, client, model, base, unmatched)
-	if len(matches) == 0 {
-		return append(base, unmatched...)
-	}
-	claimed := make([]bool, len(unmatched))
-	for _, m := range matches {
-		if m.UpdateIndex < 0 || m.UpdateIndex >= len(unmatched) {
-			continue
-		}
-		if m.MatchIndex >= 0 && m.MatchIndex < len(base) {
-			base[m.MatchIndex].Done = unmatched[m.UpdateIndex].Done
-			claimed[m.UpdateIndex] = true
-		}
-	}
-	for i, u := range unmatched {
-		if claimed[i] {
-			continue
-		}
-		base = append(base, u)
-	}
-	return base
-}
-
-func normalizeTaskText(text string) string {
-	return strings.ToLower(strings.TrimSpace(text))
-}
-
-func normalizeKVTitle(title string) string {
-	return strings.ToLower(strings.TrimSpace(title))
-}
-
-type taskMatch struct {
-	UpdateIndex int `json:"update_index"`
-	MatchIndex  int `json:"match_index"`
-}
-
-type taskMatchResponse struct {
-	Matches []taskMatch `json:"matches"`
-}
-
-type taskDedupResponse struct {
-	Tasks []memory.TaskItem `json:"tasks"`
-}
-
-func semanticMatchTasks(ctx context.Context, client llm.Client, model string, base []memory.TaskItem, updates []memory.TaskItem) []taskMatch {
-	if client == nil || len(base) == 0 || len(updates) == 0 {
-		return nil
-	}
-	sys, user, err := renderMemoryTaskMatchPrompts(base, updates)
-	if err != nil {
-		return nil
-	}
-	res, err := client.Chat(ctx, llm.Request{
-		Model:     model,
-		ForceJSON: true,
-		Messages: []llm.Message{
-			{Role: "system", Content: sys},
-			{Role: "user", Content: user},
-		},
-		Parameters: map[string]any{
-			"max_tokens": 40960,
-		},
-	})
-	if err != nil {
-		return nil
-	}
-	raw := strings.TrimSpace(res.Text)
-	if raw == "" {
-		return nil
-	}
-	var out taskMatchResponse
-	if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
-		return nil
-	}
-	return out.Matches
-}
-
-func semanticDedupTaskItems(ctx context.Context, client llm.Client, model string, items []memory.TaskItem) []memory.TaskItem {
-	if client == nil || len(items) == 0 {
-		return items
-	}
-	sys, user, err := renderMemoryTaskDedupPrompts(items)
-	if err != nil {
-		return items
-	}
-	res, err := client.Chat(ctx, llm.Request{
-		Model:     model,
-		ForceJSON: true,
-		Messages: []llm.Message{
-			{Role: "system", Content: sys},
-			{Role: "user", Content: user},
-		},
-		Parameters: map[string]any{
-			"max_tokens": 1200,
-		},
-	})
-	if err != nil {
-		return items
-	}
-	raw := strings.TrimSpace(res.Text)
-	if raw == "" {
-		return items
-	}
-	var out taskDedupResponse
-	if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
-		return items
-	}
-	normalized := make([]memory.TaskItem, 0, len(out.Tasks))
-	for _, it := range out.Tasks {
-		text := strings.TrimSpace(it.Text)
-		if text == "" {
-			continue
-		}
-		normalized = append(normalized, memory.TaskItem{Text: text, Done: it.Done})
-	}
-	if len(normalized) == 0 && len(items) > 0 {
-		return items
-	}
-	return normalized
+	return len(draft.SessionSummary) > 0 || len(draft.TemporaryFacts) > 0
 }
 
 func buildMemoryContextMessages(history []llm.Message, task string, output string) []map[string]string {

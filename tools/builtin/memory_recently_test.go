@@ -14,7 +14,6 @@ func TestMemoryRecentlyTool_ReadsRecentItems(t *testing.T) {
 	mgr := memory.NewManager(memDir, 7)
 	_, err := mgr.WriteShortTerm(time.Now().UTC(), memory.ShortTermContent{
 		SessionSummary: []memory.KVItem{{Title: "summary", Value: "chat update"}},
-		Tasks:          []memory.TaskItem{{Text: "follow up", Done: false}},
 	}, "chat update", memory.WriteMeta{
 		SessionID:       "telegram:-100123456",
 		Source:          "telegram",

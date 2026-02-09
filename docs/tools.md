@@ -12,6 +12,8 @@
   - `url_fetch`
   - `web_search`
   - `memory_recently`
+  - `todo_update`
+  - `todo_list`
   - `contacts_upsert`
   - `contacts_list`
   - `contacts_candidate_rank`
@@ -125,6 +127,79 @@
 | `days` | `integer` | 否 | `3` | 时间窗口（天）。 |
 | `limit` | `integer` | 否 | `tools.memory.recently.max_items` | 返回条数上限。 |
 | `include_body` | `boolean` | 否 | `false` | 是否附带解析后的 body。 |
+
+## `todo_update`
+
+用途：维护 `file_state_dir` 下的 `TODO.WIP.md` / `TODO.DONE.md`，支持新增与完成事项。
+
+参数：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `action` | `string` | 是 | 无 | `add` 或 `complete`。 |
+| `content` | `string` | 是 | 无 | `add` 时为条目文本；`complete` 时为匹配查询。 |
+
+返回：
+
+- 成功时返回 `UpdateResult` JSON，关键字段：
+  - `ok`：是否成功（布尔）。
+  - `action`：实际执行动作（`add` / `complete`）。
+  - `updated_counts`：`{open_count, done_count}`。
+  - `changed`：`{wip_added, wip_removed, done_added}`。
+  - `entry`：本次主变更条目（`created_at` / `done_at` / `content`）。
+  - `warnings`：可选警告数组（例如 LLM 改写提示）。
+
+约束：
+
+- 受 `tools.todo.enabled` 开关控制。
+- 依赖 LLM 客户端与模型；未绑定会报错。
+- `add` 仅接受可引用 ID：`tg:id:<int64>` 或 `maep:<peer_id>`。
+- `add` 中的引用 ID 必须存在于联系人快照的 `reachable_ids`。
+- `complete` 仅走 LLM 语义匹配（无程序兜底）；歧义会直接报错。
+
+错误（字符串匹配）：
+
+| 错误字符串（包含） | 触发场景 |
+|---|---|
+| `todo_update tool is disabled` | 工具被禁用。 |
+| `action is required` | 缺少 `action`。 |
+| `content is required` | 缺少 `content` 或为空。 |
+| `invalid action:` | `action` 不是 `add/complete`。 |
+| `todo_update unavailable (missing llm client)` | 未注入 LLM client。 |
+| `todo_update unavailable (missing llm model)` | 未配置模型。 |
+| `invalid reference id:` | 文本里存在非法 `(...)` 引用。 |
+| `missing_reference_id` | LLM 判断有对象提及但缺可引用 ID。 |
+| `reference id is not reachable:` | 引用 ID 不在联系人可达集合。 |
+| `no matching todo item in TODO.WIP.md` | `complete` 未命中可完成条目。 |
+| `ambiguous todo item match` | `complete` 命中多个候选。 |
+| `invalid semantic_match response` | 语义匹配 LLM 返回非法 JSON/结构。 |
+| `invalid semantic_dedup response` | 语义去重 LLM 返回非法 JSON/结构。 |
+
+## `todo_list`
+
+用途：读取当前 TODO 条目，支持 `wip/done/both` 视图。
+
+参数：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `scope` | `string` | 否 | `wip` | `wip` / `done` / `both`。 |
+
+返回：
+
+- 成功时返回 `ListResult` JSON，关键字段：
+  - `scope`、`open_count`、`done_count`。
+  - `wip_items` / `done_items`（按文件顺序返回，首条优先）。
+  - `wip_path` / `done_path`。
+  - `generated_at` / `generated_unix`。
+
+错误（字符串匹配）：
+
+| 错误字符串（包含） | 触发场景 |
+|---|---|
+| `todo_list tool is disabled` | 工具被禁用。 |
+| `todo paths are not configured` | TODO 文件路径缺失。 |
+| `invalid scope:` | `scope` 不是 `wip/done/both`。 |
 
 ## `contacts_upsert`
 

@@ -113,33 +113,6 @@ func (m *Manager) LoadShortTerm(date time.Time, sessionID string) (Frontmatter, 
 	return fm, ParseShortTermContent(body), true, nil
 }
 
-func (m *Manager) UpdateRecentTaskStatuses(updates []TaskItem, excludeSessionID string) (int, error) {
-	_ = m
-	_ = updates
-	_ = excludeSessionID
-	// Tasks/follow_ups are no longer synchronized through memory files.
-	return 0, nil
-}
-
-func updateTaskList(tasks *[]TaskItem, updates map[string]bool) bool {
-	if len(updates) == 0 || tasks == nil {
-		return false
-	}
-	changed := false
-	for i := range *tasks {
-		text := strings.TrimSpace((*tasks)[i].Text)
-		if text == "" {
-			continue
-		}
-		key := strings.ToLower(text)
-		if done, ok := updates[key]; ok && done && !(*tasks)[i].Done {
-			(*tasks)[i].Done = true
-			changed = true
-		}
-	}
-	return changed
-}
-
 func (m *Manager) UpdateLongTerm(subjectID string, promote PromoteDraft) (bool, error) {
 	if m == nil {
 		return false, fmt.Errorf("nil memory manager")
@@ -182,8 +155,6 @@ func applyShortTermFrontmatter(existing Frontmatter, summary string, meta WriteM
 	existing.UpdatedAt = now.UTC().Format(time.RFC3339)
 	existing.Summary = summary
 	_ = content
-	existing.Tasks = ""
-	existing.FollowUps = ""
 	if strings.TrimSpace(meta.SessionID) != "" {
 		existing.SessionID = strings.TrimSpace(meta.SessionID)
 	}
@@ -287,8 +258,6 @@ func applyLongTermFrontmatter(existing Frontmatter, subjectID string, content Lo
 	} else {
 		existing.Summary = summarizeLongTerm(content)
 	}
-	existing.Tasks = ""
-	existing.FollowUps = ""
 	existing.SubjectID = strings.TrimSpace(subjectID)
 	return existing
 }
@@ -306,12 +275,6 @@ func fallbackShortSummary(draft SessionDraft) string {
 			return truncateSummary(val)
 		}
 	}
-	for _, item := range draft.Tasks {
-		val := strings.TrimSpace(item.Text)
-		if val != "" {
-			return truncateSummary("Task: " + val)
-		}
-	}
 	return defaultShortSummary
 }
 
@@ -326,12 +289,6 @@ func fallbackShortSummaryFromContent(content ShortTermContent) string {
 		val := strings.TrimSpace(content.TemporaryFacts[0].Value)
 		if val != "" {
 			return truncateSummary(val)
-		}
-	}
-	for _, task := range content.Tasks {
-		val := strings.TrimSpace(task.Text)
-		if val != "" {
-			return truncateSummary("Task: " + val)
 		}
 	}
 	return defaultShortSummary
@@ -419,64 +376,6 @@ func ensureShortTermDefaults(content ShortTermContent, draft SessionDraft) Short
 		}
 	}
 	return content
-}
-
-func extractTodoSections(body string) (tasks []string, followUps []string) {
-	var current string
-	lines := strings.Split(body, "\n")
-	for _, line := range lines {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "## ") {
-			current = strings.TrimSpace(strings.TrimPrefix(trim, "## "))
-			continue
-		}
-		if current == "" || trim == "" {
-			continue
-		}
-		switch current {
-		case sectionTasks:
-			tasks = append(tasks, trim)
-		case sectionFollowUps:
-			followUps = append(followUps, trim)
-		}
-	}
-	return tasks, followUps
-}
-
-func appendTodoSections(body string, tasks []string, followUps []string) string {
-	b := strings.TrimSpace(body)
-	if len(tasks) == 0 && len(followUps) == 0 {
-		if b == "" {
-			return ""
-		}
-		return b + "\n"
-	}
-	var out strings.Builder
-	if b != "" {
-		out.WriteString(b)
-		out.WriteString("\n\n")
-	}
-	if len(tasks) > 0 {
-		out.WriteString("## ")
-		out.WriteString(sectionTasks)
-		out.WriteString("\n")
-		for _, line := range tasks {
-			out.WriteString(line)
-			out.WriteString("\n")
-		}
-		out.WriteString("\n")
-	}
-	if len(followUps) > 0 {
-		out.WriteString("## ")
-		out.WriteString(sectionFollowUps)
-		out.WriteString("\n")
-		for _, line := range followUps {
-			out.WriteString(line)
-			out.WriteString("\n")
-		}
-		out.WriteString("\n")
-	}
-	return strings.TrimSpace(out.String()) + "\n"
 }
 
 func readMemoryFile(path string) (Frontmatter, string, bool, error) {

@@ -12,8 +12,10 @@ func TestRenderMemoryDraftPrompts(t *testing.T) {
 	sys, user, err := renderMemoryDraftPrompts(
 		MemoryDraftContext{SessionID: "telegram:1", ChatType: "private"},
 		[]map[string]string{{"role": "user", "content": "hi"}},
-		[]memory.TaskItem{{Text: "t1", Done: false}},
-		[]memory.TaskItem{{Text: "f1", Done: false}},
+		memory.ShortTermContent{
+			SessionSummary: []memory.KVItem{{Title: "Topic", Value: "Users: A"}},
+			TemporaryFacts: []memory.KVItem{{Title: "Fact", Value: "URL: https://example.com"}},
+		},
 	)
 	if err != nil {
 		t.Fatalf("renderMemoryDraftPrompts() error = %v", err)
@@ -31,12 +33,15 @@ func TestRenderMemoryDraftPrompts(t *testing.T) {
 	if payload["rules"] == nil {
 		t.Fatalf("missing rules")
 	}
+	if payload["existing_session_summary"] == nil || payload["existing_temporary_facts"] == nil {
+		t.Fatalf("missing existing memory payload")
+	}
 }
 
 func TestRenderMemoryMergePrompts(t *testing.T) {
 	sys, user, err := renderMemoryMergePrompts(
-		semanticMergeContent{Tasks: []memory.TaskItem{{Text: "a"}}},
-		semanticMergeContent{Tasks: []memory.TaskItem{{Text: "b"}}},
+		semanticMergeContent{SessionSummary: []memory.KVItem{{Title: "A", Value: "v"}}},
+		semanticMergeContent{TemporaryFacts: []memory.KVItem{{Title: "B", Value: "v"}}},
 	)
 	if err != nil {
 		t.Fatalf("renderMemoryMergePrompts() error = %v", err)
@@ -50,42 +55,5 @@ func TestRenderMemoryMergePrompts(t *testing.T) {
 	}
 	if payload["existing"] == nil || payload["incoming"] == nil {
 		t.Fatalf("missing existing/incoming payload")
-	}
-}
-
-func TestRenderMemoryTaskMatchPrompts(t *testing.T) {
-	sys, user, err := renderMemoryTaskMatchPrompts(
-		[]memory.TaskItem{{Text: "existing"}},
-		[]memory.TaskItem{{Text: "update"}},
-	)
-	if err != nil {
-		t.Fatalf("renderMemoryTaskMatchPrompts() error = %v", err)
-	}
-	if !strings.Contains(sys, "match task updates") {
-		t.Fatalf("unexpected system prompt: %q", sys)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(user), &payload); err != nil {
-		t.Fatalf("user prompt is not valid json: %v", err)
-	}
-	if payload["existing"] == nil || payload["updates"] == nil {
-		t.Fatalf("missing existing/updates payload")
-	}
-}
-
-func TestRenderMemoryTaskDedupPrompts(t *testing.T) {
-	sys, user, err := renderMemoryTaskDedupPrompts([]memory.TaskItem{{Text: "task", Done: false}})
-	if err != nil {
-		t.Fatalf("renderMemoryTaskDedupPrompts() error = %v", err)
-	}
-	if !strings.Contains(sys, "deduplicate tasks semantically") {
-		t.Fatalf("unexpected system prompt: %q", sys)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(user), &payload); err != nil {
-		t.Fatalf("user prompt is not valid json: %v", err)
-	}
-	if payload["tasks"] == nil || payload["rules"] == nil {
-		t.Fatalf("missing tasks/rules payload")
 	}
 }

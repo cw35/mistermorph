@@ -11,8 +11,6 @@ import (
 const (
 	sectionSessionSummary = "Session Summary"
 	sectionTemporaryFacts = "Temporary Facts"
-	sectionTasks          = "Tasks"
-	sectionFollowUps      = "Follow Ups"
 	sectionRelatedLinks   = "Related Links"
 
 	sectionLongGoals = "Long-Term Goals / Projects"
@@ -26,8 +24,6 @@ func ParseShortTermContent(body string) ShortTermContent {
 	return ShortTermContent{
 		SessionSummary: parseKVSection(sections[sectionSessionSummary]),
 		TemporaryFacts: parseKVSection(sections[sectionTemporaryFacts]),
-		Tasks:          parseTodoSection(sections[sectionTasks]),
-		FollowUps:      parseTodoSection(sections[sectionFollowUps]),
 		RelatedLinks:   parseLinkSection(sections[sectionRelatedLinks]),
 	}
 }
@@ -43,14 +39,10 @@ func ParseLongTermContent(body string) LongTermContent {
 func MergeShortTerm(existing ShortTermContent, draft SessionDraft) ShortTermContent {
 	incomingSummary := normalizeKVItems(draft.SessionSummary)
 	incomingFacts := normalizeKVItems(draft.TemporaryFacts)
-	incomingTasks := normalizeTasks(draft.Tasks)
-	incomingFollowUps := normalizeTasks(draft.FollowUps)
 
 	merged := ShortTermContent{
 		SessionSummary: MergeSessionSummary(existing.SessionSummary, incomingSummary),
 		TemporaryFacts: MergeTemporaryFacts(existing.TemporaryFacts, incomingFacts),
-		Tasks:          mergeTasks(existing.Tasks, incomingTasks),
-		FollowUps:      mergeTasks(existing.FollowUps, incomingFollowUps),
 		RelatedLinks:   mergeLinks(existing.RelatedLinks, nil),
 	}
 	return NormalizeShortTermContent(merged)
@@ -212,24 +204,6 @@ func parseKVSection(lines []string) []KVItem {
 	return out
 }
 
-func parseTodoSection(lines []string) []TaskItem {
-	items := make([]TaskItem, 0, len(lines))
-	seen := map[string]bool{}
-	for _, line := range lines {
-		item, ok := parseTodoLine(line)
-		if !ok {
-			continue
-		}
-		key := strings.ToLower(strings.TrimSpace(item.Text))
-		if key == "" || seen[key] {
-			continue
-		}
-		seen[key] = true
-		items = append(items, item)
-	}
-	return items
-}
-
 func parseLinkSection(lines []string) []LinkItem {
 	items := make([]LinkItem, 0, len(lines))
 	seen := map[string]bool{}
@@ -333,25 +307,6 @@ func parseNumberedKVLine(line string) (string, string, bool) {
 	return title, inline, true
 }
 
-func parseTodoLine(line string) (TaskItem, bool) {
-	line = strings.TrimSpace(line)
-	if !strings.HasPrefix(line, "- [") {
-		return TaskItem{}, false
-	}
-	rest := strings.TrimPrefix(line, "- [")
-	idx := strings.Index(rest, "]")
-	if idx < 0 {
-		return TaskItem{}, false
-	}
-	status := strings.ToLower(strings.TrimSpace(rest[:idx]))
-	text := strings.TrimSpace(rest[idx+1:])
-	if text == "" {
-		return TaskItem{}, false
-	}
-	done := status == "x"
-	return TaskItem{Text: text, Done: done}, true
-}
-
 func parseLinkLine(line string) (LinkItem, bool) {
 	line = strings.TrimSpace(line)
 	if !strings.HasPrefix(line, "-") {
@@ -392,24 +347,6 @@ func normalizeKVItems(items []KVItem) []KVItem {
 		}
 		seen[key] = true
 		out = append(out, KVItem{Title: title, Value: value})
-	}
-	return out
-}
-
-func normalizeTasks(items []TaskItem) []TaskItem {
-	out := make([]TaskItem, 0, len(items))
-	seen := map[string]bool{}
-	for _, it := range items {
-		text := strings.TrimSpace(it.Text)
-		if text == "" {
-			continue
-		}
-		key := strings.ToLower(text)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out = append(out, TaskItem{Text: text, Done: it.Done})
 	}
 	return out
 }
@@ -1017,35 +954,6 @@ func isDateYYYYMMDD(val string) bool {
 	return true
 }
 
-func mergeTasks(existing []TaskItem, incoming []TaskItem) []TaskItem {
-	if len(incoming) == 0 {
-		return existing
-	}
-	order := make([]TaskItem, 0, len(existing)+len(incoming))
-	index := map[string]int{}
-	for _, it := range existing {
-		key := strings.ToLower(strings.TrimSpace(it.Text))
-		if key == "" {
-			continue
-		}
-		index[key] = len(order)
-		order = append(order, it)
-	}
-	for _, it := range incoming {
-		key := strings.ToLower(strings.TrimSpace(it.Text))
-		if key == "" {
-			continue
-		}
-		if idx, ok := index[key]; ok {
-			order[idx] = it
-			continue
-		}
-		index[key] = len(order)
-		order = append(order, it)
-	}
-	return order
-}
-
 func mergeLinks(existing []LinkItem, incoming []LinkItem) []LinkItem {
 	order := make([]LinkItem, 0, len(existing)+len(incoming))
 	index := map[string]int{}
@@ -1209,26 +1117,6 @@ func writeSubitems(b *strings.Builder, items []subItem) {
 		b.WriteString(val)
 		b.WriteString("\n")
 	}
-}
-
-func writeTodoSection(b *strings.Builder, title string, items []TaskItem) {
-	b.WriteString("## ")
-	b.WriteString(title)
-	b.WriteString("\n")
-	for _, it := range items {
-		text := strings.TrimSpace(it.Text)
-		if text == "" {
-			continue
-		}
-		if it.Done {
-			b.WriteString("- [x] ")
-		} else {
-			b.WriteString("- [ ] ")
-		}
-		b.WriteString(text)
-		b.WriteString("\n")
-	}
-	b.WriteString("\n")
 }
 
 func writeLinkSection(b *strings.Builder, title string, items []LinkItem) {

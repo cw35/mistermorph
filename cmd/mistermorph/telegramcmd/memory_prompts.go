@@ -21,18 +21,6 @@ var memoryMergeSystemPromptTemplateSource string
 //go:embed prompts/memory_merge_user.tmpl
 var memoryMergeUserPromptTemplateSource string
 
-//go:embed prompts/memory_task_match_system.tmpl
-var memoryTaskMatchSystemPromptTemplateSource string
-
-//go:embed prompts/memory_task_match_user.tmpl
-var memoryTaskMatchUserPromptTemplateSource string
-
-//go:embed prompts/memory_task_dedup_system.tmpl
-var memoryTaskDedupSystemPromptTemplateSource string
-
-//go:embed prompts/memory_task_dedup_user.tmpl
-var memoryTaskDedupUserPromptTemplateSource string
-
 var memoryPromptTemplateFuncs = template.FuncMap{
 	"toJSON": func(v any) (string, error) {
 		b, err := json.Marshal(v)
@@ -47,33 +35,28 @@ var memoryDraftSystemPromptTemplate = prompttmpl.MustParse("telegram_memory_draf
 var memoryDraftUserPromptTemplate = prompttmpl.MustParse("telegram_memory_draft_user", memoryDraftUserPromptTemplateSource, memoryPromptTemplateFuncs)
 var memoryMergeSystemPromptTemplate = prompttmpl.MustParse("telegram_memory_merge_system", memoryMergeSystemPromptTemplateSource, nil)
 var memoryMergeUserPromptTemplate = prompttmpl.MustParse("telegram_memory_merge_user", memoryMergeUserPromptTemplateSource, memoryPromptTemplateFuncs)
-var memoryTaskMatchSystemPromptTemplate = prompttmpl.MustParse("telegram_memory_task_match_system", memoryTaskMatchSystemPromptTemplateSource, nil)
-var memoryTaskMatchUserPromptTemplate = prompttmpl.MustParse("telegram_memory_task_match_user", memoryTaskMatchUserPromptTemplateSource, memoryPromptTemplateFuncs)
-var memoryTaskDedupSystemPromptTemplate = prompttmpl.MustParse("telegram_memory_task_dedup_system", memoryTaskDedupSystemPromptTemplateSource, nil)
-var memoryTaskDedupUserPromptTemplate = prompttmpl.MustParse("telegram_memory_task_dedup_user", memoryTaskDedupUserPromptTemplateSource, memoryPromptTemplateFuncs)
 
 type memoryDraftUserPromptData struct {
-	SessionContext    MemoryDraftContext
-	Conversation      []map[string]string
-	ExistingTasks     []memory.TaskItem
-	ExistingFollowUps []memory.TaskItem
+	SessionContext         MemoryDraftContext
+	Conversation           []map[string]string
+	ExistingSessionSummary []memory.KVItem
+	ExistingTemporaryFacts []memory.KVItem
 }
 
 func renderMemoryDraftPrompts(
 	ctxInfo MemoryDraftContext,
 	conversation []map[string]string,
-	existingTasks []memory.TaskItem,
-	existingFollowUps []memory.TaskItem,
+	existing memory.ShortTermContent,
 ) (string, string, error) {
 	systemPrompt, err := prompttmpl.Render(memoryDraftSystemPromptTemplate, struct{}{})
 	if err != nil {
 		return "", "", err
 	}
 	userPrompt, err := prompttmpl.Render(memoryDraftUserPromptTemplate, memoryDraftUserPromptData{
-		SessionContext:    ctxInfo,
-		Conversation:      conversation,
-		ExistingTasks:     existingTasks,
-		ExistingFollowUps: existingFollowUps,
+		SessionContext:         ctxInfo,
+		Conversation:           conversation,
+		ExistingSessionSummary: existing.SessionSummary,
+		ExistingTemporaryFacts: existing.TemporaryFacts,
 	})
 	if err != nil {
 		return "", "", err
@@ -94,44 +77,6 @@ func renderMemoryMergePrompts(existing semanticMergeContent, incoming semanticMe
 	userPrompt, err := prompttmpl.Render(memoryMergeUserPromptTemplate, memoryMergeUserPromptData{
 		Existing: existing,
 		Incoming: incoming,
-	})
-	if err != nil {
-		return "", "", err
-	}
-	return systemPrompt, userPrompt, nil
-}
-
-type memoryTaskMatchUserPromptData struct {
-	Existing []memory.TaskItem
-	Updates  []memory.TaskItem
-}
-
-func renderMemoryTaskMatchPrompts(existing []memory.TaskItem, updates []memory.TaskItem) (string, string, error) {
-	systemPrompt, err := prompttmpl.Render(memoryTaskMatchSystemPromptTemplate, struct{}{})
-	if err != nil {
-		return "", "", err
-	}
-	userPrompt, err := prompttmpl.Render(memoryTaskMatchUserPromptTemplate, memoryTaskMatchUserPromptData{
-		Existing: existing,
-		Updates:  updates,
-	})
-	if err != nil {
-		return "", "", err
-	}
-	return systemPrompt, userPrompt, nil
-}
-
-type memoryTaskDedupUserPromptData struct {
-	Tasks []memory.TaskItem
-}
-
-func renderMemoryTaskDedupPrompts(tasks []memory.TaskItem) (string, string, error) {
-	systemPrompt, err := prompttmpl.Render(memoryTaskDedupSystemPromptTemplate, struct{}{})
-	if err != nil {
-		return "", "", err
-	}
-	userPrompt, err := prompttmpl.Render(memoryTaskDedupUserPromptTemplate, memoryTaskDedupUserPromptData{
-		Tasks: tasks,
 	})
 	if err != nil {
 		return "", "", err

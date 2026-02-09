@@ -14,8 +14,6 @@ type Frontmatter struct {
 	CreatedAt        string     `yaml:"created_at"`
 	UpdatedAt        string     `yaml:"updated_at"`
 	Summary          string     `yaml:"summary"`
-	Tasks            string     `yaml:"tasks,omitempty"`
-	FollowUps        string     `yaml:"follow_ups,omitempty"`
 	SessionID        string     `yaml:"session_id,omitempty"`
 	Source           string     `yaml:"source,omitempty"`
 	Channel          string     `yaml:"channel,omitempty"`
@@ -37,11 +35,6 @@ type KVItem struct {
 	Value string `json:"value"`
 }
 
-type TaskItem struct {
-	Text string `json:"text"`
-	Done bool   `json:"done"`
-}
-
 type PromoteDraft struct {
 	GoalsProjects []KVItem `json:"goals_projects"`
 	KeyFacts      []KVItem `json:"key_facts"`
@@ -51,8 +44,6 @@ type SessionDraft struct {
 	Summary        string       `json:"summary"`
 	SessionSummary []KVItem     `json:"session_summary"`
 	TemporaryFacts []KVItem     `json:"temporary_facts"`
-	Tasks          []TaskItem   `json:"tasks"`
-	FollowUps      []TaskItem   `json:"follow_ups"`
 	Promote        PromoteDraft `json:"promote"`
 }
 
@@ -66,8 +57,6 @@ type ShortTermSummary struct {
 type ShortTermContent struct {
 	SessionSummary []KVItem
 	TemporaryFacts []KVItem
-	Tasks          []TaskItem
-	FollowUps      []TaskItem
 	RelatedLinks   []LinkItem
 }
 

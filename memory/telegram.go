@@ -68,40 +68,13 @@ func (m *Manager) LoadRecentTelegramChatIDs(days int) ([]int64, error) {
 	return out, nil
 }
 
-// LoadTelegramChatsWithPendingTasks scans recent short-term memory files and returns
-// Telegram chat IDs that have pending tasks or follow-ups in frontmatter/body.
+// LoadTelegramChatsWithPendingTasks is kept for compatibility.
+// Pending todo tracking has moved out of memory files to TODO.WIP.md.
 func (m *Manager) LoadTelegramChatsWithPendingTasks(days int) ([]int64, error) {
 	_ = m
 	_ = days
 	// Pending task tracking has moved out of memory files to TODO.WIP.md.
 	return nil, nil
-}
-
-func hasPendingTasks(fm Frontmatter, body string) bool {
-	pending, known := pendingFromFrontmatter(fm)
-	if known {
-		return pending
-	}
-	content := ParseShortTermContent(body)
-	tDone, tTotal := taskCounts(content.Tasks)
-	fDone, fTotal := taskCounts(content.FollowUps)
-	return tTotal > tDone || fTotal > fDone
-}
-
-func pendingFromFrontmatter(fm Frontmatter) (pending bool, known bool) {
-	if done, total, ok := parseTaskRatio(fm.Tasks); ok {
-		known = true
-		if total > done {
-			pending = true
-		}
-	}
-	if done, total, ok := parseTaskRatio(fm.FollowUps); ok {
-		known = true
-		if total > done {
-			pending = true
-		}
-	}
-	return pending, known
 }
 
 func parseTelegramChatID(sessionID string) (int64, bool) {
