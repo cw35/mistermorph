@@ -18,6 +18,17 @@ Notes:
 - v1 1v1 E2EE depends on libp2p secure channels.
 - v1 does not include asynchronous session bootstrapping via X3DH / Double Ratchet, nor per-message ratcheting.
 
+### 1.1 Implementation Status (2026-02-08)
+Current codebase has implemented the MAEP v1 baseline in production code paths:
+- `hello` / `rpc` protocol handlers and `agent.data.push` strict validation.
+- File-store state for identity/contacts/audit/inbox/outbox/dedupe/protocol-history.
+- CLI management surface (`mistermorph maep ...`).
+- Runtime integration with in-process bus for inbound event normalization.
+
+Boundary:
+- This document defines MAEP protocol/storage behavior.
+- Generic multi-channel bus architecture is tracked separately in `docs/bus.md`.
+
 ## 2) Goals
 - Allow two agents to complete secure online data exchange after exchanging contact cards.
 - Automatically fall back to relay when direct connection fails.
@@ -30,6 +41,7 @@ Notes:
 - No durable retransmission queue.
 - No exactly-once guarantee.
 - No x402 billing flow (deferred to v2).
+- No generic bus backend specification (inproc/redis/retry/DLQ are outside this MAEP spec).
 
 ## 4) Terminology
 - `peer_id`: libp2p Peer ID (protocol-layer identity used for auth and connection matching).
@@ -456,6 +468,22 @@ Implementation recommendations:
 
 ## 14) Open Questions
 - Should the default relay policy be `verified_only=false + rate limiting for tofu`, or `verified_only=true`?
+
+## 15) Runtime Integration (Code-Aligned)
+Current integration points:
+- `mistermorph maep serve`:
+  - starts MAEP node + in-process bus (`bus.max_inflight`)
+  - ingests `OnDataPush` via MAEP inbound adapter and republishes as validated bus message
+  - bus handler projects back to MAEP event for command-level processing and optional contacts sync
+- `mistermorph telegram --with-maep`:
+  - embedded MAEP node uses the same inbound adapter path into bus
+  - bus dispatcher routes by `direction + channel` and unifies Telegram/MAEP ingress shape
+
+State-plane distinction:
+- MAEP store (`maep/*`): protocol-level inbox/outbox/dedupe/history.
+- Bus store (`contacts/*`): channel adapter dedupe and delivery lifecycle (`bus_inbox` / `bus_outbox`).
+
+Both are intentional and serve different abstraction layers.
 
 ## References
 - Peer IDs: https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md

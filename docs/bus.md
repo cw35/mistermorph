@@ -1,0 +1,192 @@
+---
+date: 2026-02-08
+title: Multi-Channel Messaging Architecture (Bus + Adapters)
+status: implemented
+---
+
+# Multi-Channel Messaging Architecture (Code-Aligned)
+
+## 1) Purpose and Positioning
+This document is a code-aligned architecture snapshot of the current bus-based multi-channel design in `mistermorph`.
+
+Authoring rules:
+- Code is the source of truth.
+- Implemented behavior and boundaries are described explicitly.
+- Planned work is kept in backlog sections and not mixed into current-state sections.
+
+## 2) Current Architecture Snapshot
+
+### 2.1 Bus Runtime (`internal/bus`)
+Current mode: `inproc` only.
+
+Core behavior:
+- Startup entrypoint: `StartInproc(...)`.
+- Concurrency model: fixed shard workers + `hash(conversation_key)` routing.
+- Bounded backpressure:
+  - `max_inflight` controls token pool and shard queue capacity.
+  - publish timeout (`context.DeadlineExceeded`) is surfaced as `QUEUE_FULL`.
+- Topology freeze: once first publish happens, further subscription changes are rejected.
+- Single handler per topic: duplicate subscription for a topic is an error.
+- Publish APIs:
+  - `PublishValidated`: boundary entrypoint with message validation
+  - `Publish`: internal fast path assuming boundary validation is already done
+
+### 2.2 Error Model (`internal/bus/errors.go`)
+Implemented typed error codes:
+- `BUS_CLOSED`
+- `NO_SUBSCRIBER`
+- `QUEUE_FULL`
+- `TOPIC_ALREADY_HANDLED`
+- `TOPIC_FROZEN`
+- `INVALID_MESSAGE`
+- `INVALID_TOPIC`
+
+Callers use `ErrorCodeOf(err)` for uniform classification.
+
+### 2.3 Message Model (`internal/bus/message.go`)
+Current `BusMessage` shape:
+- `id`
+- `direction`
+- `channel`
+- `topic`
+- `conversation_key`
+- `participant_key`
+- `idempotency_key`
+- `correlation_id`
+- `causation_id` (optional)
+- `payload_base64`
+- `created_at`
+- `extensions` (typed extension fields)
+
+### 2.4 Topic and Envelope
+Registered topic allowlist:
+- `share.proactive.v1`
+- `dm.checkin.v1`
+- `dm.reply.v1`
+- `chat.message`
+
+`MessageEnvelope` fields:
+- `message_id`
+- `text`
+- `sent_at` (RFC3339)
+- `session_id` (required for dialogue topics; must be UUIDv7)
+- `reply_to` (optional)
+
+### 2.5 Conversation Key Rules
+Implemented constructors:
+- Telegram chat: `telegram:chat:<chat_id>`
+- MAEP peer: `maep:peer:<peer_id>`
+- Slack channel: `slack:channel:<channel_id>`
+- Discord channel: `discord:channel:<channel_id>`
+
+Notes:
+- `telegram:user:<username>` is no longer supported in Telegram delivery.
+- Slack/Discord constructors exist, while runtime adapters are not yet implemented.
+
+### 2.6 Adapter Layer (`internal/bus/adapters/*`)
+
+Shared inbound template:
+1. validate input
+2. dedupe via inbox (`channel + platform_message_id`)
+3. `PublishValidated` to bus
+4. persist inbox record
+
+Implemented channel adapters:
+- Telegram:
+  - inbound: `internal/bus/adapters/telegram/inbound.go`
+  - delivery: `internal/bus/adapters/telegram/delivery.go`
+- MAEP:
+  - inbound: `internal/bus/adapters/maep/inbound.go`
+  - delivery: `internal/bus/adapters/maep/delivery.go`
+
+### 2.7 Command Wiring
+
+`mistermorph telegram`:
+- starts inproc bus
+- subscribes `AllTopics()` with one dispatcher by `direction + channel`
+- Telegram poll inbound path: Telegram inbound adapter -> bus -> handler -> worker queue
+- MAEP inbound path under `--with-maep`: `OnDataPush -> MAEP inbound adapter -> bus -> handler`
+- business outbound messages (task output, task failures, file-download failures, plan updates) are sent through bus outbound
+- operational/admin messages (for example `/help`, `/mem`, initialization/system notices) may still use direct send
+
+`mistermorph maep serve`:
+- starts inproc bus
+- `OnDataPush -> MAEP inbound adapter -> bus -> handler`
+- handler prints events and optionally syncs contacts
+
+`internal/contactsruntime/sender.go`:
+- `NewRoutingSender` starts inproc bus and delivery adapters internally
+- `Send(...)` routes to Telegram or MAEP, then publishes outbound `BusMessage`
+- `publishAndAwait(...)` uses a pending map for synchronous delivery result waiting
+- fail-fast: missing `idempotency_key` is an immediate error
+
+### 2.8 State and Idempotency (`contacts`)
+
+Inbox:
+- storage: `bus_inbox.json`
+- key: `channel + platform_message_id`
+
+Outbox (single state machine):
+- storage: `bus_outbox.json`
+- key: `channel + idempotency_key`
+- statuses: `pending | sent | failed`
+- fields include: `attempts`, `accepted`, `deduped`, `last_error`, `sent_at`, `last_attempt_at`
+
+## 4) Design Evaluation (Current State)
+
+### 4.1 Why this is reasonable now
+- Minimal viable path is complete: Telegram and MAEP inbound/outbound are unified through bus.
+- Ordering is explicit and enforceable per `conversation_key`.
+- Backpressure is bounded and observable via typed error (`QUEUE_FULL`).
+- Idempotency is explicit via inbox/outbox keyed records.
+- Validation is fail-fast across boundary and state transitions.
+
+### 4.2 Explicit boundaries (intentional for this stage)
+- Single-process runtime bus (not a cross-process durable message system).
+- Single handler per topic (no fan-out multi-consumer topology).
+- No built-in retry worker / DLQ.
+- Slack/Discord are partially prepared (channel constants + key builders), not fully integrated.
+
+## 5) Delivery Status
+
+### 5.1 Completed
+- Telegram/MAEP inbound adapters
+- Telegram/MAEP delivery adapters
+- outbound bus migration in `contactsruntime sender`
+- main-path test coverage expansion
+- migration of Telegram business direct-send paths to bus outbound (admin paths excluded)
+- typed error code propagation in call-site logging
+- cross-channel regression: Telegram inbound -> MAEP outbound
+
+### 5.2 Verified test set
+The following test groups are currently passing:
+- `go test ./internal/bus/...`
+- `go test ./internal/bus/adapters/...`
+- `go test ./internal/contactsruntime/... ./contacts/...`
+- `go test ./cmd/mistermorph/telegramcmd ./cmd/mistermorph/maepcmd`
+- `go test ./...`
+
+## 6) Backlog (Separated from Current State)
+
+### 6.1 Near-term
+- Add fuller end-to-end runbook and verification notes for `contacts proactive tick --send`.
+- Add sampling strategy for high-frequency debug log points.
+- Evaluate making inbox optional for outbound-only deployment modes.
+
+### 6.2 Mid/Far-term
+- External bus backend option (candidate: Redis Streams).
+- Retry / DLQ worker model.
+- Slack/Discord runtime adapters and full-path integration.
+
+## 7) Configuration
+Current bus config surface:
+
+```yaml
+bus:
+  max_inflight: 1024
+```
+
+---
+
+Update policy for this file:
+When implementation changes, update Section 2 (current snapshot) and Section 6 (backlog) first to keep architecture docs code-aligned.

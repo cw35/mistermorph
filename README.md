@@ -22,7 +22,7 @@ Other languages: [简体中文](docs/zh-CN/README.md) | [日本語](docs/ja-JP/R
 What makes this project worth looking at:
 
 - 🧩 **Reusable Go core**: Run the agent as a CLI, or embed it as a library/subprocess in other apps.
-- 🤝 **Mesh Agent Exchange Protocol (MAEP)**: You and your amigos run multiple agents and want them to message each other: use the MAEP, a p2p protocol with trust-state and audit trails. (see [docs/feat/feat_20260206_maep.md](docs/feat/feat_20260206_maep.md), WIP).
+- 🤝 **Mesh Agent Exchange Protocol (MAEP)**: You and your amigos run multiple agents and want them to message each other: use the MAEP, a p2p protocol with trust-state and audit trails. (see [docs/maep.md](docs/maep.md), WIP).
 - 🔒 **Serious secure defaults**: Profile-based credential injection, Guard redaction, outbound policy controls, and async approvals with audit trails (see [docs/security.md](docs/security.md)).
 - 🧰 **Practical Skills system**: Discover + inject `SKILL.md` from `~/.morph`, `~/.claude`, and `~/.codex`, with smart routing plus explicit control (see [docs/skills.md](docs/skills.md)).
 - 📚 **Beginner-friendly**: Built as a learning-first agent project, with detailed design docs in `docs/` and practical debugging tools like `--inspect-prompt` and `--inspect-request`.
