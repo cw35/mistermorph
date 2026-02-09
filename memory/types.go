@@ -14,8 +14,8 @@ type Frontmatter struct {
 	CreatedAt        string     `yaml:"created_at"`
 	UpdatedAt        string     `yaml:"updated_at"`
 	Summary          string     `yaml:"summary"`
-	Tasks            string     `yaml:"tasks"`
-	FollowUps        string     `yaml:"follow_ups"`
+	Tasks            string     `yaml:"tasks,omitempty"`
+	FollowUps        string     `yaml:"follow_ups,omitempty"`
 	SessionID        string     `yaml:"session_id,omitempty"`
 	Source           string     `yaml:"source,omitempty"`
 	Channel          string     `yaml:"channel,omitempty"`
@@ -57,13 +57,9 @@ type SessionDraft struct {
 }
 
 type ShortTermSummary struct {
-	Date           string
-	Summary        string
-	RelPath        string
-	TasksDone      int
-	TasksTotal     int
-	FollowUpsDone  int
-	FollowUpsTotal int
+	Date    string
+	Summary string
+	RelPath string
 }
 
 // ShortTermContent is the parsed representation of a short-term session file.

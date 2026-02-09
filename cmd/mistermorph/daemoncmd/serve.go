@@ -25,7 +25,6 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/maep"
-	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -98,6 +97,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 				reg = tools.NewRegistry()
 			}
 			toolsutil.RegisterPlanTool(reg, client, llmutil.ModelFromViper())
+			toolsutil.BindTodoUpdateToolLLM(reg, client, llmutil.ModelFromViper())
 
 			logOpts := logutil.LogOptionsFromViper()
 
@@ -217,11 +217,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			hbChecklist := statepaths.HeartbeatChecklistPath()
 			if hbEnabled && hbInterval > 0 {
 				go func() {
-					var hbMemMgr *memory.Manager
 					hbMaxItems := viper.GetInt("memory.injection.max_items")
-					if viper.GetBool("memory.enabled") {
-						hbMemMgr = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
-					}
 					ticker := time.NewTicker(hbInterval)
 					defer ticker.Stop()
 					for range ticker.C {
@@ -230,13 +226,11 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 							continue
 						}
 						hbSnapshot := ""
-						if hbMemMgr != nil {
-							snap, err := heartbeatutil.BuildHeartbeatProgressSnapshot(hbMemMgr, hbMaxItems)
-							if err != nil {
-								logger.Warn("heartbeat_memory_error", "error", err.Error())
-							} else {
-								hbSnapshot = snap
-							}
+						snap, err := heartbeatutil.BuildHeartbeatProgressSnapshot(nil, hbMaxItems)
+						if err != nil {
+							logger.Warn("heartbeat_memory_error", "error", err.Error())
+						} else {
+							hbSnapshot = snap
 						}
 						task, checklistEmpty, err := heartbeatutil.BuildHeartbeatTask(hbChecklist, hbSnapshot)
 						if err != nil {

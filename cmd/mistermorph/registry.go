@@ -39,6 +39,7 @@ func registryFromViper() *tools.Registry {
 	viper.SetDefault("tools.web_search.max_results", 5)
 	viper.SetDefault("tools.web_search.base_url", "https://duckduckgo.com/html/")
 	viper.SetDefault("tools.contacts.enabled", true)
+	viper.SetDefault("tools.todo.enabled", true)
 	viper.SetDefault("tools.memory.enabled", true)
 	viper.SetDefault("tools.memory.recently.max_items", 50)
 
@@ -143,6 +144,19 @@ func registryFromViper() *tools.Registry {
 			viper.GetDuration("tools.web_search.timeout"),
 			viper.GetInt("tools.web_search.max_results"),
 			userAgent,
+		))
+	}
+
+	if viper.GetBool("tools.todo.enabled") {
+		r.Register(builtin.NewTodoUpdateTool(
+			true,
+			statepaths.TODOWIPPath(),
+			statepaths.TODODONEPath(),
+		))
+		r.Register(builtin.NewTodoListTool(
+			true,
+			statepaths.TODOWIPPath(),
+			statepaths.TODODONEPath(),
 		))
 	}
 

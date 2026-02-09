@@ -160,6 +160,9 @@ tools:
   contacts:
     # Enable contacts tools (contacts_upsert / contacts_list / contacts_candidate_rank / contacts_send).
     enabled: true
+  todo:
+    # Enable TODO tools (todo_update / todo_list).
+    enabled: true
   url_fetch:
     # Enable the url_fetch tool (HTTP(S) GET/POST/PUT/DELETE, truncated output).
     enabled: true

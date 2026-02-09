@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -44,6 +45,8 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/retryutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/internal/telegramutil"
+	"github.com/quailyquaily/mistermorph/internal/todo"
+	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/maep"
 	"github.com/quailyquaily/mistermorph/memory"
@@ -287,6 +290,7 @@ func newTelegramCmd() *cobra.Command {
 			}
 			model := llmModelFromViper()
 			reg := registryFromViper()
+			toolsutil.BindTodoUpdateToolLLM(reg, client, model)
 			logOpts := logOptionsFromViper()
 
 			cfg := agent.Config{
@@ -762,16 +766,35 @@ func newTelegramCmd() *cobra.Command {
 			if hbEnabled && hbInterval > 0 {
 				go func() {
 					var hbMemMgr *memory.Manager
+					var hbTODOStore *todo.Store
 					hbMaxItems := viper.GetInt("memory.injection.max_items")
 					if viper.GetBool("memory.enabled") {
 						hbMemMgr = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 					}
+					if viper.GetBool("tools.todo.enabled") {
+						hbTODOStore = todo.NewStore(statepaths.TODOWIPPath(), statepaths.TODODONEPath())
+					}
 					ticker := time.NewTicker(hbInterval)
 					defer ticker.Stop()
 					for range ticker.C {
+						hasPendingTODO := false
+						if hbTODOStore != nil {
+							list, err := hbTODOStore.List("wip")
+							if err != nil {
+								logger.Warn("telegram_heartbeat_todo_error", "error", err.Error())
+								enqueueSystemWarning(err.Error())
+								broadcastSystemWarnings()
+							} else if len(list.WIPItems) > 0 {
+								hasPendingTODO = true
+							}
+						}
+						if !hasPendingTODO {
+							continue
+						}
+
 						targets := make(map[int64]struct{})
 						if hbMemMgr != nil {
-							recent, err := hbMemMgr.LoadTelegramChatsWithPendingTasks(viper.GetInt("memory.short_term_days"))
+							recent, err := hbMemMgr.LoadRecentTelegramChatIDs(viper.GetInt("memory.short_term_days"))
 							if err != nil {
 								logger.Warn("telegram_heartbeat_memory_error", "error", err.Error())
 								enqueueSystemWarning(err.Error())
@@ -783,19 +806,24 @@ func newTelegramCmd() *cobra.Command {
 							}
 						}
 						if len(targets) == 0 {
+							mu.Lock()
+							for chatID := range lastActivity {
+								targets[chatID] = struct{}{}
+							}
+							mu.Unlock()
+						}
+						if len(targets) == 0 {
 							continue
 						}
 
 						hbSnapshot := ""
-						if hbMemMgr != nil {
-							snap, err := buildHeartbeatProgressSnapshot(hbMemMgr, hbMaxItems)
-							if err != nil {
-								logger.Warn("telegram_heartbeat_memory_error", "error", err.Error())
-								enqueueSystemWarning(err.Error())
-								broadcastSystemWarnings()
-							} else {
-								hbSnapshot = snap
-							}
+						snap, err := buildHeartbeatProgressSnapshot(nil, hbMaxItems)
+						if err != nil {
+							logger.Warn("telegram_heartbeat_memory_error", "error", err.Error())
+							enqueueSystemWarning(err.Error())
+							broadcastSystemWarnings()
+						} else {
+							hbSnapshot = snap
 						}
 						task, checklistEmpty, err := buildHeartbeatTask(hbChecklist, hbSnapshot)
 						if err != nil {
@@ -1044,10 +1072,22 @@ func newTelegramCmd() *cobra.Command {
 				}()
 			}
 
+			pollCtx := cmd.Context()
+			if pollCtx == nil {
+				pollCtx = context.Background()
+			}
 			for {
-				updates, nextOffset, err := api.getUpdates(context.Background(), offset, pollTimeout)
+				updates, nextOffset, err := api.getUpdates(pollCtx, offset, pollTimeout)
 				if err != nil {
-					logger.Warn("telegram_get_updates_error", "error", err.Error())
+					if errors.Is(err, context.Canceled) || pollCtx.Err() != nil {
+						logger.Info("telegram_stop", "reason", "context_canceled")
+						return nil
+					}
+					if isTelegramPollTimeoutError(err) {
+						logger.Debug("telegram_get_updates_timeout", "error", err.Error())
+					} else {
+						logger.Warn("telegram_get_updates_error", "error", err.Error())
+					}
 					time.Sleep(1 * time.Second)
 					continue
 				}
@@ -1487,6 +1527,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	task := job.Text
 	if baseReg == nil {
 		baseReg = registryFromViper()
+		toolsutil.BindTodoUpdateToolLLM(baseReg, client, model)
 	}
 
 	var decision telegramReactionDecision
@@ -1550,6 +1591,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		reg.Register(t)
 	}
 	registerPlanTool(reg, client, model)
+	toolsutil.BindTodoUpdateToolLLM(reg, client, model)
 	reg.Register(newTelegramSendVoiceTool(api, job.ChatID, fileCacheDir, filesMaxBytes, nil))
 	if filesEnabled && api != nil {
 		reg.Register(newTelegramSendFileTool(api, job.ChatID, fileCacheDir, filesMaxBytes))
@@ -1756,9 +1798,11 @@ func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOpti
 	}
 	if baseReg == nil {
 		baseReg = registryFromViper()
+		toolsutil.BindTodoUpdateToolLLM(baseReg, client, model)
 	}
 	reg := buildMAEPRegistry(baseReg)
 	registerPlanTool(reg, client, model)
+	toolsutil.BindTodoUpdateToolLLM(reg, client, model)
 
 	promptSpec, loadedSkills, skillAuthProfiles, err := promptSpecForTelegram(ctx, logger, logOpts, task, client, model, stickySkills)
 	if err != nil {
@@ -2053,17 +2097,6 @@ func updateSessionMemory(
 	_, err = mgr.WriteShortTerm(date, mergedContent, summary, meta)
 	if err != nil {
 		return err
-	}
-	updates := append([]memory.TaskItem{}, mergedContent.Tasks...)
-	updates = append(updates, mergedContent.FollowUps...)
-	if updated, err := mgr.UpdateRecentTaskStatuses(updates, meta.SessionID); err != nil {
-		if logger != nil {
-			logger.Warn("memory_task_sync_error", "error", err.Error())
-		}
-	} else if updated > 0 {
-		if logger != nil {
-			logger.Debug("memory_task_sync_ok", "updated", updated)
-		}
 	}
 	if _, err := mgr.UpdateLongTerm(subjectID, draft.Promote); err != nil {
 		return err
@@ -2773,6 +2806,22 @@ func (api *telegramAPI) getUpdates(ctx context.Context, offset int64, timeout ti
 		}
 	}
 	return out.Result, next, nil
+}
+
+func isTelegramPollTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "client.timeout exceeded")
 }
 
 type telegramSendMessageRequest struct {

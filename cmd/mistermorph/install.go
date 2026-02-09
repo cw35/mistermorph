@@ -20,7 +20,7 @@ import (
 func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install [dir]",
-		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, and built-in skills",
+		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, TODO templates, and built-in skills",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "~/.morph/"
@@ -58,6 +58,16 @@ func newInstallCmd() *cobra.Command {
 			writeTools := true
 			if _, err := os.Stat(toolsPath); err == nil {
 				writeTools = false
+			}
+			todoWIPPath := filepath.Join(dir, "TODO.WIP.md")
+			writeTodoWIP := true
+			if _, err := os.Stat(todoWIPPath); err == nil {
+				writeTodoWIP = false
+			}
+			todoDonePath := filepath.Join(dir, "TODO.DONE.md")
+			writeTodoDone := true
+			if _, err := os.Stat(todoDonePath); err == nil {
+				writeTodoDone = false
 			}
 
 			identityPath := filepath.Join(workspaceRoot, "IDENTITY.md")
@@ -101,6 +111,18 @@ func newInstallCmd() *cobra.Command {
 					Path:   toolsPath,
 					Write:  writeTools,
 					Loader: loadToolsTemplate,
+				},
+				{
+					Name:   "TODO.WIP.md",
+					Path:   todoWIPPath,
+					Write:  writeTodoWIP,
+					Loader: loadTodoWIPTemplate,
+				},
+				{
+					Name:   "TODO.DONE.md",
+					Path:   todoDonePath,
+					Write:  writeTodoDone,
+					Loader: loadTodoDoneTemplate,
 				},
 				{
 					Name:   "IDENTITY.md",
@@ -200,6 +222,22 @@ func loadToolsTemplate() (string, error) {
 	data, err := assets.ConfigFS.ReadFile("config/TOOLS.md")
 	if err != nil {
 		return "", fmt.Errorf("read embedded TOOLS.md: %w", err)
+	}
+	return string(data), nil
+}
+
+func loadTodoWIPTemplate() (string, error) {
+	data, err := assets.ConfigFS.ReadFile("config/TODO.WIP.md")
+	if err != nil {
+		return "", fmt.Errorf("read embedded TODO.WIP.md: %w", err)
+	}
+	return string(data), nil
+}
+
+func loadTodoDoneTemplate() (string, error) {
+	data, err := assets.ConfigFS.ReadFile("config/TODO.DONE.md")
+	if err != nil {
+		return "", fmt.Errorf("read embedded TODO.DONE.md: %w", err)
 	}
 	return string(data), nil
 }

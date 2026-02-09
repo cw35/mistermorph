@@ -80,10 +80,6 @@ type recentMemoryItem struct {
 	Usernames        []string                 `json:"usernames,omitempty"`
 	TelegramChatID   int64                    `json:"telegram_chat_id,omitempty"`
 	TelegramChatType string                   `json:"telegram_chat_type,omitempty"`
-	TasksDone        int                      `json:"tasks_done,omitempty"`
-	TasksTotal       int                      `json:"tasks_total,omitempty"`
-	FollowUpsDone    int                      `json:"follow_ups_done,omitempty"`
-	FollowUpsTotal   int                      `json:"follow_ups_total,omitempty"`
 	Body             *memory.ShortTermContent `json:"body,omitempty"`
 }
 
@@ -123,13 +119,9 @@ func (t *MemoryRecentlyTool) Execute(_ context.Context, params map[string]any) (
 			break
 		}
 		item := recentMemoryItem{
-			Date:           summary.Date,
-			Summary:        strings.TrimSpace(summary.Summary),
-			RelPath:        strings.TrimSpace(summary.RelPath),
-			TasksDone:      summary.TasksDone,
-			TasksTotal:     summary.TasksTotal,
-			FollowUpsDone:  summary.FollowUpsDone,
-			FollowUpsTotal: summary.FollowUpsTotal,
+			Date:    summary.Date,
+			Summary: strings.TrimSpace(summary.Summary),
+			RelPath: strings.TrimSpace(summary.RelPath),
 		}
 		abs := filepath.Join(dir, filepath.FromSlash(summary.RelPath))
 		raw, err := os.ReadFile(abs)

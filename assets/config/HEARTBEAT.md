@@ -1,5 +1,22 @@
 # Heartbeat Checklist
 
+
+*THIS IS NOT A TODO FILE, DO NOT ADD TASKS HERE*
+
+*THE PURPOSE OF THIS FILE IS TO LIST WORKFLOWS TO BE CHECKED DURING REGULAR HEARTBEAT*
+
+<!-- 
+==Example Begin==
+
+## Check TODO.WIP.md
+- Check the `TODO.WIP.md` file for any pending tasks using `todo_list` tool.
+- If there are tasks and if there are contacts that match the task context, consider reaching out to them using `contacts_send` tool.
+
+==Example End==
+
+Above are just examples, do not consider them as actual tasks to be done.
+-->
+
 ## Contacts Proactive Check
 
 - Use `memory_recently` first (`days=3`, `limit=20`) to load recent context and routing clues.

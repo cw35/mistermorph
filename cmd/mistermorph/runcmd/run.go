@@ -25,6 +25,7 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/retryutil"
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
+	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
@@ -48,14 +49,9 @@ func New(deps Dependencies) *cobra.Command {
 			var runMeta map[string]any
 			if isHeartbeat {
 				hbChecklist := statepaths.HeartbeatChecklistPath()
-				var hbSnapshot string
-				if viper.GetBool("memory.enabled") {
-					hbMgr := memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
-					snap, err := heartbeatutil.BuildHeartbeatProgressSnapshot(hbMgr, viper.GetInt("memory.injection.max_items"))
-					if err != nil {
-						return err
-					}
-					hbSnapshot = snap
+				hbSnapshot, err := heartbeatutil.BuildHeartbeatProgressSnapshot(nil, viper.GetInt("memory.injection.max_items"))
+				if err != nil {
+					return err
 				}
 				hbTask, checklistEmpty, err := heartbeatutil.BuildHeartbeatTask(hbChecklist, hbSnapshot)
 				if err != nil {
@@ -218,6 +214,7 @@ func New(deps Dependencies) *cobra.Command {
 			if deps.RegisterPlanTool != nil {
 				deps.RegisterPlanTool(reg, client, model)
 			}
+			toolsutil.BindTodoUpdateToolLLM(reg, client, model)
 
 			engine := agent.New(
 				client,
@@ -363,18 +360,6 @@ func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client
 
 	if _, err := mgr.WriteShortTerm(date, mergedContent, summary, meta); err != nil {
 		return err
-	}
-
-	updates := append([]memory.TaskItem{}, mergedContent.Tasks...)
-	updates = append(updates, mergedContent.FollowUps...)
-	if updated, err := mgr.UpdateRecentTaskStatuses(updates, meta.SessionID); err != nil {
-		if logger != nil {
-			logger.Warn("memory_task_sync_error", "error", err.Error())
-		}
-	} else if updated > 0 {
-		if logger != nil {
-			logger.Debug("memory_task_sync_ok", "updated", updated)
-		}
 	}
 
 	if _, err := mgr.UpdateLongTerm(id.SubjectID, draft.Promote); err != nil {

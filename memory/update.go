@@ -114,96 +114,11 @@ func (m *Manager) LoadShortTerm(date time.Time, sessionID string) (Frontmatter, 
 }
 
 func (m *Manager) UpdateRecentTaskStatuses(updates []TaskItem, excludeSessionID string) (int, error) {
-	if m == nil {
-		return 0, fmt.Errorf("nil memory manager")
-	}
-	if len(updates) == 0 {
-		return 0, nil
-	}
-	updateMap := make(map[string]bool)
-	for _, it := range updates {
-		if !it.Done {
-			continue
-		}
-		text := strings.TrimSpace(it.Text)
-		if text == "" {
-			continue
-		}
-		key := strings.ToLower(text)
-		updateMap[key] = true
-	}
-	if len(updateMap) == 0 {
-		return 0, nil
-	}
-
-	excludeName := ""
-	if strings.TrimSpace(excludeSessionID) != "" {
-		excludeName = SanitizeSubjectID(excludeSessionID) + ".md"
-	}
-
-	now := m.nowUTC()
-	updated := 0
-	for i := 0; i < m.ShortTermDays; i++ {
-		date := now.AddDate(0, 0, -i)
-		dayAbs, _ := m.ShortTermDayDir(date)
-		if strings.TrimSpace(dayAbs) == "" {
-			continue
-		}
-		entries, err := os.ReadDir(dayAbs)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return updated, err
-		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			if !strings.HasSuffix(strings.ToLower(name), ".md") {
-				continue
-			}
-			if excludeName != "" && name == excludeName {
-				continue
-			}
-			abs := filepath.Join(dayAbs, name)
-			fm, body, ok, err := readMemoryFile(abs)
-			if err != nil {
-				return updated, err
-			}
-			content := ShortTermContent{}
-			if ok {
-				content = ParseShortTermContent(body)
-			} else {
-				content = ParseShortTermContent(body)
-			}
-			changed := updateTaskList(&content.Tasks, updateMap)
-			if updateTaskList(&content.FollowUps, updateMap) {
-				changed = true
-			}
-			if !changed {
-				continue
-			}
-			fm.UpdatedAt = now.UTC().Format(time.RFC3339)
-			if strings.TrimSpace(fm.CreatedAt) == "" {
-				fm.CreatedAt = now.UTC().Format(time.RFC3339)
-			}
-			if strings.TrimSpace(fm.Summary) == "" {
-				fm.Summary = fallbackShortSummaryFromContent(content)
-			}
-			tDone, tTotal := taskCounts(content.Tasks)
-			fDone, fTotal := taskCounts(content.FollowUps)
-			fm.Tasks = formatTaskRatio(tDone, tTotal)
-			fm.FollowUps = formatTaskRatio(fDone, fTotal)
-			bodyOut := BuildShortTermBody(date.UTC().Format("2006-01-02"), content)
-			if err := writeMemoryFile(abs, RenderFrontmatter(fm)+"\n"+bodyOut); err != nil {
-				return updated, err
-			}
-			updated++
-		}
-	}
-	return updated, nil
+	_ = m
+	_ = updates
+	_ = excludeSessionID
+	// Tasks/follow_ups are no longer synchronized through memory files.
+	return 0, nil
 }
 
 func updateTaskList(tasks *[]TaskItem, updates map[string]bool) bool {
@@ -248,12 +163,8 @@ func (m *Manager) UpdateLongTerm(subjectID string, promote PromoteDraft) (bool, 
 
 	merged := MergeLongTerm(content, promote, m.nowUTC())
 	merged = enforceLongTermLimits(merged)
-	tasksLines, followLines := extractTodoSections(body)
-	tDone, tTotal := taskCounts(parseTodoSection(tasksLines))
-	fDone, fTotal := taskCounts(parseTodoSection(followLines))
 	bodyOut := BuildLongTermBody(merged)
-	bodyOut = appendTodoSections(bodyOut, tasksLines, followLines)
-	fm = applyLongTermFrontmatter(fm, subjectID, merged, m.nowUTC(), tDone, tTotal, fDone, fTotal)
+	fm = applyLongTermFrontmatter(fm, subjectID, merged, m.nowUTC())
 
 	if err := writeMemoryFile(abs, RenderFrontmatter(fm)+"\n"+bodyOut); err != nil {
 		return false, err
@@ -270,10 +181,9 @@ func applyShortTermFrontmatter(existing Frontmatter, summary string, meta WriteM
 	existing.CreatedAt = chooseTimestamp(existing.CreatedAt, now)
 	existing.UpdatedAt = now.UTC().Format(time.RFC3339)
 	existing.Summary = summary
-	tDone, tTotal := taskCounts(content.Tasks)
-	fDone, fTotal := taskCounts(content.FollowUps)
-	existing.Tasks = formatTaskRatio(tDone, tTotal)
-	existing.FollowUps = formatTaskRatio(fDone, fTotal)
+	_ = content
+	existing.Tasks = ""
+	existing.FollowUps = ""
 	if strings.TrimSpace(meta.SessionID) != "" {
 		existing.SessionID = strings.TrimSpace(meta.SessionID)
 	}
@@ -369,7 +279,7 @@ func mergeUsernames(existing []string, incoming []string) []string {
 	return out
 }
 
-func applyLongTermFrontmatter(existing Frontmatter, subjectID string, content LongTermContent, now time.Time, tasksDone int, tasksTotal int, followDone int, followTotal int) Frontmatter {
+func applyLongTermFrontmatter(existing Frontmatter, subjectID string, content LongTermContent, now time.Time) Frontmatter {
 	existing.CreatedAt = chooseTimestamp(existing.CreatedAt, now)
 	existing.UpdatedAt = now.UTC().Format(time.RFC3339)
 	if strings.TrimSpace(existing.Summary) == "" {
@@ -377,8 +287,8 @@ func applyLongTermFrontmatter(existing Frontmatter, subjectID string, content Lo
 	} else {
 		existing.Summary = summarizeLongTerm(content)
 	}
-	existing.Tasks = formatTaskRatio(tasksDone, tasksTotal)
-	existing.FollowUps = formatTaskRatio(followDone, followTotal)
+	existing.Tasks = ""
+	existing.FollowUps = ""
 	existing.SubjectID = strings.TrimSpace(subjectID)
 	return existing
 }

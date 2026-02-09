@@ -71,64 +71,10 @@ func (m *Manager) LoadRecentTelegramChatIDs(days int) ([]int64, error) {
 // LoadTelegramChatsWithPendingTasks scans recent short-term memory files and returns
 // Telegram chat IDs that have pending tasks or follow-ups in frontmatter/body.
 func (m *Manager) LoadTelegramChatsWithPendingTasks(days int) ([]int64, error) {
-	if m == nil {
-		return nil, nil
-	}
-	if days <= 0 {
-		days = m.ShortTermDays
-	}
-	if days <= 0 {
-		days = 7
-	}
-	now := m.nowUTC()
-	seen := map[int64]bool{}
-	out := make([]int64, 0)
-	for i := 0; i < days; i++ {
-		date := now.AddDate(0, 0, -i)
-		dayAbs, _ := m.ShortTermDayDir(date)
-		if strings.TrimSpace(dayAbs) == "" {
-			continue
-		}
-		entries, err := os.ReadDir(dayAbs)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
-		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			if !strings.HasSuffix(strings.ToLower(name), ".md") {
-				continue
-			}
-			abs := filepath.Join(dayAbs, name)
-			data, err := os.ReadFile(abs)
-			if err != nil {
-				return nil, err
-			}
-			fm, body, ok := ParseFrontmatter(string(data))
-			if !ok {
-				continue
-			}
-			chatID, ok := parseTelegramChatID(fm.SessionID)
-			if !ok || chatID == 0 {
-				continue
-			}
-			if !hasPendingTasks(fm, body) {
-				continue
-			}
-			if seen[chatID] {
-				continue
-			}
-			seen[chatID] = true
-			out = append(out, chatID)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out, nil
+	_ = m
+	_ = days
+	// Pending task tracking has moved out of memory files to TODO.WIP.md.
+	return nil, nil
 }
 
 func hasPendingTasks(fm Frontmatter, body string) bool {

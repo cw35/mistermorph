@@ -115,3 +115,29 @@ func TestLoadToolsTemplate(t *testing.T) {
 		t.Fatalf("TOOLS template seems invalid")
 	}
 }
+
+func TestLoadTodoWIPTemplate(t *testing.T) {
+	body, err := loadTodoWIPTemplate()
+	if err != nil {
+		t.Fatalf("loadTodoWIPTemplate() error = %v", err)
+	}
+	if body == "" {
+		t.Fatalf("expected non-empty TODO.WIP template")
+	}
+	if !strings.Contains(body, "# TODO Work In Progress (WIP)") {
+		t.Fatalf("TODO.WIP template seems invalid")
+	}
+}
+
+func TestLoadTodoDoneTemplate(t *testing.T) {
+	body, err := loadTodoDoneTemplate()
+	if err != nil {
+		t.Fatalf("loadTodoDoneTemplate() error = %v", err)
+	}
+	if body == "" {
+		t.Fatalf("expected non-empty TODO.DONE template")
+	}
+	if !strings.Contains(body, "# TODO Done") {
+		t.Fatalf("TODO.DONE template seems invalid")
+	}
+}

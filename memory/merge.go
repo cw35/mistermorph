@@ -111,8 +111,6 @@ func BuildShortTermBody(date string, content ShortTermContent) string {
 
 	writeShortTermKVSection(&b, sectionSessionSummary, content.SessionSummary)
 	writeShortTermKVSection(&b, sectionTemporaryFacts, content.TemporaryFacts)
-	writeTodoSection(&b, sectionTasks, content.Tasks)
-	writeTodoSection(&b, sectionFollowUps, content.FollowUps)
 	writeLinkSection(&b, sectionRelatedLinks, content.RelatedLinks)
 	return strings.TrimSpace(b.String()) + "\n"
 }

@@ -9,6 +9,8 @@ import (
 
 const (
 	HeartbeatChecklistFilename = "HEARTBEAT.md"
+	TODOWIPFilename            = "TODO.WIP.md"
+	TODODONEFilename           = "TODO.DONE.md"
 )
 
 func FileStateDir() string {
@@ -49,6 +51,14 @@ func ContactsDir() string {
 
 func HeartbeatChecklistPath() string {
 	return pathutil.ResolveStateFile(viper.GetString("file_state_dir"), HeartbeatChecklistFilename)
+}
+
+func TODOWIPPath() string {
+	return pathutil.ResolveStateFile(viper.GetString("file_state_dir"), TODOWIPFilename)
+}
+
+func TODODONEPath() string {
+	return pathutil.ResolveStateFile(viper.GetString("file_state_dir"), TODODONEFilename)
 }
 
 func DefaultSkillsRoots() []string {
