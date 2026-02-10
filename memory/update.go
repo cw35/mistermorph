@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -18,10 +17,6 @@ const (
 
 type WriteMeta struct {
 	SessionID        string
-	Source           string
-	Channel          string
-	Usernames        []string
-	SubjectID        string
 	ContactIDs       []string
 	ContactNicknames []string
 	// Deprecated: use ContactIDs.
@@ -34,6 +29,7 @@ func (m *Manager) UpdateShortTerm(date time.Time, draft SessionDraft, meta Write
 	if m == nil {
 		return "", fmt.Errorf("nil memory manager")
 	}
+	meta.SessionID = strings.TrimSpace(meta.SessionID)
 	abs, rel := m.ShortTermSessionPath(date, meta.SessionID)
 	if abs == "" {
 		return "", fmt.Errorf("memory dir not set")
@@ -50,14 +46,13 @@ func (m *Manager) UpdateShortTerm(date time.Time, draft SessionDraft, meta Write
 
 	merged := MergeShortTerm(content, draft)
 	merged = ensureShortTermDefaults(merged, draft)
-	merged = m.attachRelatedLink(merged, date)
 
 	bodyOut := BuildShortTermBody(date.UTC().Format("2006-01-02"), merged)
 	summary := strings.TrimSpace(draft.Summary)
 	if summary == "" {
 		summary = fallbackShortSummary(draft)
 	}
-	fm = applyShortTermFrontmatter(fm, summary, meta, m.nowUTC(), merged)
+	fm = applyShortTermFrontmatter(fm, summary, meta, m.nowUTC())
 
 	if err := writeMemoryFile(abs, RenderFrontmatter(fm)+"\n"+bodyOut); err != nil {
 		return "", err
@@ -69,6 +64,7 @@ func (m *Manager) WriteShortTerm(date time.Time, content ShortTermContent, summa
 	if m == nil {
 		return "", fmt.Errorf("nil memory manager")
 	}
+	meta.SessionID = strings.TrimSpace(meta.SessionID)
 	abs, rel := m.ShortTermSessionPath(date, meta.SessionID)
 	if abs == "" {
 		return "", fmt.Errorf("memory dir not set")
@@ -82,13 +78,12 @@ func (m *Manager) WriteShortTerm(date time.Time, content ShortTermContent, summa
 		fm = Frontmatter{}
 	}
 
-	content = m.attachRelatedLink(content, date)
 	bodyOut := BuildShortTermBody(date.UTC().Format("2006-01-02"), content)
 	summary = strings.TrimSpace(summary)
 	if summary == "" {
 		summary = fallbackShortSummaryFromContent(content)
 	}
-	fm = applyShortTermFrontmatter(fm, summary, meta, m.nowUTC(), content)
+	fm = applyShortTermFrontmatter(fm, summary, meta, m.nowUTC())
 	if err := writeMemoryFile(abs, RenderFrontmatter(fm)+"\n"+bodyOut); err != nil {
 		return "", err
 	}
@@ -137,7 +132,7 @@ func (m *Manager) UpdateLongTerm(subjectID string, promote PromoteDraft) (bool, 
 	merged := MergeLongTerm(content, promote, m.nowUTC())
 	merged = enforceLongTermLimits(merged)
 	bodyOut := BuildLongTermBody(merged)
-	fm = applyLongTermFrontmatter(fm, subjectID, merged, m.nowUTC())
+	fm = applyLongTermFrontmatter(fm, merged, m.nowUTC())
 
 	if err := writeMemoryFile(abs, RenderFrontmatter(fm)+"\n"+bodyOut); err != nil {
 		return false, err
@@ -145,30 +140,12 @@ func (m *Manager) UpdateLongTerm(subjectID string, promote PromoteDraft) (bool, 
 	return true, nil
 }
 
-func (m *Manager) attachRelatedLink(content ShortTermContent, date time.Time) ShortTermContent {
-	_ = date
-	return content
-}
-
-func applyShortTermFrontmatter(existing Frontmatter, summary string, meta WriteMeta, now time.Time, content ShortTermContent) Frontmatter {
+func applyShortTermFrontmatter(existing Frontmatter, summary string, meta WriteMeta, now time.Time) Frontmatter {
 	existing.CreatedAt = chooseTimestamp(existing.CreatedAt, now)
 	existing.UpdatedAt = now.UTC().Format(time.RFC3339)
 	existing.Summary = summary
-	_ = content
 	if strings.TrimSpace(meta.SessionID) != "" {
 		existing.SessionID = strings.TrimSpace(meta.SessionID)
-	}
-	if strings.TrimSpace(meta.Source) != "" {
-		existing.Source = strings.TrimSpace(meta.Source)
-	}
-	if strings.TrimSpace(meta.Channel) != "" {
-		existing.Channel = strings.TrimSpace(meta.Channel)
-	}
-	if len(meta.Usernames) > 0 {
-		existing.Usernames = mergeUsernames(existing.Usernames, meta.Usernames)
-	}
-	if strings.TrimSpace(meta.SubjectID) != "" {
-		existing.SubjectID = strings.TrimSpace(meta.SubjectID)
 	}
 	contactIDs := append([]string{}, meta.ContactIDs...)
 	if strings.TrimSpace(meta.ContactID) != "" {
@@ -214,51 +191,10 @@ func mergePlainStrings(existing []string, incoming []string) []string {
 	return out
 }
 
-func mergeUsernames(existing []string, incoming []string) []string {
-	if len(incoming) == 0 {
-		return existing
-	}
-	seen := make(map[string]bool, len(existing)+len(incoming))
-	out := make([]string, 0, len(existing)+len(incoming))
-	add := func(username string) {
-		username = strings.TrimSpace(username)
-		if username == "" {
-			return
-		}
-		if strings.HasPrefix(username, "@") {
-			username = strings.TrimSpace(username[1:])
-		}
-		if username == "" {
-			return
-		}
-		key := strings.ToLower(username)
-		if seen[key] {
-			return
-		}
-		seen[key] = true
-		out = append(out, "@"+username)
-	}
-	for _, username := range existing {
-		add(username)
-	}
-	for _, username := range incoming {
-		add(username)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return strings.ToLower(out[i]) < strings.ToLower(out[j])
-	})
-	return out
-}
-
-func applyLongTermFrontmatter(existing Frontmatter, subjectID string, content LongTermContent, now time.Time) Frontmatter {
+func applyLongTermFrontmatter(existing Frontmatter, content LongTermContent, now time.Time) Frontmatter {
 	existing.CreatedAt = chooseTimestamp(existing.CreatedAt, now)
 	existing.UpdatedAt = now.UTC().Format(time.RFC3339)
-	if strings.TrimSpace(existing.Summary) == "" {
-		existing.Summary = summarizeLongTerm(content)
-	} else {
-		existing.Summary = summarizeLongTerm(content)
-	}
-	existing.SubjectID = strings.TrimSpace(subjectID)
+	existing.Summary = summarizeLongTerm(content)
 	return existing
 }
 

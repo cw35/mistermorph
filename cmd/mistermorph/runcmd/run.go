@@ -303,9 +303,6 @@ func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client
 	}
 	meta := memory.WriteMeta{
 		SessionID:        "cli",
-		Source:           "cli",
-		Channel:          "local",
-		SubjectID:        id.SubjectID,
 		ContactIDs:       []string{strings.TrimSpace(id.SubjectID)},
 		ContactNicknames: []string{contactNickname},
 	}

@@ -10,7 +10,7 @@ import (
 
 func TestRenderMemoryDraftPrompts(t *testing.T) {
 	sys, user, err := renderMemoryDraftPrompts(
-		MemoryDraftContext{SessionID: "telegram:1", ChatType: "private"},
+		MemoryDraftContext{SessionID: "tg:1", ChatType: "private"},
 		[]map[string]string{{"role": "user", "content": "hi"}},
 		memory.ShortTermContent{
 			SessionSummary: []memory.KVItem{{Title: "Topic", Value: "Users: A"}},

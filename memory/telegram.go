@@ -9,7 +9,7 @@ import (
 )
 
 // LoadRecentTelegramChatIDs scans recent short-term memory files and returns
-// unique Telegram chat IDs inferred from session_id (telegram:<chat_id>).
+// unique Telegram chat IDs inferred from session_id (tg:<chat_id>).
 func (m *Manager) LoadRecentTelegramChatIDs(days int) ([]int64, error) {
 	if m == nil {
 		return nil, nil
@@ -68,24 +68,15 @@ func (m *Manager) LoadRecentTelegramChatIDs(days int) ([]int64, error) {
 	return out, nil
 }
 
-// LoadTelegramChatsWithPendingTasks is kept for compatibility.
-// Pending todo tracking has moved out of memory files to TODO.md.
-func (m *Manager) LoadTelegramChatsWithPendingTasks(days int) ([]int64, error) {
-	_ = m
-	_ = days
-	// Pending task tracking has moved out of memory files to TODO.md.
-	return nil, nil
-}
-
 func parseTelegramChatID(sessionID string) (int64, bool) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return 0, false
 	}
-	if !strings.HasPrefix(sessionID, "telegram:") {
+	if !strings.HasPrefix(strings.ToLower(sessionID), "tg:") {
 		return 0, false
 	}
-	raw := strings.TrimSpace(strings.TrimPrefix(sessionID, "telegram:"))
+	raw := strings.TrimSpace(sessionID[len("tg:"):])
 	if raw == "" {
 		return 0, false
 	}

@@ -14,10 +14,7 @@ func TestWriteShortTermStoresContactMeta(t *testing.T) {
 	_, err := mgr.WriteShortTerm(date, ShortTermContent{
 		SessionSummary: []KVItem{{Title: "Who", Value: "Alice"}},
 	}, "hello", WriteMeta{
-		SessionID:        "telegram:1",
-		Source:           "telegram",
-		Channel:          "private",
-		SubjectID:        "ext:telegram:1001",
+		SessionID:        "tg:1",
 		ContactIDs:       []string{"tg:@alice"},
 		ContactNicknames: []string{"Alice"},
 	})
@@ -25,7 +22,7 @@ func TestWriteShortTermStoresContactMeta(t *testing.T) {
 		t.Fatalf("WriteShortTerm() error = %v", err)
 	}
 
-	path, _ := mgr.ShortTermSessionPath(date, "telegram:1")
+	path, _ := mgr.ShortTermSessionPath(date, "tg:1")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile(%s) error = %v", path, err)

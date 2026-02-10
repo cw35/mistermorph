@@ -11,7 +11,6 @@ import (
 
 const (
 	shortTermIndexName = "_index.md"
-	longTermDirName    = "_longterms"
 )
 
 func NewManager(dir string, shortTermDays int) *Manager {
@@ -39,13 +38,9 @@ func (m *Manager) LongTermPath(subjectID string) (string, string) {
 		return "", ""
 	}
 	cleanID := SanitizeSubjectID(subjectID)
-	rel := filepath.ToSlash(filepath.Join(longTermDirName, cleanID, shortTermIndexName))
+	rel := filepath.ToSlash(filepath.Join(cleanID, shortTermIndexName))
 	abs := filepath.Join(root, rel)
 	return abs, rel
-}
-
-func (m *Manager) ShortTermPath(date time.Time) (string, string) {
-	return m.ShortTermSessionPath(date, "session")
 }
 
 func (m *Manager) ShortTermDayDir(date time.Time) (string, string) {

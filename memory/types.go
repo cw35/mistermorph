@@ -15,11 +15,7 @@ type Frontmatter struct {
 	UpdatedAt        string     `yaml:"updated_at"`
 	Summary          string     `yaml:"summary"`
 	SessionID        string     `yaml:"session_id,omitempty"`
-	Source           string     `yaml:"source,omitempty"`
-	Channel          string     `yaml:"channel,omitempty"`
 	Tags             []string   `yaml:"tags,omitempty"`
-	Usernames        []string   `yaml:"usernames,omitempty"`
-	SubjectID        string     `yaml:"subject_id,omitempty"`
 	ContactIDs       StringList `yaml:"contact_id,omitempty"`
 	ContactNicknames StringList `yaml:"contact_nickname,omitempty"`
 }

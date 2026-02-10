@@ -1917,11 +1917,7 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 		contactNickname = strings.TrimSpace(strings.Join([]string{job.FromFirstName, job.FromLastName}, " "))
 	}
 	meta := memory.WriteMeta{
-		SessionID:        fmt.Sprintf("telegram:%d", job.ChatID),
-		Source:           "telegram",
-		Channel:          job.ChatType,
-		Usernames:        mergeMemoryUsernames(job.FromUsername, job.MentionUsers),
-		SubjectID:        id.SubjectID,
+		SessionID:        fmt.Sprintf("tg:%d", job.ChatID),
 		ContactIDs:       []string{telegramMemoryContactID(job.FromUsername, job.FromUserID)},
 		ContactNicknames: []string{contactNickname},
 	}
@@ -1971,9 +1967,6 @@ func updateMAEPMemory(ctx context.Context, logger *slog.Logger, client llm.Clien
 	}
 	meta := memory.WriteMeta{
 		SessionID:        memSessionID,
-		Source:           "maep",
-		Channel:          channel,
-		SubjectID:        subjectID,
 		ContactIDs:       []string{contactID},
 		ContactNicknames: []string{contactNickname},
 	}
@@ -3780,28 +3773,6 @@ func dedupeNonEmptyStrings(values []string) []string {
 	}
 	if len(out) == 0 {
 		return nil
-	}
-	return out
-}
-
-func mergeMemoryUsernames(primary string, others []string) []string {
-	var out []string
-	add := func(username string) {
-		username = strings.TrimSpace(username)
-		if username == "" {
-			return
-		}
-		if strings.HasPrefix(username, "@") {
-			username = strings.TrimSpace(username[1:])
-		}
-		if username == "" {
-			return
-		}
-		out = append(out, "@"+username)
-	}
-	add(primary)
-	for _, username := range others {
-		add(username)
 	}
 	return out
 }

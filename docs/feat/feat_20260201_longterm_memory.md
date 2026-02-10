@@ -30,22 +30,20 @@ All memory files live under a configured `memory/` directory.
 - Bound: `acct:<account_id>`
 
 For filesystem paths, the `subject-id` is **sanitized** into a safe directory name (e.g., replace `:` with `_`).
-Optionally store the original `subject_id` in frontmatter to preserve the canonical identifier.
 
 ## 4. Storage Layout
 
 All files are under the configured `memory/` directory:
 
-- **Long-term memory**: `memory/_longterms/<subject-id>/_index.md`
+- **Long-term memory**: `memory/<subject-id>/_index.md`
 - **Short-term memory**: `memory/YYYY-MM-DD/<session-id>.md`
 
 Example:
 
 ```
 memory/
-  _longterms/
-    acct_42/
-      _index.md
+  acct_42/
+    _index.md
   2026-02-04/
     telegram_12345.md
     cli_session_001.md
@@ -67,11 +65,8 @@ Each memory file must include YAML frontmatter metadata.
 
 **Optional fields**
 
-- `session_id`: identifier for the session that wrote the content
-- `source`: trigger source (e.g., `cli`, `telegram`)
-- `channel`: channel/context (reserved)
+- `session_id`: identifier for the session that wrote the content (Telegram uses `tg:<chat-id>`)
 - `tags`: list of keywords
-- `subject_id`: canonical subject id (recommended in long-term files)
 - `contact_id`: conversation counterpart id (recommended for contact-driven sessions)
 - `contact_nickname`: conversation counterpart nickname (can be empty if unknown)
 
@@ -82,16 +77,13 @@ Example:
 created_at: 2026-02-04T12:34:56Z
 updated_at: 2026-02-04T12:34:56Z
 summary: "Confirmed directory layout, merge rules, and templates."
-session_id: s_20260204_001
-source: cli
-channel: local
-subject_id: acct:42
+session_id: tg:-1001234567890
 ---
 ```
 
 ## 6. Content Rules
 
-### 6.1 Long-Term Memory (`memory/_longterms/<subject-id>/_index.md`)
+### 6.1 Long-Term Memory (`memory/<subject-id>/_index.md`)
 
 - Store only **important, stable, high-signal** items.
 - Keep it compact and easy to scan.
@@ -147,7 +139,7 @@ Optional upgrade (not required now): simple similarity checks using normalized t
 
 On session start (agent wake):
 
-1. Load current user long-term memory from `memory/_longterms/<subject-id>/_index.md`.
+1. Load current user long-term memory from `memory/<subject-id>/_index.md`.
 2. Load recent short-term memory (default 7 days; configurable).
 3. Always load **today’s short-term file for the current session** if present.
 
@@ -210,7 +202,7 @@ Recommended injection block:
 
 ## 12. Templates
 
-### 12.1 Long-Term Template (`memory/_longterms/<subject-id>/_index.md`)
+### 12.1 Long-Term Template (`memory/<subject-id>/_index.md`)
 
 ```
 ---
@@ -219,7 +211,6 @@ updated_at: 2026-02-04T12:34:56Z
 summary: "Most important and stable long-term facts and project state."
 tasks: "0/0"
 follow_ups: "0/0"
-subject_id: acct:42
 ---
 
 # Long-Term Memory
@@ -240,9 +231,7 @@ updated_at: 2026-02-04T12:34:56Z
 summary: "Discussed memory layout and merge rules."
 tasks: "1/3"
 follow_ups: "0/1"
-session_id: s_20260204_001
-source: cli
-channel: local
+session_id: tg:-1001234567890
 contact_id: tg:@alice
 contact_nickname: Alice
 ---

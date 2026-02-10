@@ -107,7 +107,7 @@ func (m *Manager) LoadShortTermSummaries(days int) ([]ShortTermSummary, error) {
 			out = append(out, ShortTermSummary{
 				Date:    date.UTC().Format("2006-01-02"),
 				Summary: summary,
-				RelPath: filepathToSlash(rel),
+				RelPath: filepath.ToSlash(rel),
 			})
 		}
 	}
@@ -143,8 +143,4 @@ func formatInjection(longSummary string, shortSummaries []ShortTermSummary, maxI
 	}
 
 	return strings.TrimSpace(strings.Join(lines, "\n"))
-}
-
-func filepathToSlash(p string) string {
-	return strings.ReplaceAll(p, "\\", "/")
 }
