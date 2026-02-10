@@ -17,8 +17,8 @@ nickname: "John Wick"
 kind: "human"
 channel: "telegram"
 tg_username: "johnwick"
-private_chat_id: "123456789"
-group_chat_ids:
+tg_private_chat_id: "123456789"
+tg_group_chat_ids:
   - "-1009876543210"
   - "-1001234567890"
 persona_brief: "A legendary hitman known for his skills and determination"
