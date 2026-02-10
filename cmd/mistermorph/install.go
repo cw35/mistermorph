@@ -23,15 +23,10 @@ func newInstallCmd() *cobra.Command {
 		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, TODO templates, contacts templates, and built-in skills",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir := "~/.morph/"
-			if len(args) == 1 && strings.TrimSpace(args[0]) != "" {
-				dir = args[0]
+			dir, err := resolveInstallDir(args)
+			if err != nil {
+				return err
 			}
-			dir = pathutil.ExpandHomePath(dir)
-			if strings.TrimSpace(dir) == "" {
-				return fmt.Errorf("invalid dir")
-			}
-			dir = filepath.Clean(dir)
 
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return err
@@ -216,6 +211,23 @@ func newInstallCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+func resolveInstallDir(args []string) (string, error) {
+	var dir string
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		dir = strings.TrimSpace(args[0])
+	} else {
+		dir = strings.TrimSpace(viper.GetString("file_state_dir"))
+		if dir == "" {
+			dir = "~/.morph"
+		}
+	}
+	dir = pathutil.ExpandHomePath(dir)
+	if strings.TrimSpace(dir) == "" {
+		return "", fmt.Errorf("invalid dir")
+	}
+	return filepath.Clean(dir), nil
 }
 
 func loadConfigExample() (string, error) {
