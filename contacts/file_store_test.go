@@ -2,6 +2,7 @@ package contacts
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,8 +32,8 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 		Channel:          ChannelTelegram,
 		ContactNickname:  "Inactive Human",
 		TGUsername:       "john",
-		TGPrivateChatID:    1001,
-		TGGroupChatIDs:     []int64{-10001},
+		TGPrivateChatID:  1001,
+		TGGroupChatIDs:   []int64{-10001},
 		TopicPreferences: []string{"planning"},
 	}
 	if err := store.PutContact(ctx, active); err != nil {
@@ -219,5 +220,49 @@ maep_dial_address: "/ip4/127.0.0.1/tcp/4021/p2p/12D3KooWPeerX"
 	}
 	if inactive[0].MAEPDialAddress == "" {
 		t.Fatalf("inactive contact maep_dial_address should be set")
+	}
+}
+
+func TestFileStorePutContact_ActiveOverflowMovesToInactive(t *testing.T) {
+	ctx := context.Background()
+	root := filepath.Join(t.TempDir(), "contacts")
+	store := NewFileStore(root)
+	if err := store.Ensure(ctx); err != nil {
+		t.Fatalf("Ensure() error = %v", err)
+	}
+
+	base := time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
+	for i := 1; i <= maxActiveContacts+1; i++ {
+		last := base.Add(time.Duration(i) * time.Minute)
+		record := Contact{
+			ContactID:         fmt.Sprintf("tg:%d", i),
+			Kind:              KindHuman,
+			Channel:           ChannelTelegram,
+			ContactNickname:   fmt.Sprintf("User %d", i),
+			TGPrivateChatID:   int64(i),
+			LastInteractionAt: &last,
+		}
+		if err := store.PutContact(ctx, record); err != nil {
+			t.Fatalf("PutContact(%d) error = %v", i, err)
+		}
+	}
+
+	active, err := store.ListContacts(ctx, StatusActive)
+	if err != nil {
+		t.Fatalf("ListContacts(active) error = %v", err)
+	}
+	if len(active) != maxActiveContacts {
+		t.Fatalf("active contacts count mismatch: got=%d want=%d", len(active), maxActiveContacts)
+	}
+
+	inactive, err := store.ListContacts(ctx, StatusInactive)
+	if err != nil {
+		t.Fatalf("ListContacts(inactive) error = %v", err)
+	}
+	if len(inactive) != 1 {
+		t.Fatalf("inactive contacts count mismatch: got=%d want=1", len(inactive))
+	}
+	if inactive[0].ContactID != "tg:1" {
+		t.Fatalf("expected oldest contact moved to inactive: got=%s want=tg:1", inactive[0].ContactID)
 	}
 }

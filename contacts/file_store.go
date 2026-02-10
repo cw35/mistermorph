@@ -18,6 +18,7 @@ import (
 const (
 	busInboxFileVersion  = 1
 	busOutboxFileVersion = 1
+	maxActiveContacts    = 150
 )
 
 type busInboxFile struct {
@@ -114,6 +115,10 @@ func (s *FileStore) PutContact(ctx context.Context, contact Contact) error {
 			inactive = append(inactive, contact)
 		} else {
 			active = append(active, contact)
+		}
+		active, overflow := trimActiveContactsByInteraction(active, maxActiveContacts)
+		if len(overflow) > 0 {
+			inactive = append(inactive, overflow...)
 		}
 
 		if err := s.saveContactsMarkdownLocked(s.activeContactsPath(), "Active Contacts", StatusActive, active); err != nil {
@@ -413,8 +418,8 @@ type contactProfileSection struct {
 	Kind              string   `yaml:"kind"`
 	Channel           string   `yaml:"channel"`
 	TGUsername        string   `yaml:"tg_username"`
-	TGPrivateChatID     string   `yaml:"tg_private_chat_id"`
-	TGGroupChatIDs      []string `yaml:"tg_group_chat_ids"`
+	TGPrivateChatID   string   `yaml:"tg_private_chat_id"`
+	TGGroupChatIDs    []string `yaml:"tg_group_chat_ids"`
 	MAEPNodeID        string   `yaml:"maep_node_id"`
 	MAEPDialAddress   string   `yaml:"maep_dial_address"`
 	PersonaBrief      string   `yaml:"persona_brief"`
@@ -812,6 +817,31 @@ func removeContactByID(items []Contact, contactID string) []Contact {
 		out = append(out, item)
 	}
 	return out
+}
+
+func trimActiveContactsByInteraction(active []Contact, limit int) ([]Contact, []Contact) {
+	if limit <= 0 || len(active) <= limit {
+		return active, nil
+	}
+	ranked := append([]Contact(nil), active...)
+	sort.Slice(ranked, func(i, j int) bool {
+		left := contactInteractionTimestamp(ranked[i])
+		right := contactInteractionTimestamp(ranked[j])
+		if left.Equal(right) {
+			return strings.TrimSpace(ranked[i].ContactID) < strings.TrimSpace(ranked[j].ContactID)
+		}
+		return left.After(right)
+	})
+	kept := append([]Contact(nil), ranked[:limit]...)
+	moved := append([]Contact(nil), ranked[limit:]...)
+	return kept, moved
+}
+
+func contactInteractionTimestamp(contact Contact) time.Time {
+	if contact.LastInteractionAt == nil || contact.LastInteractionAt.IsZero() {
+		return time.Time{}
+	}
+	return contact.LastInteractionAt.UTC()
 }
 
 func hasContactID(items []Contact, contactID string) bool {

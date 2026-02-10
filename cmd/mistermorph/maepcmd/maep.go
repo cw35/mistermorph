@@ -508,17 +508,17 @@ func newServeCmd() *cobra.Command {
 				if msg.Channel != busruntime.ChannelMAEP {
 					return fmt.Errorf("unsupported inbound channel: %s", msg.Channel)
 				}
+				if syncBusinessContacts {
+					if err := contactsSvc.ObserveInboundBusMessage(context.Background(), msg, svc, time.Now().UTC()); err != nil {
+						logger.Warn("contacts_observe_maep_error", "idempotency_key", msg.IdempotencyKey, "error", err.Error())
+						return err
+					}
+				}
 				event, err := maepbus.EventFromBusMessage(msg)
 				if err != nil {
 					return err
 				}
 				printDataPushEvent(cmd, event, outputJSON)
-				if syncBusinessContacts {
-					if err := observeMAEPContact(context.Background(), svc, contactsSvc, event, time.Now().UTC()); err != nil {
-						logger.Warn("contacts_observe_maep_error", "peer_id", event.FromPeerID, "error", err.Error())
-						return err
-					}
-				}
 				return nil
 			}
 			for _, topic := range busruntime.AllTopics() {
@@ -805,96 +805,6 @@ func printDataPushEvent(cmd *cobra.Command, event maep.DataPushEvent, outputJSON
 		return
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "payload(bytes): %d\n", len(event.PayloadBytes))
-}
-
-func observeMAEPContact(ctx context.Context, maepSvc *maep.Service, contactsSvc *contacts.Service, event maep.DataPushEvent, now time.Time) error {
-	if maepSvc == nil || contactsSvc == nil {
-		return nil
-	}
-	peerID := strings.TrimSpace(event.FromPeerID)
-	if peerID == "" {
-		return nil
-	}
-	now = now.UTC()
-	lastInteraction := now
-
-	maepContact, foundMAEP, err := maepSvc.GetContactByPeerID(ctx, peerID)
-	if err != nil {
-		return err
-	}
-	nodeID := ""
-	dialAddress := ""
-	nickname := ""
-	if foundMAEP {
-		nodeID = strings.TrimSpace(maepContact.NodeID)
-		if len(maepContact.Addresses) > 0 {
-			dialAddress = strings.TrimSpace(maepContact.Addresses[0])
-		}
-		nickname = strings.TrimSpace(maepContact.DisplayName)
-	}
-
-	canonicalContactID := chooseBusinessContactID(nodeID, peerID)
-	candidateIDs := []string{canonicalContactID}
-	if peerID != "" {
-		candidateIDs = append(candidateIDs, "maep:"+peerID)
-	}
-	var existing contacts.Contact
-	found := false
-	for _, contactID := range candidateIDs {
-		contactID = strings.TrimSpace(contactID)
-		if contactID == "" {
-			continue
-		}
-		item, ok, getErr := contactsSvc.GetContact(ctx, contactID)
-		if getErr != nil {
-			return getErr
-		}
-		if ok {
-			existing = item
-			found = true
-			break
-		}
-	}
-
-	if found {
-		existing.Kind = contacts.KindAgent
-		existing.Channel = contacts.ChannelMAEP
-		if existing.MAEPNodeID == "" && nodeID != "" {
-			existing.MAEPNodeID = nodeID
-		}
-		if existing.MAEPDialAddress == "" && dialAddress != "" {
-			existing.MAEPDialAddress = dialAddress
-		}
-		if nickname != "" {
-			existing.ContactNickname = nickname
-		}
-		existing.LastInteractionAt = &lastInteraction
-		_, err = contactsSvc.UpsertContact(ctx, existing, now)
-		return err
-	}
-
-	_, err = contactsSvc.UpsertContact(ctx, contacts.Contact{
-		ContactID:         canonicalContactID,
-		Kind:              contacts.KindAgent,
-		Channel:           contacts.ChannelMAEP,
-		ContactNickname:   nickname,
-		MAEPNodeID:        nodeID,
-		MAEPDialAddress:   dialAddress,
-		LastInteractionAt: &lastInteraction,
-	}, now)
-	return err
-}
-
-func chooseBusinessContactID(nodeID string, peerID string) string {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID != "" {
-		return nodeID
-	}
-	peerID = strings.TrimSpace(peerID)
-	if peerID == "" {
-		return ""
-	}
-	return "maep:" + peerID
 }
 
 func summarizePayload(contentType string, payloadBase64 string) string {

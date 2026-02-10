@@ -161,10 +161,16 @@ func newTelegramCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			maepSvc := maep.NewService(maep.NewFileStore(statepaths.MAEPDir()))
 
 			busHandler := func(ctx context.Context, msg busruntime.BusMessage) error {
 				switch msg.Direction {
 				case busruntime.DirectionInbound:
+					if msg.Channel == busruntime.ChannelTelegram || msg.Channel == busruntime.ChannelMAEP {
+						if err := contactsSvc.ObserveInboundBusMessage(context.Background(), msg, maepSvc, time.Now().UTC()); err != nil {
+							logger.Warn("contacts_observe_bus_error", "channel", msg.Channel, "idempotency_key", msg.IdempotencyKey, "error", err.Error())
+						}
+					}
 					switch msg.Channel {
 					case busruntime.ChannelTelegram:
 						if enqueueTelegramInbound == nil {
@@ -213,7 +219,6 @@ func newTelegramCmd() *cobra.Command {
 				}
 			}
 
-			maepSvc := maep.NewService(maep.NewFileStore(statepaths.MAEPDir()))
 			if withMAEP {
 				maepInboundAdapter, err = maepbus.NewInboundAdapter(maepbus.InboundAdapterOptions{
 					Bus:   inprocBus,
@@ -921,11 +926,6 @@ func newTelegramCmd() *cobra.Command {
 								continue
 							}
 							sessionKey := maepSessionKey(peerID, event.Topic, sessionID)
-							if err := observeMAEPContact(context.Background(), maepSvc, contactsSvc, event, time.Now().UTC()); err != nil {
-								logger.Warn("contacts_observe_maep_error", "peer_id", peerID, "error", err.Error())
-							} else {
-								logger.Info("contacts_observe_maep_ok", "peer_id", peerID, "topic", event.Topic)
-							}
 
 							maepMu.Lock()
 							historySnapshot := append([]llm.Message(nil), maepHistory[peerID]...)
@@ -1437,18 +1437,14 @@ func newTelegramCmd() *cobra.Command {
 					}
 					if fromUserID > 0 {
 						observedAt := time.Now().UTC()
-						if err := observeTelegramContact(context.Background(), contactsSvc, chatID, chatType, fromUserID, fromUsername, fromFirst, fromLast, fromDisplay, observedAt); err != nil {
-							logger.Warn("contacts_observe_telegram_error", "chat_id", chatID, "user_id", fromUserID, "error", err.Error())
-						} else if err := applyTelegramInboundFeedback(context.Background(), contactsSvc, chatID, chatType, fromUserID, fromUsername, observedAt); err != nil {
+						if err := applyTelegramInboundFeedback(context.Background(), contactsSvc, chatID, chatType, fromUserID, fromUsername, observedAt); err != nil {
 							logger.Warn("contacts_feedback_telegram_error", "chat_id", chatID, "user_id", fromUserID, "error", err.Error())
 						}
 					}
 
-					var mentionUsers []string
-					if isGroup {
-						mu.Lock()
-						mentionUsers = mentionUsersSnapshot(knownMentions[chatID], mentionUserSnapshotLimit)
-						mu.Unlock()
+					mentionUsers := dedupeNonEmptyStrings(mentionCandidates)
+					if isGroup && mentionUserSnapshotLimit > 0 && len(mentionUsers) > mentionUserSnapshotLimit {
+						mentionUsers = mentionUsers[:mentionUserSnapshotLimit]
 					}
 					accepted, publishErr := telegramInboundAdapter.HandleInboundMessage(context.Background(), telegrambus.InboundMessage{
 						ChatID:          chatID,
@@ -3736,85 +3732,6 @@ func telegramMemoryContactID(username string, userID int64) string {
 	return ""
 }
 
-func observeMAEPContact(ctx context.Context, maepSvc *maep.Service, contactsSvc *contacts.Service, event maep.DataPushEvent, now time.Time) error {
-	if maepSvc == nil || contactsSvc == nil {
-		return nil
-	}
-	peerID := strings.TrimSpace(event.FromPeerID)
-	if peerID == "" {
-		return nil
-	}
-	now = now.UTC()
-	lastInteraction := now
-
-	maepContact, foundMAEP, err := maepSvc.GetContactByPeerID(ctx, peerID)
-	if err != nil {
-		return err
-	}
-	nodeID := ""
-	dialAddress := ""
-	nickname := ""
-	if foundMAEP {
-		nodeID = strings.TrimSpace(maepContact.NodeID)
-		if len(maepContact.Addresses) > 0 {
-			dialAddress = strings.TrimSpace(maepContact.Addresses[0])
-		}
-		nickname = strings.TrimSpace(maepContact.DisplayName)
-	}
-
-	canonicalContactID := chooseBusinessContactID(nodeID, peerID)
-	candidateIDs := []string{canonicalContactID}
-	if peerID != "" {
-		candidateIDs = append(candidateIDs, "maep:"+peerID)
-	}
-
-	var existing contacts.Contact
-	found := false
-	for _, contactID := range candidateIDs {
-		contactID = strings.TrimSpace(contactID)
-		if contactID == "" {
-			continue
-		}
-		item, ok, getErr := contactsSvc.GetContact(ctx, contactID)
-		if getErr != nil {
-			return getErr
-		}
-		if ok {
-			existing = item
-			found = true
-			break
-		}
-	}
-
-	if found {
-		existing.Kind = contacts.KindAgent
-		existing.Channel = contacts.ChannelMAEP
-		if existing.MAEPNodeID == "" && nodeID != "" {
-			existing.MAEPNodeID = nodeID
-		}
-		if existing.MAEPDialAddress == "" && dialAddress != "" {
-			existing.MAEPDialAddress = dialAddress
-		}
-		if nickname != "" {
-			existing.ContactNickname = nickname
-		}
-		existing.LastInteractionAt = &lastInteraction
-		_, err = contactsSvc.UpsertContact(ctx, existing, now)
-		return err
-	}
-
-	_, err = contactsSvc.UpsertContact(ctx, contacts.Contact{
-		ContactID:         canonicalContactID,
-		Kind:              contacts.KindAgent,
-		Channel:           contacts.ChannelMAEP,
-		ContactNickname:   nickname,
-		MAEPNodeID:        nodeID,
-		MAEPDialAddress:   dialAddress,
-		LastInteractionAt: &lastInteraction,
-	}, now)
-	return err
-}
-
 func chooseBusinessContactID(nodeID string, peerID string) string {
 	nodeID = strings.TrimSpace(nodeID)
 	if nodeID != "" {
@@ -3939,83 +3856,6 @@ func dedupeNonEmptyStrings(values []string) []string {
 	if len(out) == 0 {
 		return nil
 	}
-	return out
-}
-
-func observeTelegramContact(ctx context.Context, svc *contacts.Service, chatID int64, chatType string, userID int64, username string, firstName string, lastName string, displayName string, now time.Time) error {
-	if svc == nil || userID <= 0 {
-		return nil
-	}
-	contactID := telegramMemoryContactID(username, userID)
-	if contactID == "" {
-		return nil
-	}
-	now = now.UTC()
-	contactNickname := strings.TrimSpace(displayName)
-	if contactNickname == "" {
-		contactNickname = strings.TrimSpace(strings.Join([]string{firstName, lastName}, " "))
-	}
-	existing, ok, err := svc.GetContact(ctx, contactID)
-	if err != nil {
-		return err
-	}
-	lastInteraction := now
-	chatType = strings.ToLower(strings.TrimSpace(chatType))
-	username = strings.TrimSpace(strings.TrimPrefix(username, "@"))
-	if ok {
-		existing.Kind = contacts.KindHuman
-		existing.Channel = contacts.ChannelTelegram
-		if username != "" {
-			existing.TGUsername = username
-		}
-		if chatType == "private" && chatID > 0 {
-			existing.TGPrivateChatID = chatID
-		}
-		if chatType == "group" || chatType == "supergroup" {
-			existing.TGGroupChatIDs = mergeGroupChatIDs(existing.TGGroupChatIDs, chatID)
-		}
-		if contactNickname != "" {
-			existing.ContactNickname = contactNickname
-		}
-		existing.LastInteractionAt = &lastInteraction
-		_, err = svc.UpsertContact(ctx, existing, now)
-		return err
-	}
-	record := contacts.Contact{
-		ContactID:         contactID,
-		Kind:              contacts.KindHuman,
-		Channel:           contacts.ChannelTelegram,
-		ContactNickname:   contactNickname,
-		TGUsername:        username,
-		LastInteractionAt: &lastInteraction,
-	}
-	if chatType == "private" && chatID > 0 {
-		record.TGPrivateChatID = chatID
-	}
-	if chatType == "group" || chatType == "supergroup" {
-		record.TGGroupChatIDs = []int64{chatID}
-	}
-	_, err = svc.UpsertContact(ctx, record, now)
-	return err
-}
-
-func mergeGroupChatIDs(base []int64, extra int64) []int64 {
-	if extra == 0 {
-		return base
-	}
-	seen := map[int64]bool{}
-	out := make([]int64, 0, len(base)+1)
-	for _, raw := range base {
-		if raw == 0 || seen[raw] {
-			continue
-		}
-		seen[raw] = true
-		out = append(out, raw)
-	}
-	if !seen[extra] {
-		out = append(out, extra)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
 
