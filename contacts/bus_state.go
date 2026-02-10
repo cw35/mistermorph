@@ -29,7 +29,6 @@ type BusOutboxRecord struct {
 	ContactID      string            `json:"contact_id,omitempty"`
 	PeerID         string            `json:"peer_id,omitempty"`
 	ItemID         string            `json:"item_id,omitempty"`
-	Topic          string            `json:"topic,omitempty"`
 	ContentType    string            `json:"content_type,omitempty"`
 	PayloadBase64  string            `json:"payload_base64,omitempty"`
 	Status         BusDeliveryStatus `json:"status"`

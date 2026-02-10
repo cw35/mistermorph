@@ -103,7 +103,6 @@ func TestFileStoreBusRecordsRoundTrip(t *testing.T) {
 		ContactID:      "maep:a",
 		PeerID:         "12D3KooWA",
 		ItemID:         "item-1",
-		Topic:          "share.proactive.v1",
 		ContentType:    "text/plain",
 		PayloadBase64:  "aGVsbG8",
 		Status:         BusDeliveryStatusPending,

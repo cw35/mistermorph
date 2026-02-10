@@ -1187,7 +1187,6 @@ func normalizeBusOutboxRecord(record BusOutboxRecord) (BusOutboxRecord, error) {
 		ContactID:      strings.TrimSpace(record.ContactID),
 		PeerID:         strings.TrimSpace(record.PeerID),
 		ItemID:         strings.TrimSpace(record.ItemID),
-		Topic:          strings.TrimSpace(record.Topic),
 		ContentType:    strings.TrimSpace(record.ContentType),
 		PayloadBase64:  strings.TrimSpace(record.PayloadBase64),
 		Status:         status,

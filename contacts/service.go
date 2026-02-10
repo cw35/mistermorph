@@ -227,7 +227,7 @@ func (s *Service) SendDecision(ctx context.Context, now time.Time, decision Shar
 	}
 	decision.ContentType = strings.TrimSpace(decision.ContentType)
 	if decision.ContentType == "" {
-		decision.ContentType = "text/plain"
+		decision.ContentType = "application/json"
 	}
 	decision.PayloadBase64 = strings.TrimSpace(decision.PayloadBase64)
 	if decision.PayloadBase64 == "" {
@@ -316,7 +316,6 @@ func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact 
 		ContactID:      decision.ContactID,
 		PeerID:         decision.PeerID,
 		ItemID:         decision.ItemID,
-		Topic:          ShareTopic,
 		ContentType:    decision.ContentType,
 		PayloadBase64:  decision.PayloadBase64,
 	}

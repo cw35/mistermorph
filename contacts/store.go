@@ -10,8 +10,6 @@ type Store interface {
 	ListContacts(ctx context.Context, status Status) ([]Contact, error)
 	SetContactStatus(ctx context.Context, contactID string, status Status) (Contact, error)
 
-	GetBusInboxRecord(ctx context.Context, channel string, platformMessageID string) (BusInboxRecord, bool, error)
-	PutBusInboxRecord(ctx context.Context, record BusInboxRecord) error
 	GetBusOutboxRecord(ctx context.Context, channel string, idempotencyKey string) (BusOutboxRecord, bool, error)
 	PutBusOutboxRecord(ctx context.Context, record BusOutboxRecord) error
 }

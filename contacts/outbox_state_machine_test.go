@@ -116,7 +116,6 @@ func testOutboxBase() BusOutboxRecord {
 		ContactID:      "maep:c1",
 		PeerID:         "12D3KooW...",
 		ItemID:         "item-1",
-		Topic:          "share.proactive.v1",
 		ContentType:    "text/plain",
 		PayloadBase64:  "aGVsbG8",
 	}
