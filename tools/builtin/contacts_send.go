@@ -69,7 +69,7 @@ func (t *ContactsSendTool) ParameterSchema() string {
 			},
 			"session_id": map[string]any{
 				"type":        "string",
-				"description": "UUIDv7 session_id. Required for contacts_send (chat.message).",
+				"description": "Optional UUIDv7 session_id; auto-generated when omitted.",
 			},
 			"reply_to": map[string]any{
 				"type":        "string",
@@ -167,8 +167,7 @@ func resolveSendPayload(params map[string]any, now time.Time) (string, string, e
 	sessionID, _ := params["session_id"].(string)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID != "" {
-		parsed, err := uuid.Parse(sessionID)
-		if err != nil || parsed.Version() != uuid.Version(7) {
+		if err := validateUUIDv7SessionID(sessionID); err != nil {
 			return "", "", fmt.Errorf("session_id must be uuid_v7")
 		}
 	}
@@ -178,16 +177,19 @@ func resolveSendPayload(params map[string]any, now time.Time) (string, string, e
 	if text, ok := params["message_text"].(string); ok {
 		text = strings.TrimSpace(text)
 		if text != "" {
-			if sessionID == "" {
-				return "", "", fmt.Errorf("session_id is required for contacts_send topic chat.message (must be uuid_v7)")
+			resolvedSessionID := sessionID
+			if resolvedSessionID == "" {
+				generatedSessionID, err := generateUUIDv7SessionID()
+				if err != nil {
+					return "", "", err
+				}
+				resolvedSessionID = generatedSessionID
 			}
 			envelope := map[string]any{
 				"message_id": "msg_" + uuid.NewString(),
 				"text":       text,
 				"sent_at":    now.UTC().Format(time.RFC3339),
-			}
-			if sessionID != "" {
-				envelope["session_id"] = sessionID
+				"session_id": resolvedSessionID,
 			}
 			if replyTo != "" {
 				envelope["reply_to"] = replyTo
@@ -227,14 +229,41 @@ func resolveSendPayload(params map[string]any, now time.Time) (string, string, e
 			sessionRaw, _ := envelope["session_id"].(string)
 			sessionRaw = strings.TrimSpace(sessionRaw)
 			if sessionRaw == "" {
-				return "", "", fmt.Errorf("message envelope missing session_id for chat.message")
+				sessionRaw = sessionID
 			}
-			parsed, err := uuid.Parse(sessionRaw)
-			if err != nil || parsed.Version() != uuid.Version(7) {
+			if sessionRaw == "" {
+				generatedSessionID, err := generateUUIDv7SessionID()
+				if err != nil {
+					return "", "", err
+				}
+				sessionRaw = generatedSessionID
+			}
+			if err := validateUUIDv7SessionID(sessionRaw); err != nil {
 				return "", "", fmt.Errorf("message envelope session_id must be uuid_v7")
 			}
-			return contentType, raw, nil
+			envelope["session_id"] = sessionRaw
+			normalizedRaw, err := json.Marshal(envelope)
+			if err != nil {
+				return "", "", fmt.Errorf("marshal message envelope: %w", err)
+			}
+			return contentType, base64.RawURLEncoding.EncodeToString(normalizedRaw), nil
 		}
 	}
 	return "", "", fmt.Errorf("message_text or message_base64 is required")
+}
+
+func validateUUIDv7SessionID(sessionID string) error {
+	parsed, err := uuid.Parse(strings.TrimSpace(sessionID))
+	if err != nil || parsed.Version() != uuid.Version(7) {
+		return fmt.Errorf("session_id must be uuid_v7")
+	}
+	return nil
+}
+
+func generateUUIDv7SessionID() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("generate session_id: %w", err)
+	}
+	return id.String(), nil
 }

@@ -199,7 +199,7 @@
 | `content_type` | `string` | 否 | `application/json` | 负载类型，必须是 envelope JSON 类型。 |
 | `message_text` | `string` | 条件必填 | 无 | 文本内容；工具会自动封装为 envelope。 |
 | `message_base64` | `string` | 条件必填 | 无 | base64url 编码的 envelope JSON。 |
-| `session_id` | `string` | 否 | 空 | 会话 ID（UUIDv7）。`contacts_send` 固定发送 `chat.message`，因此必填。 |
+| `session_id` | `string` | 否 | 空 | 会话 ID（UUIDv7）。`contacts_send` 固定发送 `chat.message`。 |
 | `reply_to` | `string` | 否 | 空 | 可选，引用上一条消息 `message_id`。 |
 
 约束：
