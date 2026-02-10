@@ -136,7 +136,6 @@ Two common integration options:
 
 Core tools available to the agent:
 
-- `echo`: echo a value (debugging/formatting).
 - `read_file`: read local text files.
 - `write_file`: write local text files under `file_cache_dir` or `file_state_dir`.
 - `bash`: run a shell command (disabled by default).
@@ -276,7 +275,6 @@ These arguments will dump the final system/user/tool prompts and the full LLM re
 
 **skills**
 - `skills list --skills-dir` (repeatable)
-- `skills show --skills-dir` (repeatable)
 - `skills install --dest --dry-run --clean --skip-existing --timeout --max-bytes --yes`
 
 **install**

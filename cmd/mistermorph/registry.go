@@ -15,7 +15,6 @@ import (
 
 func registryFromViper() *tools.Registry {
 	r := tools.NewRegistry()
-	r.Register(builtin.NewEchoTool())
 
 	viper.SetDefault("tools.read_file.max_bytes", 256*1024)
 	viper.SetDefault("tools.read_file.deny_paths", []string{"config.yaml"})

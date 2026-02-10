@@ -139,7 +139,6 @@ mistermorph submit --server-url http://127.0.0.1:8787 --auth-token "$MISTER_MORP
 
 Agent 可用的核心工具：
 
-- `echo`：回显一个值（用于调试/格式化）。
 - `read_file`：读取本地文本文件。
 - `write_file`：将文本文件写入 `file_cache_dir` 或 `file_state_dir`。
 - `bash`：执行 shell 命令（默认禁用）。

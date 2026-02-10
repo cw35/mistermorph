@@ -139,7 +139,6 @@ mistermorph submit --server-url http://127.0.0.1:8787 --auth-token "$MISTER_MORP
 
 Agent が利用できる主要ツール:
 
-- `echo`: 値をそのまま返す（デバッグ/整形用）。
 - `read_file`: ローカルのテキストファイルを読み取る。
 - `write_file`: `file_cache_dir` または `file_state_dir` 配下にテキストファイルを書き込む。
 - `bash`: シェルコマンドを実行する（デフォルトでは無効）。

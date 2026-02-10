@@ -189,7 +189,6 @@ func TestBuildMAEPRegistry_DisablesContactsSend(t *testing.T) {
 	base := tools.NewRegistry()
 	base.Register(fakeTool{name: "contacts_send"})
 	base.Register(fakeTool{name: "read_file"})
-	base.Register(fakeTool{name: "echo"})
 
 	reg := buildMAEPRegistry(base)
 	if _, ok := reg.Get("contacts_send"); ok {
@@ -197,9 +196,6 @@ func TestBuildMAEPRegistry_DisablesContactsSend(t *testing.T) {
 	}
 	if _, ok := reg.Get("read_file"); !ok {
 		t.Fatalf("expected read_file to remain enabled")
-	}
-	if _, ok := reg.Get("echo"); !ok {
-		t.Fatalf("expected echo to remain enabled")
 	}
 }
 

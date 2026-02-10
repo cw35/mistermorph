@@ -20,12 +20,9 @@ Default roots (highest priority first):
 
 If the same skill `name` appears in multiple roots, the first root wins (higher priority). This avoids duplicates and allows you to override a built-in or shared skill by installing a modified copy into `~/.morph/skills`.
 
-## Listing and inspecting skills
+## Listing skills
 
 - List: `mistermorph skills list`
-- Show one skill: `mistermorph skills show <skill>`
-
-`<skill>` can be either a skill `id` or a directory name.
 
 ## How skills are chosen (selection modes)
 

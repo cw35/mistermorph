@@ -5,7 +5,6 @@
 ## 注册与可用性
 
 - 默认注册（由 `cmd/mistermorph/registry.go` 控制）
-  - `echo`
   - `read_file`
   - `write_file`
   - `bash`
@@ -16,16 +15,6 @@
   - `contacts_send`
 - 条件注册
   - `plan_create`（在 `run` / `telegram` / `daemon serve` 模式通过 `internal/toolsutil.RegisterPlanTool` 注入）
-
-## `echo`
-
-用途：回显字符串，常用于调试。
-
-参数：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `value` | `string` | 是 | 无 | 要回显的内容。 |
 
 ## `read_file`
 

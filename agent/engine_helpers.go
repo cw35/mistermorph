@@ -101,10 +101,6 @@ func toolArgsSummary(toolName string, params map[string]any, opts LogOptions) ma
 		if v, ok := params["message_base64"].(string); ok {
 			out["has_message_base64"] = strings.TrimSpace(v) != ""
 		}
-	case "echo":
-		if v, ok := params["value"].(string); ok && strings.TrimSpace(v) != "" {
-			out["value"] = truncateString(strings.TrimSpace(v), 200)
-		}
 	case "bash":
 		if opts.IncludeToolParams {
 			if v, ok := params["cmd"].(string); ok && strings.TrimSpace(v) != "" {

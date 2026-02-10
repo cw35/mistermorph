@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -24,6 +25,7 @@ type NameDetailTableOptions struct {
 	Title          string
 	Rows           []NameDetailRow
 	EmptyText      string
+	IndexHeader    string
 	NameHeader     string
 	DetailHeader   string
 	DefaultWidth   int
@@ -50,6 +52,10 @@ func PrintNameDetailTable(out io.Writer, opts NameDetailTableOptions) {
 		return
 	}
 
+	indexHeader := strings.TrimSpace(opts.IndexHeader)
+	if indexHeader == "" {
+		indexHeader = "#"
+	}
 	nameHeader := strings.TrimSpace(opts.NameHeader)
 	if nameHeader == "" {
 		nameHeader = "NAME"
@@ -63,6 +69,12 @@ func PrintNameDetailTable(out io.Writer, opts NameDetailTableOptions) {
 		emptyDetail = "No details provided."
 	}
 
+	indexWidth := utf8.RuneCountInString(indexHeader)
+	maxIndexDigits := utf8.RuneCountInString(strconv.Itoa(len(opts.Rows) - 1))
+	if maxIndexDigits > indexWidth {
+		indexWidth = maxIndexDigits
+	}
+
 	nameWidth := utf8.RuneCountInString(nameHeader)
 	for _, row := range opts.Rows {
 		if width := utf8.RuneCountInString(row.Name); width > nameWidth {
@@ -70,26 +82,26 @@ func PrintNameDetailTable(out io.Writer, opts NameDetailTableOptions) {
 		}
 	}
 
-	detailWidth := tableDetailWidth(out, nameWidth, opts.DefaultWidth, opts.MinDetailWidth)
+	detailWidth := tableDetailWidth(out, indexWidth, nameWidth, opts.DefaultWidth, opts.MinDetailWidth)
 
-	fmt.Fprintf(out, "%s  %s\n", Key(padRightRunes(nameHeader, nameWidth)), Key(detailHeader))
-	fmt.Fprintf(out, "%s  %s\n", Dim(strings.Repeat("-", nameWidth)), Dim(strings.Repeat("-", detailWidth)))
+	fmt.Fprintf(out, "%s  %s  %s\n", Key(padRightRunes(indexHeader, indexWidth)), Key(padRightRunes(nameHeader, nameWidth)), Key(detailHeader))
+	fmt.Fprintf(out, "%s  %s  %s\n", Dim(strings.Repeat("-", indexWidth)), Dim(strings.Repeat("-", nameWidth)), Dim(strings.Repeat("-", detailWidth)))
 
-	for _, row := range opts.Rows {
+	for i, row := range opts.Rows {
 		detail := strings.TrimSpace(row.Detail)
 		if detail == "" {
 			detail = emptyDetail
 		}
 
 		lines := wrapTextRunes(detail, detailWidth)
-		fmt.Fprintf(out, "%s  %s\n", Success(padRightRunes(row.Name, nameWidth)), lines[0])
+		fmt.Fprintf(out, "%s  %s  %s\n", Dim(padRightRunes(strconv.Itoa(i), indexWidth)), Success(padRightRunes(row.Name, nameWidth)), lines[0])
 		for _, line := range lines[1:] {
-			fmt.Fprintf(out, "%s  %s\n", strings.Repeat(" ", nameWidth), line)
+			fmt.Fprintf(out, "%s  %s  %s\n", strings.Repeat(" ", indexWidth), strings.Repeat(" ", nameWidth), line)
 		}
 	}
 }
 
-func tableDetailWidth(out io.Writer, nameWidth, defaultWidth, minDetailWidth int) int {
+func tableDetailWidth(out io.Writer, indexWidth, nameWidth, defaultWidth, minDetailWidth int) int {
 	if defaultWidth <= 0 {
 		defaultWidth = defaultTableWidth
 	}
@@ -104,7 +116,7 @@ func tableDetailWidth(out io.Writer, nameWidth, defaultWidth, minDetailWidth int
 		}
 	}
 
-	detailWidth := width - nameWidth - 2
+	detailWidth := width - indexWidth - nameWidth - 4
 	if detailWidth < minDetailWidth {
 		detailWidth = minDetailWidth
 	}

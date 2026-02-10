@@ -6,7 +6,7 @@
 - `agent/`: agent engine (loop, parsing, prompts, logging).
 - `llm/`: shared LLM types/interfaces used by the agent and providers.
 - `providers/`: LLM backends (currently `providers/uniai/`).
-- `tools/` and `tools/builtin/`: tool registry and built-ins (`web_search`, `url_fetch`, `bash`, `read_file`, `echo`).
+- `tools/` and `tools/builtin/`: tool registry and built-ins (`web_search`, `url_fetch`, `bash`, `read_file`).
 - `skills/`: skill discovery and selection logic for `SKILL.md`.
 - `demo/`: embedding examples (`demo/embed-go/`, `demo/embed-cli/`).
 - Root configs: `assets/config/config.example.yaml` (template) and `config.yaml` (local). `mistermorph` in repo root is a build artifact.
