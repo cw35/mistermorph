@@ -154,11 +154,6 @@ func registryFromViper() *tools.Registry {
 			statepaths.TODODONEPath(),
 			statepaths.ContactsDir(),
 		))
-		r.Register(builtin.NewTodoListTool(
-			true,
-			statepaths.TODOWIPPath(),
-			statepaths.TODODONEPath(),
-		))
 	}
 
 	if viper.GetBool("tools.memory.enabled") {

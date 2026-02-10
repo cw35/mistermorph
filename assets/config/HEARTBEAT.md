@@ -9,7 +9,7 @@
 ==Example Begin==
 
 ## Check TODO.WIP.md
-- Check the `TODO.WIP.md` file for any pending tasks using `todo_list` tool.
+- Check the `TODO.WIP.md` file for any pending tasks using `read_file` tool.
 - If there are tasks and if there are contacts that match the task context, consider reaching out to them using `contacts_send` tool.
 
 ==Example End==

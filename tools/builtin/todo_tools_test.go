@@ -33,7 +33,7 @@ func (s *stubTodoToolLLMClient) Chat(_ context.Context, req llm.Request) (llm.Re
 	return llm.Result{Text: reply}, nil
 }
 
-func TestTodoUpdateAndListTools(t *testing.T) {
+func TestTodoUpdateTool(t *testing.T) {
 	root := t.TempDir()
 	wip := filepath.Join(root, "TODO.WIP.md")
 	done := filepath.Join(root, "TODO.DONE.md")
@@ -80,25 +80,16 @@ func TestTodoUpdateAndListTools(t *testing.T) {
 		t.Fatalf("expected two ForceJSON llm calls (add resolve + complete match)")
 	}
 
-	list := NewTodoListTool(true, wip, done)
-	listOut, err := list.Execute(context.Background(), map[string]any{"scope": "both"})
+	store := todo.NewStore(wip, done)
+	listOut, err := store.List("both")
 	if err != nil {
-		t.Fatalf("todo_list error = %v", err)
+		t.Fatalf("store list error = %v", err)
 	}
-	var listParsed struct {
-		OpenCount int        `json:"open_count"`
-		DoneCount int        `json:"done_count"`
-		WIPItems  []struct{} `json:"wip_items"`
-		DONEItems []struct{} `json:"done_items"`
+	if listOut.OpenCount != 0 || listOut.DoneCount != 1 {
+		t.Fatalf("unexpected list counts: %+v", listOut)
 	}
-	if err := json.Unmarshal([]byte(listOut), &listParsed); err != nil {
-		t.Fatalf("todo_list json parse error = %v", err)
-	}
-	if listParsed.OpenCount != 0 || listParsed.DoneCount != 1 {
-		t.Fatalf("unexpected list counts: %s", listOut)
-	}
-	if len(listParsed.WIPItems) != 0 || len(listParsed.DONEItems) != 1 {
-		t.Fatalf("unexpected list items: %s", listOut)
+	if len(listOut.WIPItems) != 0 || len(listOut.DONEItems) != 1 {
+		t.Fatalf("unexpected list items: %+v", listOut)
 	}
 }
 

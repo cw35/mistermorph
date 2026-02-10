@@ -13,7 +13,6 @@
   - `web_search`
   - `memory_recently`
   - `todo_update`
-  - `todo_list`
   - `contacts_upsert`
   - `contacts_list`
   - `contacts_candidate_rank`
@@ -182,32 +181,6 @@
 | `invalid semantic_dedup response` | 语义去重 LLM 返回非法 JSON/结构。 |
 
 注：`missing_reference_id` 在当前实现中通常由内部 LLM 解析阶段触发并被工具降级处理为原样写入；若上游直接消费该错误仍可按该字符串识别。
-
-## `todo_list`
-
-用途：读取当前 TODO 条目，支持 `wip/done/both` 视图。
-
-参数：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `scope` | `string` | 否 | `wip` | `wip` / `done` / `both`。 |
-
-返回：
-
-- 成功时返回 `ListResult` JSON，关键字段：
-  - `scope`、`open_count`、`done_count`。
-  - `wip_items` / `done_items`（按文件顺序返回，首条优先）。
-  - `wip_path` / `done_path`。
-  - `generated_at`。
-
-错误（字符串匹配）：
-
-| 错误字符串（包含） | 触发场景 |
-|---|---|
-| `todo_list tool is disabled` | 工具被禁用。 |
-| `todo paths are not configured` | TODO 文件路径缺失。 |
-| `invalid scope:` | `scope` 不是 `wip/done/both`。 |
 
 ## `contacts_upsert`
 
