@@ -42,9 +42,12 @@ func toAgentToolCalls(calls []llm.ToolCall) []ToolCall {
 			continue
 		}
 		out = append(out, ToolCall{
-			ID:     strings.TrimSpace(call.ID),
-			Name:   name,
-			Params: call.Arguments,
+			ID:               call.ID,
+			Type:             call.Type,
+			Name:             name,
+			Params:           call.Arguments,
+			RawArguments:     call.RawArguments,
+			ThoughtSignature: call.ThoughtSignature,
 		})
 	}
 	if len(out) == 0 {
@@ -64,9 +67,12 @@ func toLLMToolCallsFromAgent(calls []ToolCall) []llm.ToolCall {
 			continue
 		}
 		out = append(out, llm.ToolCall{
-			ID:        strings.TrimSpace(call.ID),
-			Name:      name,
-			Arguments: call.Params,
+			ID:               call.ID,
+			Type:             call.Type,
+			Name:             name,
+			Arguments:        call.Params,
+			RawArguments:     call.RawArguments,
+			ThoughtSignature: call.ThoughtSignature,
 		})
 	}
 	if len(out) == 0 {

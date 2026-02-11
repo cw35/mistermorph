@@ -116,7 +116,7 @@ func (t *URLFetchTool) ParameterSchema() string {
 				"description": "Optional HTTP headers to send. Values must be strings. Allowlist enforced (default: Accept, Content-Type, User-Agent, If-None-Match, If-Modified-Since, Range). Sensitive headers (Authorization/Cookie/Host/Proxy-*/X-Forwarded-* and any *api[-_]?key*/*token*) are rejected.",
 			},
 			"body": map[string]any{
-				"type":        []string{"string", "object", "array", "number", "boolean", "null"},
+				"type":        "string",
 				"description": "Optional request body (supported for POST, PUT, PATCH). For binary responses, prefer download_path to save to a file instead of returning in the observation.",
 			},
 			"download_path": map[string]any{

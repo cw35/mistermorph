@@ -19,9 +19,12 @@ type Tool struct {
 }
 
 type ToolCall struct {
-	ID        string         `json:"id,omitempty"`
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments,omitempty"`
+	ID               string         `json:"id,omitempty"`
+	Type             string         `json:"type,omitempty"`
+	Name             string         `json:"name"`
+	Arguments        map[string]any `json:"arguments,omitempty"`
+	RawArguments     string         `json:"raw_arguments,omitempty"`
+	ThoughtSignature string         `json:"thought_signature,omitempty"`
 }
 
 type Usage struct {

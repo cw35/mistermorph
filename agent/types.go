@@ -15,10 +15,13 @@ const (
 )
 
 type ToolCall struct {
-	ID      string         `json:"tool_call_id,omitempty"`
-	Thought string         `json:"thought"`
-	Name    string         `json:"tool_name"`
-	Params  map[string]any `json:"tool_params"`
+	ID               string         `json:"tool_call_id,omitempty"`
+	Type             string         `json:"tool_call_type,omitempty"`
+	Thought          string         `json:"thought"`
+	Name             string         `json:"tool_name"`
+	Params           map[string]any `json:"tool_params"`
+	RawArguments     string         `json:"raw_arguments,omitempty"`
+	ThoughtSignature string         `json:"thought_signature,omitempty"`
 }
 
 type PlanStep struct {

@@ -131,7 +131,7 @@ func buildChatOptions(req llm.Request, provider string, forceJSON bool, toolsEmu
 	for i, m := range req.Messages {
 		msg := uniaiapi.Message{Role: m.Role, Content: m.Content}
 		if strings.TrimSpace(m.ToolCallID) != "" {
-			msg.ToolCallID = strings.TrimSpace(m.ToolCallID)
+			msg.ToolCallID = m.ToolCallID
 		}
 		if len(m.ToolCalls) > 0 {
 			msg.ToolCalls = toUniaiToolCallsFromLLM(m.ToolCalls)
@@ -139,7 +139,7 @@ func buildChatOptions(req llm.Request, provider string, forceJSON bool, toolsEmu
 		msgs[i] = msg
 	}
 
-	opts := []uniaiapi.ChatOption{uniaiapi.WithMessages(msgs...)}
+	opts := []uniaiapi.ChatOption{uniaiapi.WithReplaceMessages(msgs...)}
 	if provider != "" {
 		opts = append(opts, uniaiapi.WithProvider(provider))
 	}
@@ -243,9 +243,12 @@ func toLLMToolCalls(calls []uniaiapi.ToolCall) []llm.ToolCall {
 			}
 		}
 		out = append(out, llm.ToolCall{
-			ID:        call.ID,
-			Name:      name,
-			Arguments: params,
+			ID:               call.ID,
+			Type:             call.Type,
+			Name:             name,
+			Arguments:        params,
+			RawArguments:     call.Function.Arguments,
+			ThoughtSignature: call.ThoughtSignature,
 		})
 	}
 	if len(out) == 0 {
@@ -265,14 +268,21 @@ func toUniaiToolCallsFromLLM(calls []llm.ToolCall) []uniaiapi.ToolCall {
 			continue
 		}
 		args := "{}"
-		if call.Arguments != nil {
+		if strings.TrimSpace(call.RawArguments) != "" {
+			args = call.RawArguments
+		} else if call.Arguments != nil {
 			if data, err := json.Marshal(call.Arguments); err == nil {
 				args = string(data)
 			}
 		}
+		callType := call.Type
+		if strings.TrimSpace(callType) == "" {
+			callType = "function"
+		}
 		out = append(out, uniaiapi.ToolCall{
-			ID:   strings.TrimSpace(call.ID),
-			Type: "function",
+			ID:               call.ID,
+			Type:             callType,
+			ThoughtSignature: call.ThoughtSignature,
 			Function: uniaiapi.ToolCallFunction{
 				Name:      name,
 				Arguments: args,
