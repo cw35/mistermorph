@@ -60,3 +60,25 @@ func TestRenderInitPostGreetingPrompts(t *testing.T) {
 		t.Fatalf("user prompt missing payload: %q", user)
 	}
 }
+
+func TestRenderInitSoulPolishPrompts(t *testing.T) {
+	payload := map[string]any{
+		"soul_markdown": "# SOUL.md\n\n## Vibe\n\nconcise",
+	}
+	sys, user, err := renderInitSoulPolishPrompts(payload)
+	if err != nil {
+		t.Fatalf("renderInitSoulPolishPrompts() error = %v", err)
+	}
+	if !strings.Contains(sys, "Return rewritten markdown only") {
+		t.Fatalf("system prompt missing output contract: %q", sys)
+	}
+	if !strings.Contains(user, "Now rewrite the content with these changes:") {
+		t.Fatalf("user prompt missing rewrite instructions: %q", user)
+	}
+	if !strings.Contains(user, "The content need to be rewritten:") {
+		t.Fatalf("user prompt missing content marker: %q", user)
+	}
+	if !strings.Contains(user, "## Vibe") {
+		t.Fatalf("user prompt missing markdown payload: %q", user)
+	}
+}

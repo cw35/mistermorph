@@ -181,6 +181,7 @@ func applyInitFromAnswer(ctx context.Context, client llm.Client, model string, d
 
 	soulFinal := applySoulSections(draft.SoulRaw, fill)
 	soulFinal = setFrontMatterStatus(soulFinal, "done")
+	soulFinal = polishInitSoulMarkdown(ctx, client, model, soulFinal)
 
 	if err := writeFilePreservePerm(draft.IdentityPath, []byte(identityFinal)); err != nil {
 		return initApplyResult{}, fmt.Errorf("write IDENTITY.md: %w", err)
@@ -434,6 +435,43 @@ func applySoulSections(raw string, fill initFillOutput) string {
 	return out
 }
 
+func polishInitSoulMarkdown(ctx context.Context, client llm.Client, model string, soulMarkdown string) string {
+	original := strings.ReplaceAll(soulMarkdown, "\r\n", "\n")
+	if client == nil || strings.TrimSpace(model) == "" {
+		return original
+	}
+
+	payload := map[string]any{
+		"soul_markdown": original,
+	}
+	systemPrompt, userPrompt, err := renderInitSoulPolishPrompts(payload)
+	if err != nil {
+		return original
+	}
+
+	res, err := client.Chat(ctx, llm.Request{
+		Model:     strings.TrimSpace(model),
+		ForceJSON: false,
+		Messages: []llm.Message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+		Parameters: map[string]any{
+			"temperature": 0.5,
+			"max_tokens":  1200,
+		},
+	})
+	if err != nil {
+		return original
+	}
+
+	polished := sanitizeMarkdownRewrite(res.Text)
+	if polished == "" || !looksLikeSoulMarkdown(polished) {
+		return original
+	}
+	return setFrontMatterStatus(polished, "done")
+}
+
 func replaceIdentityField(raw string, label string, value string) string {
 	lines := strings.Split(raw, "\n")
 	targetPrefix := "- **" + strings.TrimSpace(label) + ":**"
@@ -605,6 +643,35 @@ func writeFilePreservePerm(path string, data []byte) error {
 		mode = st.Mode().Perm()
 	}
 	return os.WriteFile(path, data, mode)
+}
+
+func sanitizeMarkdownRewrite(raw string) string {
+	text := strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n"))
+	if text == "" {
+		return ""
+	}
+	if strings.HasPrefix(text, "```") {
+		lines := strings.Split(text, "\n")
+		if len(lines) >= 3 {
+			start := strings.TrimSpace(lines[0])
+			if strings.HasPrefix(start, "```") {
+				for i := len(lines) - 1; i >= 1; i-- {
+					if strings.TrimSpace(lines[i]) == "```" {
+						text = strings.TrimSpace(strings.Join(lines[1:i], "\n"))
+						break
+					}
+				}
+			}
+		}
+	}
+	return strings.TrimSpace(text)
+}
+
+func looksLikeSoulMarkdown(raw string) bool {
+	lower := strings.ToLower(strings.ReplaceAll(raw, "\r\n", "\n"))
+	return strings.Contains(lower, "## core truths") &&
+		strings.Contains(lower, "## boundaries") &&
+		strings.Contains(lower, "## vibe")
 }
 
 func fallbackIfEmpty(value string, fallback string) string {

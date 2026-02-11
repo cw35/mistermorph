@@ -1,11 +1,13 @@
 package telegramcmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/spf13/viper"
 )
 
@@ -121,4 +123,53 @@ func TestApplySoulSections(t *testing.T) {
 	if !strings.Contains(out, "## Vibe\n\nconcise") {
 		t.Fatalf("vibe not applied: %s", out)
 	}
+}
+
+func TestPolishInitSoulMarkdownBypassesWithoutClient(t *testing.T) {
+	input := "---\nstatus: done\n---\n\n# SOUL.md\n\n## Core Truths\n- A\n\n## Boundaries\n- B\n\n## Vibe\n\nC\n"
+	out := polishInitSoulMarkdown(context.Background(), nil, "model", input)
+	if out != input {
+		t.Fatalf("expected unchanged markdown without client")
+	}
+}
+
+func TestPolishInitSoulMarkdownFallbackOnInvalidOutput(t *testing.T) {
+	input := "---\nstatus: done\n---\n\n# SOUL.md\n\n## Core Truths\n- A\n\n## Boundaries\n- B\n\n## Vibe\n\nC\n"
+	client := &stubInitLLMClient{Text: "hello"}
+	out := polishInitSoulMarkdown(context.Background(), client, "model", input)
+	if out != input {
+		t.Fatalf("expected fallback to original markdown, got: %s", out)
+	}
+}
+
+func TestPolishInitSoulMarkdownAppliesValidRewrite(t *testing.T) {
+	input := "---\nstatus: done\n---\n\n# SOUL.md\n\n## Core Truths\n- A\n\n## Boundaries\n- B\n\n## Vibe\n\nC\n"
+	client := &stubInitLLMClient{
+		Text: "```markdown\n# SOUL.md\n\n## Core Truths\n- Have a take.\n\n## Boundaries\n- Keep secrets secret.\n\n## Vibe\n\nFast and sharp.\n\nBe the assistant you'd actually want to talk to at 2am. Not a corporate drone. Not a sycophant. Just... good.\n```",
+	}
+	out := polishInitSoulMarkdown(context.Background(), client, "model", input)
+	if !strings.Contains(out, "status: done") {
+		t.Fatalf("expected done status in polished markdown: %s", out)
+	}
+	if !strings.Contains(out, "## Core Truths") || !strings.Contains(out, "## Boundaries") || !strings.Contains(out, "## Vibe") {
+		t.Fatalf("expected required sections in polished markdown: %s", out)
+	}
+	if !strings.Contains(out, "Be the assistant you'd actually want to talk to at 2am.") {
+		t.Fatalf("expected mandatory vibe line in polished markdown: %s", out)
+	}
+	if strings.Contains(out, "```") {
+		t.Fatalf("expected markdown fences stripped: %s", out)
+	}
+}
+
+type stubInitLLMClient struct {
+	Text string
+	Err  error
+}
+
+func (s *stubInitLLMClient) Chat(ctx context.Context, req llm.Request) (llm.Result, error) {
+	if s.Err != nil {
+		return llm.Result{}, s.Err
+	}
+	return llm.Result{Text: s.Text}, nil
 }
