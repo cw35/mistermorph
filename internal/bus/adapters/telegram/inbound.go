@@ -20,16 +20,17 @@ type InboundAdapterOptions struct {
 }
 
 type InboundMessage struct {
-	ChatID          int64
-	MessageID       int64
-	ChatType        string
-	FromUserID      int64
-	FromUsername    string
-	FromFirstName   string
-	FromLastName    string
-	FromDisplayName string
-	Text            string
-	MentionUsers    []string
+	ChatID           int64
+	MessageID        int64
+	ReplyToMessageID int64
+	ChatType         string
+	FromUserID       int64
+	FromUsername     string
+	FromFirstName    string
+	FromLastName     string
+	FromDisplayName  string
+	Text             string
+	MentionUsers     []string
 }
 
 type InboundAdapter struct {
@@ -72,6 +73,10 @@ func (a *InboundAdapter) HandleInboundMessage(ctx context.Context, msg InboundMe
 	if messageID == 0 {
 		return false, fmt.Errorf("message_id is required")
 	}
+	replyToMessageID := msg.ReplyToMessageID
+	if replyToMessageID < 0 {
+		return false, fmt.Errorf("reply_to_message_id is invalid")
+	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
 		return false, fmt.Errorf("text is required")
@@ -84,11 +89,16 @@ func (a *InboundAdapter) HandleInboundMessage(ctx context.Context, msg InboundMe
 	}
 	sessionID := sessionUUID.String()
 	envelopeMessageID := fmt.Sprintf("telegram:%d:%d", chatID, messageID)
+	replyTo := ""
+	if replyToMessageID > 0 {
+		replyTo = strconv.FormatInt(replyToMessageID, 10)
+	}
 	payloadBase64, err := busruntime.EncodeMessageEnvelope(busruntime.TopicChatMessage, busruntime.MessageEnvelope{
 		MessageID: envelopeMessageID,
 		Text:      text,
 		SentAt:    now.Format(time.RFC3339),
 		SessionID: sessionID,
+		ReplyTo:   replyTo,
 	})
 	if err != nil {
 		return false, err
@@ -124,6 +134,7 @@ func (a *InboundAdapter) HandleInboundMessage(ctx context.Context, msg InboundMe
 		CreatedAt:       now,
 		Extensions: busruntime.MessageExtensions{
 			PlatformMessageID: fmt.Sprintf("%d:%d", chatID, messageID),
+			ReplyTo:           replyTo,
 			SessionID:         sessionID,
 			ChatType:          chatType,
 			FromUserID:        msg.FromUserID,
@@ -157,6 +168,14 @@ func InboundMessageFromBusMessage(msg busruntime.BusMessage) (InboundMessage, er
 	if err != nil {
 		return InboundMessage{}, err
 	}
+	replyToRaw := strings.TrimSpace(msg.Extensions.ReplyTo)
+	if replyToRaw == "" {
+		replyToRaw = strings.TrimSpace(envelope.ReplyTo)
+	}
+	replyToMessageID, err := parseOptionalTelegramReplyToMessageID(replyToRaw)
+	if err != nil {
+		return InboundMessage{}, err
+	}
 	if strings.TrimSpace(msg.Extensions.ChatType) == "" {
 		return InboundMessage{}, fmt.Errorf("chat_type is required")
 	}
@@ -166,16 +185,17 @@ func InboundMessageFromBusMessage(msg busruntime.BusMessage) (InboundMessage, er
 	}
 
 	return InboundMessage{
-		ChatID:          chatID,
-		MessageID:       messageID,
-		ChatType:        strings.TrimSpace(msg.Extensions.ChatType),
-		FromUserID:      msg.Extensions.FromUserID,
-		FromUsername:    strings.TrimSpace(msg.Extensions.FromUsername),
-		FromFirstName:   strings.TrimSpace(msg.Extensions.FromFirstName),
-		FromLastName:    strings.TrimSpace(msg.Extensions.FromLastName),
-		FromDisplayName: strings.TrimSpace(msg.Extensions.FromDisplayName),
-		Text:            strings.TrimSpace(envelope.Text),
-		MentionUsers:    mentionUsers,
+		ChatID:           chatID,
+		MessageID:        messageID,
+		ReplyToMessageID: replyToMessageID,
+		ChatType:         strings.TrimSpace(msg.Extensions.ChatType),
+		FromUserID:       msg.Extensions.FromUserID,
+		FromUsername:     strings.TrimSpace(msg.Extensions.FromUsername),
+		FromFirstName:    strings.TrimSpace(msg.Extensions.FromFirstName),
+		FromLastName:     strings.TrimSpace(msg.Extensions.FromLastName),
+		FromDisplayName:  strings.TrimSpace(msg.Extensions.FromDisplayName),
+		Text:             strings.TrimSpace(envelope.Text),
+		MentionUsers:     mentionUsers,
 	}, nil
 }
 
@@ -196,6 +216,18 @@ func parseTelegramMessageID(platformMessageID string) (int64, error) {
 		return 0, fmt.Errorf("platform_message_id is invalid")
 	}
 	return messageID, nil
+}
+
+func parseOptionalTelegramReplyToMessageID(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	replyToMessageID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || replyToMessageID <= 0 {
+		return 0, fmt.Errorf("reply_to is invalid")
+	}
+	return replyToMessageID, nil
 }
 
 func normalizeMentionUsers(items []string) ([]string, error) {

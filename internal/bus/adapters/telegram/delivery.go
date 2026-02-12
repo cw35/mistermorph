@@ -9,7 +9,11 @@ import (
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 )
 
-type SendTextFunc func(ctx context.Context, target any, text string) error
+type SendTextFunc func(ctx context.Context, target any, text string, opts SendTextOptions) error
+
+type SendTextOptions struct {
+	ReplyTo string
+}
 
 type DeliveryAdapterOptions struct {
 	SendText SendTextFunc
@@ -48,7 +52,13 @@ func (a *DeliveryAdapter) Deliver(ctx context.Context, msg busruntime.BusMessage
 		return false, false, err
 	}
 	text := strings.TrimSpace(env.Text)
-	if err := a.sendText(ctx, target, text); err != nil {
+	replyTo := strings.TrimSpace(msg.Extensions.ReplyTo)
+	if replyTo == "" {
+		replyTo = strings.TrimSpace(env.ReplyTo)
+	}
+	if err := a.sendText(ctx, target, text, SendTextOptions{
+		ReplyTo: replyTo,
+	}); err != nil {
 		return false, false, err
 	}
 	return true, false, nil

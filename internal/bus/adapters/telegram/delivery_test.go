@@ -14,15 +14,17 @@ func TestDeliveryAdapterDeliver(t *testing.T) {
 
 	var gotChatID int64
 	var gotText string
+	var gotReplyTo string
 	calls := 0
 	adapter, err := NewDeliveryAdapter(DeliveryAdapterOptions{
-		SendText: func(ctx context.Context, target any, text string) error {
+		SendText: func(ctx context.Context, target any, text string, opts SendTextOptions) error {
 			id, ok := target.(int64)
 			if !ok {
 				t.Fatalf("target type mismatch: got %T want int64", target)
 			}
 			gotChatID = id
 			gotText = text
+			gotReplyTo = opts.ReplyTo
 			calls++
 			return nil
 		},
@@ -36,6 +38,7 @@ func TestDeliveryAdapterDeliver(t *testing.T) {
 		Text:      "hello telegram",
 		SentAt:    "2026-02-08T00:00:00Z",
 		SessionID: "0194e9d5-2f8f-7000-8000-000000000001",
+		ReplyTo:   "98765",
 	})
 	if err != nil {
 		t.Fatalf("EncodeMessageEnvelope() error = %v", err)
@@ -73,6 +76,9 @@ func TestDeliveryAdapterDeliver(t *testing.T) {
 	if gotText != "hello telegram" {
 		t.Fatalf("text mismatch: got %q want %q", gotText, "hello telegram")
 	}
+	if gotReplyTo != "98765" {
+		t.Fatalf("reply_to mismatch: got %q want %q", gotReplyTo, "98765")
+	}
 }
 
 func TestDeliveryAdapterRejectsTelegramUsernameConversationKey(t *testing.T) {
@@ -80,7 +86,7 @@ func TestDeliveryAdapterRejectsTelegramUsernameConversationKey(t *testing.T) {
 
 	calls := 0
 	adapter, err := NewDeliveryAdapter(DeliveryAdapterOptions{
-		SendText: func(ctx context.Context, target any, text string) error {
+		SendText: func(ctx context.Context, target any, text string, opts SendTextOptions) error {
 			calls++
 			return nil
 		},

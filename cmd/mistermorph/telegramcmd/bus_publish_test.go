@@ -28,7 +28,7 @@ func TestPublishTelegramBusOutbound(t *testing.T) {
 		t.Fatalf("Subscribe() error = %v", err)
 	}
 
-	messageID, err := publishTelegramBusOutbound(context.Background(), bus, 12345, "hello", "corr:test")
+	messageID, err := publishTelegramBusOutbound(context.Background(), bus, 12345, "hello", "", "corr:test")
 	if err != nil {
 		t.Fatalf("publishTelegramBusOutbound() error = %v", err)
 	}
@@ -56,6 +56,49 @@ func TestPublishTelegramBusOutbound(t *testing.T) {
 		}
 		if env.SessionID == "" {
 			t.Fatalf("session_id should not be empty")
+		}
+		if env.ReplyTo != "" {
+			t.Fatalf("reply_to should be empty, got %q", env.ReplyTo)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("message not delivered")
+	}
+}
+
+func TestPublishTelegramBusOutbound_WithReplyTo(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	bus, err := busruntime.NewInproc(busruntime.InprocOptions{MaxInFlight: 4, Logger: logger})
+	if err != nil {
+		t.Fatalf("NewInproc() error = %v", err)
+	}
+	defer bus.Close()
+
+	got := make(chan busruntime.BusMessage, 1)
+	if err := bus.Subscribe(busruntime.TopicChatMessage, func(ctx context.Context, msg busruntime.BusMessage) error {
+		got <- msg
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+
+	_, err = publishTelegramBusOutbound(context.Background(), bus, 12345, "hello", "4321", "corr:test:reply")
+	if err != nil {
+		t.Fatalf("publishTelegramBusOutbound() error = %v", err)
+	}
+
+	select {
+	case msg := <-got:
+		env, envErr := msg.Envelope()
+		if envErr != nil {
+			t.Fatalf("Envelope() error = %v", envErr)
+		}
+		if env.ReplyTo != "4321" {
+			t.Fatalf("envelope reply_to mismatch: got %q want %q", env.ReplyTo, "4321")
+		}
+		if msg.Extensions.ReplyTo != "4321" {
+			t.Fatalf("extensions reply_to mismatch: got %q want %q", msg.Extensions.ReplyTo, "4321")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("message not delivered")

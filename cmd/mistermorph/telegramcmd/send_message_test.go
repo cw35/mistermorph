@@ -80,3 +80,29 @@ func TestSendMessageMarkdownV2_DoesNotFallbackOnNonParseError(t *testing.T) {
 		t.Fatalf("unexpected parse_mode on first attempt: %q", parseModes[0])
 	}
 }
+
+func TestSendMessageMarkdownV2Reply_IncludesReplyToMessageID(t *testing.T) {
+	var gotReplyTo int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/sendMessage") {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var req telegramSendMessageRequest
+		if err := json.Unmarshal(raw, &req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		gotReplyTo = req.ReplyToMessageID
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	api := newTelegramAPI(srv.Client(), srv.URL, "TOKEN")
+	if err := api.sendMessageMarkdownV2Reply(context.Background(), 1001, "hello", true, 7788); err != nil {
+		t.Fatalf("sendMessageMarkdownV2Reply() error = %v", err)
+	}
+	if gotReplyTo != 7788 {
+		t.Fatalf("reply_to_message_id mismatch: got %d want 7788", gotReplyTo)
+	}
+}

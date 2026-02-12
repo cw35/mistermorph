@@ -57,19 +57,20 @@ import (
 )
 
 type telegramJob struct {
-	ChatID          int64
-	MessageID       int64
-	ChatType        string
-	FromUserID      int64
-	FromUsername    string
-	FromFirstName   string
-	FromLastName    string
-	FromDisplayName string
-	Text            string
-	Version         uint64
-	IsHeartbeat     bool
-	Meta            map[string]any
-	MentionUsers    []string
+	ChatID           int64
+	MessageID        int64
+	ReplyToMessageID int64
+	ChatType         string
+	FromUserID       int64
+	FromUsername     string
+	FromFirstName    string
+	FromLastName     string
+	FromDisplayName  string
+	Text             string
+	Version          uint64
+	IsHeartbeat      bool
+	Meta             map[string]any
+	MentionUsers     []string
 }
 
 type telegramChatWorker struct {
@@ -349,19 +350,28 @@ func newTelegramCmd() *cobra.Command {
 			httpClient := &http.Client{Timeout: 60 * time.Second}
 			api := newTelegramAPI(httpClient, baseURL, token)
 			telegramDeliveryAdapter, err = telegrambus.NewDeliveryAdapter(telegrambus.DeliveryAdapterOptions{
-				SendText: func(ctx context.Context, target any, text string) error {
+				SendText: func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 					chatID, ok := target.(int64)
 					if !ok {
 						return fmt.Errorf("telegram target is invalid")
 					}
-					return api.sendMessageChunked(ctx, chatID, text)
+					replyToMessageID := int64(0)
+					replyToRaw := strings.TrimSpace(opts.ReplyTo)
+					if replyToRaw != "" {
+						parsed, parseErr := strconv.ParseInt(replyToRaw, 10, 64)
+						if parseErr != nil || parsed <= 0 {
+							return fmt.Errorf("telegram reply_to is invalid")
+						}
+						replyToMessageID = parsed
+					}
+					return api.sendMessageChunkedReply(ctx, chatID, text, replyToMessageID)
 				},
 			})
 			if err != nil {
 				return err
 			}
 			publishTelegramText := func(ctx context.Context, chatID int64, text string, correlationID string) error {
-				_, err := publishTelegramBusOutbound(ctx, inprocBus, chatID, text, correlationID)
+				_, err := publishTelegramBusOutbound(ctx, inprocBus, chatID, text, "", correlationID)
 				return err
 			}
 
@@ -625,7 +635,7 @@ func newTelegramCmd() *cobra.Command {
 									}
 									return
 								}
-								if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, "error: "+runErr.Error(), fmt.Sprintf("telegram:error:%d:%d", chatID, job.MessageID)); err != nil {
+								if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, "error: "+runErr.Error(), "", fmt.Sprintf("telegram:error:%d:%d", chatID, job.MessageID)); err != nil {
 									logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "bus_error_code", busErrorCodeString(err), "error", err.Error())
 								}
 								return
@@ -635,7 +645,11 @@ func newTelegramCmd() *cobra.Command {
 							if reaction == nil {
 								outText = formatFinalOutput(final)
 								if !job.IsHeartbeat {
-									if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, outText, fmt.Sprintf("telegram:message:%d:%d", chatID, job.MessageID)); err != nil {
+									replyTo := ""
+									if job.ReplyToMessageID > 0 {
+										replyTo = strconv.FormatInt(job.ReplyToMessageID, 10)
+									}
+									if _, err := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, outText, replyTo, fmt.Sprintf("telegram:message:%d:%d", chatID, job.MessageID)); err != nil {
 										logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "bus_error_code", busErrorCodeString(err), "error", err.Error())
 									}
 								}
@@ -736,17 +750,18 @@ func newTelegramCmd() *cobra.Command {
 					"text_len", len(text),
 				)
 				job := telegramJob{
-					ChatID:          inbound.ChatID,
-					MessageID:       inbound.MessageID,
-					ChatType:        inbound.ChatType,
-					FromUserID:      inbound.FromUserID,
-					FromUsername:    inbound.FromUsername,
-					FromFirstName:   inbound.FromFirstName,
-					FromLastName:    inbound.FromLastName,
-					FromDisplayName: inbound.FromDisplayName,
-					Text:            text,
-					Version:         v,
-					MentionUsers:    append([]string(nil), inbound.MentionUsers...),
+					ChatID:           inbound.ChatID,
+					MessageID:        inbound.MessageID,
+					ReplyToMessageID: inbound.ReplyToMessageID,
+					ChatType:         inbound.ChatType,
+					FromUserID:       inbound.FromUserID,
+					FromUsername:     inbound.FromUsername,
+					FromFirstName:    inbound.FromFirstName,
+					FromLastName:     inbound.FromLastName,
+					FromDisplayName:  inbound.FromDisplayName,
+					Text:             text,
+					Version:          v,
+					MentionUsers:     append([]string(nil), inbound.MentionUsers...),
 				}
 				select {
 				case <-ctx.Done():
@@ -1183,10 +1198,11 @@ func newTelegramCmd() *cobra.Command {
 							}
 						}
 					}
+					replyToMessageID := int64(0)
 					switch normalizedCmd {
 					case "/start", "/help":
 						help := "Send a message and I will run it as an agent task.\n" +
-							"Commands: /ask <task>, /mem, /reset, /id\n\n" +
+							"Commands: /ask <task>, /mem, /humanize, /reset, /id\n\n" +
 							"Group chats: use /ask <task>, reply to me, or mention @" + botUser + ".\n" +
 							"You can also send a file (document/photo). It will be downloaded under file_cache_dir/telegram/ and the agent can process it.\n" +
 							"Note: if Bot Privacy Mode is enabled, I may not receive normal group messages (so aliases won't trigger unless I receive the message)."
@@ -1239,6 +1255,31 @@ func newTelegramCmd() *cobra.Command {
 						}
 						if err := api.sendMessageChunked(context.Background(), chatID, snap); err != nil {
 							logger.Warn("telegram_send_error", "error", err.Error())
+						}
+						continue
+					case "/humanize":
+						if len(allowed) > 0 && !allowed[chatID] {
+							logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "unauthorized", true)
+							continue
+						}
+						if strings.ToLower(strings.TrimSpace(chatType)) != "private" {
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "please use /humanize in the private chat", true)
+							continue
+						}
+						typingStop := startTypingTicker(context.Background(), api, chatID, "typing", 4*time.Second)
+						humanizeCtx, cancel := context.WithTimeout(context.Background(), initFlowTimeout(requestTimeout))
+						updated, err := humanizeSoulProfile(humanizeCtx, client, model)
+						cancel()
+						typingStop()
+						if err != nil {
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "humanize failed: "+err.Error(), true)
+							continue
+						}
+						if updated {
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "ok (SOUL.md humanized)", true)
+						} else {
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "ok (SOUL.md unchanged)", true)
 						}
 						continue
 					case "/reset":
@@ -1294,8 +1335,9 @@ func newTelegramCmd() *cobra.Command {
 										"addressing_llm", true,
 										"llm_ok", dec.AddressingLLMOK,
 										"llm_addressed", dec.AddressingLLMAddressed,
-										"llm_confidence", dec.AddressingLLMConfidence,
-										"llm_impulse", dec.AddressingImpulse,
+										"confidence", dec.AddressingLLMConfidence,
+										"impulse", dec.AddressingImpulse,
+										"reason", dec.Reason,
 									)
 								} else {
 									logger.Debug("telegram_group_ignored",
@@ -1307,18 +1349,24 @@ func newTelegramCmd() *cobra.Command {
 								continue
 							}
 							if dec.UsedAddressingLLM {
+								replyToMessageID = quoteReplyMessageIDForGroupTrigger(msg, dec)
+								quoteReply := replyToMessageID > 0
 								logger.Info("telegram_group_trigger",
 									"chat_id", chatID,
 									"type", chatType,
-									"trigger", dec.Reason,
+									"reason", dec.Reason,
 									"confidence", dec.AddressingLLMConfidence,
 									"impulse", dec.AddressingImpulse,
+									"quote_reply", quoteReply,
 								)
 							} else {
+								replyToMessageID = quoteReplyMessageIDForGroupTrigger(msg, dec)
+								quoteReply := replyToMessageID > 0
 								logger.Info("telegram_group_trigger",
 									"chat_id", chatID,
 									"type", chatType,
-									"trigger", dec.Reason,
+									"reason", dec.Reason,
+									"quote_reply", quoteReply,
 								)
 							}
 							text = strings.TrimSpace(rawText)
@@ -1340,7 +1388,7 @@ func newTelegramCmd() *cobra.Command {
 						downloaded, err = downloadTelegramMessageFiles(ctx, api, telegramCacheDir, filesMaxBytes, msg, chatID)
 						cancel()
 						if err != nil {
-							if _, publishErr := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, "file download error: "+err.Error(), fmt.Sprintf("telegram:file_download_error:%d:%d", chatID, msg.MessageID)); publishErr != nil {
+							if _, publishErr := publishTelegramBusOutbound(context.Background(), inprocBus, chatID, "file download error: "+err.Error(), "", fmt.Sprintf("telegram:file_download_error:%d:%d", chatID, msg.MessageID)); publishErr != nil {
 								logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "message_id", msg.MessageID, "bus_error_code", busErrorCodeString(publishErr), "error", publishErr.Error())
 							}
 							continue
@@ -1373,16 +1421,17 @@ func newTelegramCmd() *cobra.Command {
 						mentionUsers = mentionUsers[:mentionUserSnapshotLimit]
 					}
 					accepted, publishErr := telegramInboundAdapter.HandleInboundMessage(context.Background(), telegrambus.InboundMessage{
-						ChatID:          chatID,
-						MessageID:       msg.MessageID,
-						ChatType:        chatType,
-						FromUserID:      fromUserID,
-						FromUsername:    fromUsername,
-						FromFirstName:   fromFirst,
-						FromLastName:    fromLast,
-						FromDisplayName: fromDisplay,
-						Text:            text,
-						MentionUsers:    mentionUsers,
+						ChatID:           chatID,
+						MessageID:        msg.MessageID,
+						ReplyToMessageID: replyToMessageID,
+						ChatType:         chatType,
+						FromUserID:       fromUserID,
+						FromUsername:     fromUsername,
+						FromFirstName:    fromFirst,
+						FromLastName:     fromLast,
+						FromDisplayName:  fromDisplay,
+						Text:             text,
+						MentionUsers:     mentionUsers,
 					})
 					if publishErr != nil {
 						logger.Warn("telegram_bus_publish_error", "channel", busruntime.ChannelTelegram, "chat_id", chatID, "message_id", msg.MessageID, "bus_error_code", busErrorCodeString(publishErr), "error", publishErr.Error())
@@ -2489,6 +2538,7 @@ type telegramSendMessageRequest struct {
 	Text                  string `json:"text"`
 	ParseMode             string `json:"parse_mode,omitempty"`
 	DisableWebPagePreview bool   `json:"disable_web_page_preview,omitempty"`
+	ReplyToMessageID      int64  `json:"reply_to_message_id,omitempty"`
 }
 
 type telegramSendChatActionRequest struct {
@@ -2611,17 +2661,21 @@ func (api *telegramAPI) downloadFileTo(ctx context.Context, filePath, dstPath st
 }
 
 func (api *telegramAPI) sendMessageMarkdownV2(ctx context.Context, chatID int64, text string, disablePreview bool) error {
+	return api.sendMessageMarkdownV2Reply(ctx, chatID, text, disablePreview, 0)
+}
+
+func (api *telegramAPI) sendMessageMarkdownV2Reply(ctx context.Context, chatID int64, text string, disablePreview bool, replyToMessageID int64) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		text = "(empty)"
 	}
 	// Keep model-produced MarkdownV2 as-is; avoid second-pass escaping.
-	if err := api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "MarkdownV2"); err == nil {
+	if err := api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "MarkdownV2", replyToMessageID); err == nil {
 		return nil
 	} else if !isTelegramMarkdownParseError(err) {
 		return err
 	}
-	return api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "")
+	return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "", replyToMessageID)
 }
 
 type telegramRequestError struct {
@@ -2671,30 +2725,45 @@ func isTelegramMarkdownParseError(err error) bool {
 }
 
 func (api *telegramAPI) sendMessageChunked(ctx context.Context, chatID int64, text string) error {
+	return api.sendMessageChunkedReply(ctx, chatID, text, 0)
+}
+
+func (api *telegramAPI) sendMessageChunkedReply(ctx context.Context, chatID int64, text string, replyToMessageID int64) error {
 	const max = 3500
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return api.sendMessageMarkdownV2(ctx, chatID, "(empty)", true)
+		return api.sendMessageMarkdownV2Reply(ctx, chatID, "(empty)", true, replyToMessageID)
 	}
+	isFirstChunk := true
 	for len(text) > 0 {
 		chunk := text
 		if len(chunk) > max {
 			chunk = chunk[:max]
 		}
-		if err := api.sendMessageMarkdownV2(ctx, chatID, chunk, true); err != nil {
+		chunkReplyTo := int64(0)
+		if isFirstChunk {
+			chunkReplyTo = replyToMessageID
+		}
+		if err := api.sendMessageMarkdownV2Reply(ctx, chatID, chunk, true, chunkReplyTo); err != nil {
 			return err
 		}
 		text = strings.TrimSpace(text[len(chunk):])
+		isFirstChunk = false
 	}
 	return nil
 }
 
 func (api *telegramAPI) sendMessageWithParseMode(ctx context.Context, chatID int64, text string, disablePreview bool, parseMode string) error {
+	return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, parseMode, 0)
+}
+
+func (api *telegramAPI) sendMessageWithParseModeReply(ctx context.Context, chatID int64, text string, disablePreview bool, parseMode string, replyToMessageID int64) error {
 	reqBody := telegramSendMessageRequest{
 		ChatID:                chatID,
 		Text:                  text,
 		ParseMode:             strings.TrimSpace(parseMode),
 		DisableWebPagePreview: disablePreview,
+		ReplyToMessageID:      replyToMessageID,
 	}
 	b, _ := json.Marshal(reqBody)
 	url := fmt.Sprintf("%s/bot%s/sendMessage", api.baseURL, api.token)
@@ -2951,6 +3020,16 @@ type telegramGroupTriggerDecision struct {
 	AddressingImpulse       float64
 }
 
+func quoteReplyMessageIDForGroupTrigger(msg *telegramMessage, dec telegramGroupTriggerDecision) int64 {
+	if msg == nil || msg.MessageID <= 0 {
+		return 0
+	}
+	if dec.AddressingImpulse > 0.8 {
+		return msg.MessageID
+	}
+	return 0
+}
+
 // groupTriggerDecision belongs to the trigger layer.
 // It decides whether this group message should enter an agent run.
 // It must not decide output modality (text reply vs reaction), which is handled in the generation layer.
@@ -2984,9 +3063,8 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		}, true, nil
 	}
 
-	runAddressingLLM := func(baseReason string, note string, confidenceThreshold float64) (telegramGroupTriggerDecision, bool, error) {
+	runAddressingLLM := func(confidenceThreshold float64) (telegramGroupTriggerDecision, bool, error) {
 		dec := telegramGroupTriggerDecision{
-			Reason:                 baseReason,
 			AddressingLLMAttempted: true,
 		}
 		addrCtx := ctx
@@ -2997,7 +3075,7 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		if addressingLLMTimeout > 0 {
 			addrCtx, cancel = context.WithTimeout(addrCtx, addressingLLMTimeout)
 		}
-		llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, text, note)
+		llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, text)
 		cancel()
 		if llmErr != nil {
 			return dec, false, llmErr
@@ -3006,12 +3084,8 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		dec.AddressingLLMAddressed = llmDec.Addressed
 		dec.AddressingLLMConfidence = llmDec.Confidence
 		dec.AddressingImpulse = llmDec.Impulse
+		dec.Reason = llmDec.Reason
 		if llmOK && llmDec.Addressed && llmDec.Confidence >= confidenceThreshold {
-			if strings.TrimSpace(baseReason) == "" {
-				dec.Reason = "addressing_llm"
-			} else {
-				dec.Reason = "addressing_llm:" + baseReason
-			}
 			dec.UsedAddressingLLM = true
 			return dec, true, nil
 		}
@@ -3020,13 +3094,13 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 
 	switch mode {
 	case "talkative":
-		return runAddressingLLM("talkative", "group_trigger_mode=talkative; classify every message with SOUL persona", talkativeAddressingConfidence)
+		return runAddressingLLM(talkativeAddressingConfidence)
 	case "smart":
 		mentionReason, _ := groupAliasMentionReason(text, aliases, aliasPrefixMaxChars)
 		if strings.TrimSpace(mentionReason) == "" {
 			return telegramGroupTriggerDecision{}, false, nil
 		}
-		return runAddressingLLM(mentionReason, "group_trigger_mode=smart; mention_reason="+mentionReason, smartAddressingConfidence)
+		return runAddressingLLM(smartAddressingConfidence)
 	default: // strict (and unknown values fallback to strict behavior)
 		return telegramGroupTriggerDecision{}, false, nil
 	}
@@ -3208,7 +3282,7 @@ func busErrorCodeString(err error) string {
 	return string(busruntime.ErrorCodeOf(err))
 }
 
-func publishTelegramBusOutbound(ctx context.Context, inprocBus *busruntime.Inproc, chatID int64, text string, correlationID string) (string, error) {
+func publishTelegramBusOutbound(ctx context.Context, inprocBus *busruntime.Inproc, chatID int64, text string, replyTo string, correlationID string) (string, error) {
 	if inprocBus == nil {
 		return "", fmt.Errorf("bus is required")
 	}
@@ -3219,6 +3293,7 @@ func publishTelegramBusOutbound(ctx context.Context, inprocBus *busruntime.Inpro
 	if text == "" {
 		return "", fmt.Errorf("text is required")
 	}
+	replyTo = strings.TrimSpace(replyTo)
 	now := time.Now().UTC()
 	messageID := "msg_" + uuid.NewString()
 	sessionUUID, err := uuid.NewV7()
@@ -3231,6 +3306,7 @@ func publishTelegramBusOutbound(ctx context.Context, inprocBus *busruntime.Inpro
 		Text:      text,
 		SentAt:    now.Format(time.RFC3339),
 		SessionID: sessionID,
+		ReplyTo:   replyTo,
 	})
 	if err != nil {
 		return "", err
@@ -3255,6 +3331,7 @@ func publishTelegramBusOutbound(ctx context.Context, inprocBus *busruntime.Inpro
 		CreatedAt:       now,
 		Extensions: busruntime.MessageExtensions{
 			SessionID: sessionID,
+			ReplyTo:   replyTo,
 		},
 	}
 	if err := inprocBus.PublishValidated(ctx, outbound); err != nil {
@@ -4173,7 +4250,7 @@ type telegramAddressingLLMDecision struct {
 	Reason     string  `json:"reason"`
 }
 
-func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, botUser string, aliases []string, text string, note string) (telegramAddressingLLMDecision, bool, error) {
+func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, botUser string, aliases []string, text string) (telegramAddressingLLMDecision, bool, error) {
 	if ctx == nil || client == nil {
 		return telegramAddressingLLMDecision{}, false, nil
 	}
@@ -4183,7 +4260,7 @@ func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model stri
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("missing model for addressing_llm")
 	}
 
-	sys, user, err := renderTelegramAddressingPrompts(botUser, aliases, text, note)
+	sys, user, err := renderTelegramAddressingPrompts(botUser, aliases, text)
 	if err != nil {
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("render addressing prompts: %w", err)
 	}

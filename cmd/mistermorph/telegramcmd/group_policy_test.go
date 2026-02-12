@@ -30,8 +30,25 @@ func TestGroupTriggerDecision_ReplyPath(t *testing.T) {
 	if dec.Reason != "reply" {
 		t.Fatalf("unexpected reason: %q", dec.Reason)
 	}
-	if dec.AddressingLLMImpulse != 1 {
-		t.Fatalf("impulse = %v, want 1", dec.AddressingLLMImpulse)
+	if dec.AddressingImpulse != 1 {
+		t.Fatalf("impulse = %v, want 1", dec.AddressingImpulse)
+	}
+}
+
+func TestQuoteReplyMessageIDForGroupTrigger(t *testing.T) {
+	msg := &telegramMessage{MessageID: 1234}
+	high := quoteReplyMessageIDForGroupTrigger(msg, telegramGroupTriggerDecision{
+		AddressingImpulse: 0.81,
+	})
+	if high != 1234 {
+		t.Fatalf("high impulse reply_to mismatch: got %d want 1234", high)
+	}
+
+	low := quoteReplyMessageIDForGroupTrigger(msg, telegramGroupTriggerDecision{
+		AddressingImpulse: 0.8,
+	})
+	if low != 0 {
+		t.Fatalf("low impulse reply_to mismatch: got %d want 0", low)
 	}
 }
 
@@ -85,8 +102,8 @@ func TestGroupTriggerDecision_MentionEntityTriggers(t *testing.T) {
 	if dec.Reason != "mention_entity" {
 		t.Fatalf("unexpected reason: %q", dec.Reason)
 	}
-	if dec.AddressingLLMImpulse != 1 {
-		t.Fatalf("impulse = %v, want 1", dec.AddressingLLMImpulse)
+	if dec.AddressingImpulse != 1 {
+		t.Fatalf("impulse = %v, want 1", dec.AddressingImpulse)
 	}
 }
 
@@ -110,8 +127,8 @@ func TestGroupTriggerDecision_ExplicitMentionBypassesLLMEvenInTalkative(t *testi
 	if dec.AddressingLLMAttempted {
 		t.Fatalf("explicit mention should bypass addressing llm")
 	}
-	if dec.AddressingLLMImpulse != 1 {
-		t.Fatalf("impulse = %v, want 1", dec.AddressingLLMImpulse)
+	if dec.AddressingImpulse != 1 {
+		t.Fatalf("impulse = %v, want 1", dec.AddressingImpulse)
 	}
 }
 

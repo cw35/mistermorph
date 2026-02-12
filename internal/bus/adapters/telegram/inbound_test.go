@@ -42,16 +42,17 @@ func TestInboundAdapterHandleInboundMessage(t *testing.T) {
 	}
 
 	accepted, err := adapter.HandleInboundMessage(context.Background(), InboundMessage{
-		ChatID:          12345,
-		MessageID:       678,
-		ChatType:        "private",
-		FromUserID:      777,
-		FromUsername:    "alice",
-		FromFirstName:   "Alice",
-		FromLastName:    "W",
-		FromDisplayName: "Alice W",
-		Text:            "hello",
-		MentionUsers:    []string{"alice", "bob"},
+		ChatID:           12345,
+		MessageID:        678,
+		ReplyToMessageID: 677,
+		ChatType:         "private",
+		FromUserID:       777,
+		FromUsername:     "alice",
+		FromFirstName:    "Alice",
+		FromLastName:     "W",
+		FromDisplayName:  "Alice W",
+		Text:             "hello",
+		MentionUsers:     []string{"alice", "bob"},
 	})
 	if err != nil {
 		t.Fatalf("HandleInboundMessage() error = %v", err)
@@ -70,6 +71,16 @@ func TestInboundAdapterHandleInboundMessage(t *testing.T) {
 		}
 		if msg.Extensions.FromUserID != 777 {
 			t.Fatalf("from_user_id mismatch: got %d want 777", msg.Extensions.FromUserID)
+		}
+		if msg.Extensions.ReplyTo != "677" {
+			t.Fatalf("reply_to mismatch: got %q want %q", msg.Extensions.ReplyTo, "677")
+		}
+		env, envErr := msg.Envelope()
+		if envErr != nil {
+			t.Fatalf("Envelope() error = %v", envErr)
+		}
+		if env.ReplyTo != "677" {
+			t.Fatalf("envelope reply_to mismatch: got %q want %q", env.ReplyTo, "677")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("message not delivered")
@@ -103,6 +114,7 @@ func TestInboundMessageFromBusMessage(t *testing.T) {
 		Text:      "hello",
 		SentAt:    "2026-02-08T00:00:00Z",
 		SessionID: "0194e9d5-2f8f-7000-8000-000000000001",
+		ReplyTo:   "777",
 	})
 	if err != nil {
 		t.Fatalf("EncodeMessageEnvelope() error = %v", err)
@@ -122,6 +134,7 @@ func TestInboundMessageFromBusMessage(t *testing.T) {
 		CreatedAt:       time.Now().UTC(),
 		Extensions: busruntime.MessageExtensions{
 			PlatformMessageID: "12345:678",
+			ReplyTo:           "777",
 			ChatType:          "group",
 			FromUserID:        9001,
 			FromUsername:      "neo",
@@ -137,6 +150,9 @@ func TestInboundMessageFromBusMessage(t *testing.T) {
 	}
 	if inbound.MessageID != 678 {
 		t.Fatalf("message_id mismatch: got %d want 678", inbound.MessageID)
+	}
+	if inbound.ReplyToMessageID != 777 {
+		t.Fatalf("reply_to_message_id mismatch: got %d want 777", inbound.ReplyToMessageID)
 	}
 	if inbound.ChatType != "group" {
 		t.Fatalf("chat_type mismatch: got %q want %q", inbound.ChatType, "group")

@@ -494,7 +494,7 @@ func normalizeTelegramSendTarget(target any) (any, error) {
 	}
 }
 
-func (s *RoutingSender) sendTelegramTarget(ctx context.Context, target any, text string) error {
+func (s *RoutingSender) sendTelegramTarget(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 	if s == nil {
 		return fmt.Errorf("sender is required")
 	}
@@ -522,6 +522,14 @@ func (s *RoutingSender) sendTelegramTarget(ctx context.Context, target any, text
 		"chat_id":                  resolvedTarget,
 		"text":                     text,
 		"disable_web_page_preview": true,
+	}
+	replyToRaw := strings.TrimSpace(opts.ReplyTo)
+	if replyToRaw != "" {
+		replyToMessageID, parseErr := strconv.ParseInt(replyToRaw, 10, 64)
+		if parseErr != nil || replyToMessageID <= 0 {
+			return fmt.Errorf("telegram reply_to is invalid")
+		}
+		body["reply_to_message_id"] = replyToMessageID
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

@@ -27,7 +27,7 @@ func TestRoutingSenderSendTelegramViaBus(t *testing.T) {
 		gotTarget any
 		gotText   string
 	)
-	sendText := func(ctx context.Context, target any, text string) error {
+	sendText := func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 		mu.Lock()
 		defer mu.Unlock()
 		gotTarget = target
@@ -75,7 +75,7 @@ func TestRoutingSenderSendTelegramViaBus_ChatIDHintMatchGroup(t *testing.T) {
 		mu        sync.Mutex
 		gotTarget any
 	)
-	sendText := func(ctx context.Context, target any, text string) error {
+	sendText := func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 		mu.Lock()
 		defer mu.Unlock()
 		gotTarget = target
@@ -115,7 +115,7 @@ func TestRoutingSenderSendTelegramViaBus_ChatIDHintFallsBackToPrivate(t *testing
 		mu        sync.Mutex
 		gotTarget any
 	)
-	sendText := func(ctx context.Context, target any, text string) error {
+	sendText := func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 		mu.Lock()
 		defer mu.Unlock()
 		gotTarget = target
@@ -152,7 +152,7 @@ func TestRoutingSenderSendTelegramViaBus_ChatIDHintNoPrivateFallback(t *testing.
 	ctx := context.Background()
 
 	calls := 0
-	sendText := func(ctx context.Context, target any, text string) error {
+	sendText := func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 		calls++
 		return nil
 	}
@@ -192,7 +192,7 @@ func TestRoutingSenderSendMAEPViaBus(t *testing.T) {
 			Deduped:  true,
 		},
 	}
-	sendText := func(ctx context.Context, target any, text string) error {
+	sendText := func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 		return fmt.Errorf("unexpected telegram send: target=%v text=%q", target, text)
 	}
 	sender := newRoutingSenderForBusTest(t, sendText, pusher)
@@ -238,7 +238,7 @@ func TestRoutingSenderSendMAEPViaBus(t *testing.T) {
 func TestRoutingSenderSendFailsWithoutIdempotencyKey(t *testing.T) {
 	ctx := context.Background()
 
-	sender := newRoutingSenderForBusTest(t, func(ctx context.Context, target any, text string) error {
+	sender := newRoutingSenderForBusTest(t, func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 		return nil
 	}, &mockDataPusher{})
 	contentType, payloadBase64 := testEnvelopePayload(t, "hello")
@@ -265,7 +265,7 @@ func TestRoutingSenderSendHumanWithUsernameTargetFails(t *testing.T) {
 	ctx := context.Background()
 
 	calls := 0
-	sender := newRoutingSenderForBusTest(t, func(ctx context.Context, target any, text string) error {
+	sender := newRoutingSenderForBusTest(t, func(ctx context.Context, target any, text string, opts telegrambus.SendTextOptions) error {
 		calls++
 		return nil
 	}, &mockDataPusher{})

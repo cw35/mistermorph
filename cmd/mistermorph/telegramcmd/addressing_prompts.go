@@ -45,15 +45,9 @@ type telegramAddressingUserPromptData struct {
 	BotUsername string
 	Aliases     []string
 	Message     string
-	Note        string
 }
 
-func renderTelegramAddressingPrompts(botUser string, aliases []string, text string, note string) (string, string, error) {
-	note = strings.TrimSpace(note)
-	if note == "" {
-		note = addressingPromptDefaultNote
-	}
-
+func renderTelegramAddressingPrompts(botUser string, aliases []string, text string) (string, string, error) {
 	personaIdentity := loadAddressingPersonaIdentity()
 	if personaIdentity == "" {
 		personaIdentity = addressingPromptPersonaFallback
@@ -69,7 +63,6 @@ func renderTelegramAddressingPrompts(botUser string, aliases []string, text stri
 		BotUsername: botUser,
 		Aliases:     aliases,
 		Message:     text,
-		Note:        note,
 	})
 	if err != nil {
 		return "", "", err
