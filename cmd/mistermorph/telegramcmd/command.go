@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 	maepbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/maep"
 	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
+	"github.com/quailyquaily/mistermorph/internal/chathistory"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
 	"github.com/quailyquaily/mistermorph/internal/entryutil"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
@@ -60,6 +62,7 @@ type telegramJob struct {
 	ChatID           int64
 	MessageID        int64
 	ReplyToMessageID int64
+	SentAt           time.Time
 	ChatType         string
 	FromUserID       int64
 	FromUsername     string
@@ -330,9 +333,9 @@ func newTelegramCmd() *cobra.Command {
 			}
 			sem := make(chan struct{}, maxConc)
 
-			historyMax := configutil.FlagOrViperInt(cmd, "telegram-history-max-messages", "telegram.history_max_messages")
-			if historyMax <= 0 {
-				historyMax = 20
+			legacyHistoryMax := configutil.FlagOrViperInt(cmd, "telegram-history-max-messages", "telegram.history_max_messages")
+			if legacyHistoryMax <= 0 {
+				legacyHistoryMax = 20
 			}
 			maepMaxTurnsPerSession := configuredMAEPMaxTurnsPerSession()
 			maepSessionCooldown := configuredMAEPSessionCooldown()
@@ -410,6 +413,7 @@ func newTelegramCmd() *cobra.Command {
 			if groupTriggerMode == "" {
 				groupTriggerMode = "smart"
 			}
+			telegramHistoryCap := telegramHistoryCapForMode(groupTriggerMode)
 			smartAddressingMaxChars := configutil.FlagOrViperInt(cmd, "telegram-smart-addressing-max-chars", "telegram.smart_addressing_max_chars")
 			if smartAddressingMaxChars <= 0 {
 				smartAddressingMaxChars = 24
@@ -432,7 +436,7 @@ func newTelegramCmd() *cobra.Command {
 
 			var (
 				mu                 sync.Mutex
-				history            = make(map[int64][]llm.Message)
+				history            = make(map[int64][]chathistory.ChatHistoryItem)
 				initSessions       = make(map[int64]telegramInitSession)
 				maepMu             sync.Mutex
 				maepHistory        = make(map[string][]llm.Message)
@@ -486,7 +490,9 @@ func newTelegramCmd() *cobra.Command {
 				"poll_timeout", pollTimeout.String(),
 				"task_timeout", taskTimeout.String(),
 				"max_concurrency", maxConc,
-				"history_max_messages", historyMax,
+				"telegram_history_mode_cap_talkative", 16,
+				"telegram_history_mode_cap_others", 8,
+				"telegram_history_max_messages_deprecated", true,
 				"reactions_enabled", reactionCfg.Enabled,
 				"reactions_allow_count", len(reactionCfg.Allow),
 				"group_trigger_mode", groupTriggerMode,
@@ -494,6 +500,7 @@ func newTelegramCmd() *cobra.Command {
 				"smart_addressing_max_chars", smartAddressingMaxChars,
 				"smart_addressing_confidence", smartAddressingConfidence,
 				"talkative_addressing_confidence", talkativeAddressingConfidence,
+				"telegram_history_cap", telegramHistoryCap,
 			)
 
 			enqueueSystemWarning := func(msg string) int {
@@ -597,7 +604,7 @@ func newTelegramCmd() *cobra.Command {
 							defer func() { <-sem }()
 
 							mu.Lock()
-							h := append([]llm.Message(nil), history[chatID]...)
+							h := append([]chathistory.ChatHistoryItem(nil), history[chatID]...)
 							curVersion := w.Version
 							sticky := append([]string(nil), stickySkillsByChat[chatID]...)
 							mu.Unlock()
@@ -624,11 +631,8 @@ func newTelegramCmd() *cobra.Command {
 										logger.Warn("heartbeat_alert", "source", "telegram", "chat_id", chatID, "message", msg)
 										mu.Lock()
 										cur := history[chatID]
-										cur = append(cur, llm.Message{Role: "assistant", Content: msg})
-										if len(cur) > historyMax {
-											cur = cur[len(cur)-historyMax:]
-										}
-										history[chatID] = cur
+										cur = append(cur, newTelegramSystemHistoryItem(chatID, job.ChatType, msg, time.Now().UTC(), botUser))
+										history[chatID] = trimChatHistoryItems(cur, telegramHistoryCap)
 										mu.Unlock()
 									} else {
 										logger.Warn("heartbeat_error", "source", "telegram", "chat_id", chatID, "error", runErr.Error())
@@ -681,24 +685,18 @@ func newTelegramCmd() *cobra.Command {
 							cur := history[chatID]
 							if job.IsHeartbeat {
 								if reaction == nil {
-									cur = append(cur, llm.Message{Role: "assistant", Content: outText})
+									cur = append(cur, newTelegramOutboundAgentHistoryItem(chatID, job.ChatType, outText, time.Now().UTC(), botUser))
 								}
-							} else if reaction != nil {
-								note := reactionHistoryNote(reaction.Emoji)
-								cur = append(cur,
-									llm.Message{Role: "user", Content: job.Text},
-									llm.Message{Role: "assistant", Content: note},
-								)
 							} else {
-								cur = append(cur,
-									llm.Message{Role: "user", Content: job.Text},
-									llm.Message{Role: "assistant", Content: outText},
-								)
+								cur = append(cur, newTelegramInboundHistoryItem(job))
+								if reaction != nil {
+									note := reactionHistoryNote(reaction.Emoji)
+									cur = append(cur, newTelegramOutboundReactionHistoryItem(chatID, job.ChatType, note, reaction.Emoji, time.Now().UTC(), botUser))
+								} else {
+									cur = append(cur, newTelegramOutboundAgentHistoryItem(chatID, job.ChatType, outText, time.Now().UTC(), botUser))
+								}
 							}
-							if len(cur) > historyMax {
-								cur = cur[len(cur)-historyMax:]
-							}
-							history[chatID] = cur
+							history[chatID] = trimChatHistoryItems(cur, telegramHistoryCap)
 							mu.Unlock()
 						}()
 					}
@@ -753,6 +751,7 @@ func newTelegramCmd() *cobra.Command {
 					ChatID:           inbound.ChatID,
 					MessageID:        inbound.MessageID,
 					ReplyToMessageID: inbound.ReplyToMessageID,
+					SentAt:           inbound.SentAt,
 					ChatType:         inbound.ChatType,
 					FromUserID:       inbound.FromUserID,
 					FromUsername:     inbound.FromUsername,
@@ -1024,8 +1023,8 @@ func newTelegramCmd() *cobra.Command {
 									llm.Message{Role: "user", Content: task},
 									llm.Message{Role: "assistant", Content: output},
 								)
-								if len(cur) > historyMax {
-									cur = cur[len(cur)-historyMax:]
+								if len(cur) > legacyHistoryMax {
+									cur = cur[len(cur)-legacyHistoryMax:]
 								}
 								maepHistory[peerID] = cur
 							}
@@ -1090,6 +1089,7 @@ func newTelegramCmd() *cobra.Command {
 
 					chatType := strings.ToLower(strings.TrimSpace(msg.Chat.Type))
 					isGroup := chatType == "group" || chatType == "supergroup"
+					messageSentAt := telegramMessageSentAt(msg)
 					sendSystemWarnings(chatID)
 
 					var mentionCandidates []string
@@ -1317,7 +1317,10 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 						if isGroup {
-							dec, ok, decErr := groupTriggerDecision(context.Background(), client, model, msg, botUser, botID, aliases, groupTriggerMode, smartAddressingMaxChars, addressingLLMTimeout, smartAddressingConfidence, talkativeAddressingConfidence)
+							mu.Lock()
+							historySnapshot := append([]chathistory.ChatHistoryItem(nil), history[chatID]...)
+							mu.Unlock()
+							dec, ok, decErr := groupTriggerDecision(context.Background(), client, model, msg, botUser, botID, aliases, groupTriggerMode, smartAddressingMaxChars, addressingLLMTimeout, smartAddressingConfidence, talkativeAddressingConfidence, historySnapshot)
 							if decErr != nil {
 								logger.Warn("telegram_addressing_llm_error",
 									"chat_id", chatID,
@@ -1345,6 +1348,33 @@ func newTelegramCmd() *cobra.Command {
 										"type", chatType,
 										"text_len", len(text),
 									)
+								}
+								if strings.EqualFold(groupTriggerMode, "talkative") {
+									ignoredText := strings.TrimSpace(rawText)
+									if msg.ReplyTo != nil {
+										if quoted := buildReplyContext(msg.ReplyTo); quoted != "" {
+											if ignoredText == "" {
+												ignoredText = "(empty)"
+											}
+											ignoredText = "Quoted message:\n> " + quoted + "\n\nUser request:\n" + ignoredText
+										}
+									}
+									mu.Lock()
+									cur := history[chatID]
+									cur = append(cur, newTelegramInboundHistoryItem(telegramJob{
+										ChatID:          chatID,
+										MessageID:       msg.MessageID,
+										SentAt:          messageSentAt,
+										ChatType:        chatType,
+										FromUserID:      fromUserID,
+										FromUsername:    fromUsername,
+										FromFirstName:   fromFirst,
+										FromLastName:    fromLast,
+										FromDisplayName: fromDisplay,
+										Text:            ignoredText,
+									}))
+									history[chatID] = trimChatHistoryItems(cur, telegramHistoryCap)
+									mu.Unlock()
 								}
 								continue
 							}
@@ -1424,6 +1454,7 @@ func newTelegramCmd() *cobra.Command {
 						ChatID:           chatID,
 						MessageID:        msg.MessageID,
 						ReplyToMessageID: replyToMessageID,
+						SentAt:           messageSentAt,
 						ChatType:         chatType,
 						FromUserID:       fromUserID,
 						FromUsername:     fromUsername,
@@ -1483,7 +1514,8 @@ func newTelegramCmd() *cobra.Command {
 	cmd.Flags().Duration("telegram-poll-timeout", 30*time.Second, "Long polling timeout for getUpdates.")
 	cmd.Flags().Duration("telegram-task-timeout", 0, "Per-message agent timeout (0 uses --timeout).")
 	cmd.Flags().Int("telegram-max-concurrency", 3, "Max number of chats processed concurrently.")
-	cmd.Flags().Int("telegram-history-max-messages", 20, "Max chat history messages to keep per chat.")
+	cmd.Flags().Int("telegram-history-max-messages", 20, "Deprecated. Telegram history now uses mode caps (talkative=16, others=8).")
+	_ = cmd.Flags().MarkDeprecated("telegram-history-max-messages", "deprecated: telegram history now uses mode-based caps (talkative=16, others=8)")
 	cmd.Flags().String("file-cache-dir", "/var/cache/morph", "Global temporary file cache directory (used for Telegram file handling).")
 	cmd.Flags().Bool("inspect-prompt", false, "Dump prompts (messages) to ./dump/prompt_telegram_YYYYMMDD_HHmmss.md.")
 	cmd.Flags().Bool("inspect-request", false, "Dump LLM request/response payloads to ./dump/request_telegram_YYYYMMDD_HHmmss.md.")
@@ -1491,11 +1523,19 @@ func newTelegramCmd() *cobra.Command {
 	return cmd
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []llm.Message, stickySkills []string, requestTimeout time.Duration, sendTelegramText func(context.Context, int64, string, string) error) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []chathistory.ChatHistoryItem, stickySkills []string, requestTimeout time.Duration, sendTelegramText func(context.Context, int64, string, string) error) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
 	if sendTelegramText == nil {
 		return nil, nil, nil, nil, fmt.Errorf("send telegram text callback is required")
 	}
 	task := job.Text
+	renderedHistoryMsg, err := chathistory.RenderContextUserMessage(chathistory.ChannelTelegram, history)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("render telegram history context: %w", err)
+	}
+	llmHistory := make([]llm.Message, 0, 1)
+	if strings.TrimSpace(renderedHistoryMsg.Content) != "" {
+		llmHistory = append(llmHistory, renderedHistoryMsg)
+	}
 	if baseReg == nil {
 		baseReg = registryFromViper()
 		toolsutil.BindTodoUpdateToolLLM(baseReg, client, model)
@@ -1505,7 +1545,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	var hasPreIntent bool
 	var preIntent agent.Intent
 	if !job.IsHeartbeat && api != nil && job.MessageID != 0 && strings.TrimSpace(task) != "" && reactionCfg.Enabled {
-		dec, err := decideTelegramReaction(ctx, client, model, task, history, cfg, reactionCfg)
+		dec, err := decideTelegramReaction(ctx, client, model, task, llmHistory, cfg, reactionCfg)
 		if err != nil {
 			if logger != nil {
 				logger.Warn("telegram_reaction_intent_error", "error", err.Error())
@@ -1697,7 +1737,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 			"telegram_from_user_id": job.FromUserID,
 		}
 	}
-	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: history, Meta: meta})
+	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: llmHistory, Meta: meta})
 	if err != nil {
 		return final, agentCtx, loadedSkills, nil, err
 	}
@@ -1716,10 +1756,10 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	}
 
 	if reaction == nil && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
-		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, final, requestTimeout); err != nil {
+		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, llmHistory, final, requestTimeout); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, requestTimeout, func(retryCtx context.Context) error {
-					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, history, final, requestTimeout)
+					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, llmHistory, final, requestTimeout)
 				})
 			}
 			logger.Warn("memory_update_error", "error", err.Error())
@@ -1741,6 +1781,7 @@ func applyTelegramGroupRuntimePromptRules(spec *agent.PromptSpec, chatType strin
 
 	notes := []string{
 		"- Participate, but do not dominate the group thread.",
+		"- Be concise, be natural, do not over-explain.",
 		"- Send text only when it adds clear incremental value beyond prior context.",
 		"- If no incremental value, prefer lightweight acknowledgement instead of text.",
 		"- Avoid triple-tap: never split one thought across multiple short follow-up messages.",
@@ -1754,6 +1795,10 @@ func applyTelegramGroupRuntimePromptRules(spec *agent.PromptSpec, chatType strin
 		Title:   "Group Reply Policy",
 		Content: strings.Join(notes, "\n"),
 	})
+	spec.Rules = append(spec.Rules,
+		"Prefer telegram_react when a lightweight acknowledgement is enough, and avoid sending extra text.",
+		"Never send multiple fragmented follow-up messages for one incoming group message; combine into one concise reply (anti triple-tap).",
+	)
 }
 
 func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, sharedGuard *guard.Guard, cfg agent.Config, model string, peerID string, memManager *memory.Manager, history []llm.Message, stickySkills []string, task string) (*agent.Final, *agent.Context, []string, error) {
@@ -1920,7 +1965,7 @@ func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client,
 	}
 	defer cancel()
 
-	result, err := client.Chat(planCtx, req)
+	result, err := client.Chat(llminspect.WithModelScene(planCtx, "telegram.plan_progress"), req)
 	if err != nil {
 		return "", err
 	}
@@ -2115,7 +2160,7 @@ func BuildMemoryDraft(ctx context.Context, client llm.Client, model string, hist
 		return memory.SessionDraft{}, fmt.Errorf("render memory draft prompts: %w", err)
 	}
 
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "memory.draft"), llm.Request{
 		Model:     model,
 		ForceJSON: true,
 		Messages: []llm.Message{
@@ -2251,7 +2296,7 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	combined = append(combined, existing.SummaryItems...)
 
 	resolver := entryutil.NewLLMSemanticResolver(client, model)
-	deduped, err := memory.SemanticDedupeSummaryItems(ctx, combined, resolver)
+	deduped, err := memory.SemanticDedupeSummaryItems(llminspect.WithModelScene(ctx, "memory.semantic_dedupe"), combined, resolver)
 	if err != nil {
 		return memory.ShortTermContent{}, err
 	}
@@ -2351,6 +2396,7 @@ type telegramUpdate struct {
 
 type telegramMessage struct {
 	MessageID int64            `json:"message_id"`
+	Date      int64            `json:"date,omitempty"`
 	Chat      *telegramChat    `json:"chat,omitempty"`
 	From      *telegramUser    `json:"from,omitempty"`
 	ReplyTo   *telegramMessage `json:"reply_to_message,omitempty"`
@@ -3017,7 +3063,7 @@ func quoteReplyMessageIDForGroupTrigger(msg *telegramMessage, dec telegramGroupT
 // groupTriggerDecision belongs to the trigger layer.
 // It decides whether this group message should enter an agent run.
 // It must not decide output modality (text reply vs reaction), which is handled in the generation layer.
-func groupTriggerDecision(ctx context.Context, client llm.Client, model string, msg *telegramMessage, botUser string, botID int64, aliases []string, mode string, aliasPrefixMaxChars int, addressingLLMTimeout time.Duration, smartAddressingConfidence float64, talkativeAddressingConfidence float64) (telegramGroupTriggerDecision, bool, error) {
+func groupTriggerDecision(ctx context.Context, client llm.Client, model string, msg *telegramMessage, botUser string, botID int64, aliases []string, mode string, aliasPrefixMaxChars int, addressingLLMTimeout time.Duration, smartAddressingConfidence float64, talkativeAddressingConfidence float64, history []chathistory.ChatHistoryItem) (telegramGroupTriggerDecision, bool, error) {
 	if msg == nil {
 		return telegramGroupTriggerDecision{}, false, nil
 	}
@@ -3047,9 +3093,10 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		}, true, nil
 	}
 
-	runAddressingLLM := func(confidenceThreshold float64) (telegramGroupTriggerDecision, bool, error) {
+	runAddressingLLM := func(confidenceThreshold float64, fallbackReason string) (telegramGroupTriggerDecision, bool, error) {
 		dec := telegramGroupTriggerDecision{
 			AddressingLLMAttempted: true,
+			Reason:                 strings.TrimSpace(fallbackReason),
 		}
 		addrCtx := ctx
 		if addrCtx == nil {
@@ -3059,7 +3106,7 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		if addressingLLMTimeout > 0 {
 			addrCtx, cancel = context.WithTimeout(addrCtx, addressingLLMTimeout)
 		}
-		llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, text)
+		llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, text, history)
 		cancel()
 		if llmErr != nil {
 			return dec, false, llmErr
@@ -3068,7 +3115,9 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		dec.AddressingLLMAddressed = llmDec.Addressed
 		dec.AddressingLLMConfidence = llmDec.Confidence
 		dec.AddressingImpulse = llmDec.Impulse
-		dec.Reason = llmDec.Reason
+		if strings.TrimSpace(llmDec.Reason) != "" {
+			dec.Reason = llmDec.Reason
+		}
 		if llmOK && llmDec.Addressed && llmDec.Confidence >= confidenceThreshold {
 			dec.UsedAddressingLLM = true
 			return dec, true, nil
@@ -3078,13 +3127,13 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 
 	switch mode {
 	case "talkative":
-		return runAddressingLLM(talkativeAddressingConfidence)
+		return runAddressingLLM(talkativeAddressingConfidence, "talkative")
 	case "smart":
 		mentionReason, _ := groupAliasMentionReason(text, aliases, aliasPrefixMaxChars)
 		if strings.TrimSpace(mentionReason) == "" {
 			return telegramGroupTriggerDecision{}, false, nil
 		}
-		return runAddressingLLM(smartAddressingConfidence)
+		return runAddressingLLM(smartAddressingConfidence, mentionReason)
 	default: // strict (and unknown values fallback to strict behavior)
 		return telegramGroupTriggerDecision{}, false, nil
 	}
@@ -3450,7 +3499,7 @@ func classifyMAEPFeedback(ctx context.Context, client llm.Client, model string, 
 	if err != nil {
 		return feedback, fmt.Errorf("render maep feedback prompts: %w", err)
 	}
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "maep.feedback_classify"), llm.Request{
 		Model:     model,
 		ForceJSON: true,
 		Messages: []llm.Message{
@@ -3816,6 +3865,283 @@ func lookupMAEPBusinessContact(ctx context.Context, maepSvc *maep.Service, conta
 		}
 	}
 	return contacts.Contact{}, false, nil
+}
+
+const (
+	telegramHistoryCapTalkative = 16
+	telegramHistoryCapDefault   = 8
+)
+
+func telegramHistoryCapForMode(mode string) int {
+	if strings.EqualFold(strings.TrimSpace(mode), "talkative") {
+		return telegramHistoryCapTalkative
+	}
+	return telegramHistoryCapDefault
+}
+
+func trimChatHistoryItems(items []chathistory.ChatHistoryItem, max int) []chathistory.ChatHistoryItem {
+	if max <= 0 || len(items) <= max {
+		return items
+	}
+	return items[len(items)-max:]
+}
+
+var telegramAtMentionPattern = regexp.MustCompile(`@[A-Za-z0-9_]{3,64}`)
+
+func formatTelegramPersonReference(nickname string, username string) string {
+	username = strings.TrimPrefix(strings.TrimSpace(username), "@")
+	nickname = sanitizeTelegramReferenceLabel(nickname)
+	if nickname == "" {
+		nickname = username
+	}
+	if nickname == "" {
+		return ""
+	}
+	if username == "" {
+		return nickname
+	}
+	return "[" + nickname + "](tg:@" + username + ")"
+}
+
+func sanitizeTelegramReferenceLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return ""
+	}
+	label = strings.ReplaceAll(label, "[", "")
+	label = strings.ReplaceAll(label, "]", "")
+	label = strings.ReplaceAll(label, "(", "")
+	label = strings.ReplaceAll(label, ")", "")
+	label = strings.Join(strings.Fields(label), " ")
+	return strings.TrimSpace(label)
+}
+
+func formatTelegramAtMentionsForHistory(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	matches := telegramAtMentionPattern.FindAllStringIndex(text, -1)
+	if len(matches) == 0 {
+		return text
+	}
+	var out strings.Builder
+	out.Grow(len(text) + len(matches)*12)
+	last := 0
+	for _, m := range matches {
+		start, end := m[0], m[1]
+		if start < last || start < 0 || end > len(text) || start >= end {
+			continue
+		}
+		username := strings.TrimPrefix(text[start:end], "@")
+		lower := strings.ToLower(text)
+		if start >= 4 && lower[start-4:start] == "tg:@" {
+			continue
+		}
+		out.WriteString(text[last:start])
+		ref := formatTelegramPersonReference(username, username)
+		if ref == "" {
+			out.WriteString(text[start:end])
+		} else {
+			out.WriteString(ref)
+		}
+		last = end
+	}
+	out.WriteString(text[last:])
+	return strings.TrimSpace(out.String())
+}
+
+func ensureMarkdownBlockquote(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	lines := strings.Split(text, "\n")
+	for i := range lines {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			lines[i] = ">"
+			continue
+		}
+		if strings.HasPrefix(line, ">") {
+			lines[i] = line
+			continue
+		}
+		lines[i] = "> " + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+func stripMarkdownBlockquote(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	lines := strings.Split(text, "\n")
+	for i := range lines {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, ">") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, ">"))
+		}
+		lines[i] = line
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func extractQuoteSenderRef(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	firstLine := text
+	if idx := strings.Index(firstLine, "\n"); idx >= 0 {
+		firstLine = firstLine[:idx]
+	}
+	firstLine = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(firstLine), ">"))
+	if firstLine == "" {
+		return ""
+	}
+	end := strings.Index(firstLine, ")")
+	if end <= 0 {
+		return ""
+	}
+	candidate := strings.TrimSpace(firstLine[:end+1])
+	if strings.HasPrefix(candidate, "[") && strings.Contains(candidate, "](tg:@") {
+		return candidate
+	}
+	return ""
+}
+
+func splitTaskQuoteForHistory(task string) (string, *chathistory.ChatHistoryQuote) {
+	task = strings.TrimSpace(task)
+	if task == "" {
+		return "", nil
+	}
+	const (
+		prefix = "Quoted message:\n"
+		sep    = "\n\nUser request:\n"
+	)
+	if !strings.HasPrefix(task, prefix) {
+		return task, nil
+	}
+	rest := strings.TrimPrefix(task, prefix)
+	idx := strings.Index(rest, sep)
+	if idx < 0 {
+		return task, nil
+	}
+	quoteRaw := strings.TrimSpace(rest[:idx])
+	mainText := strings.TrimSpace(rest[idx+len(sep):])
+	quoteRaw = formatTelegramAtMentionsForHistory(quoteRaw)
+	block := ensureMarkdownBlockquote(quoteRaw)
+	if block == "" {
+		return mainText, nil
+	}
+	return mainText, &chathistory.ChatHistoryQuote{
+		SenderRef:     extractQuoteSenderRef(block),
+		Text:          stripMarkdownBlockquote(block),
+		MarkdownBlock: block,
+	}
+}
+
+func telegramSenderFromJob(job telegramJob) chathistory.ChatHistorySender {
+	username := strings.TrimPrefix(strings.TrimSpace(job.FromUsername), "@")
+	nickname := strings.TrimSpace(job.FromDisplayName)
+	if nickname == "" {
+		first := strings.TrimSpace(job.FromFirstName)
+		last := strings.TrimSpace(job.FromLastName)
+		switch {
+		case first != "" && last != "":
+			nickname = first + " " + last
+		case first != "":
+			nickname = first
+		case last != "":
+			nickname = last
+		default:
+			nickname = username
+		}
+	}
+	return chathistory.ChatHistorySender{
+		UserID:     strconv.FormatInt(job.FromUserID, 10),
+		Username:   username,
+		Nickname:   nickname,
+		DisplayRef: formatTelegramPersonReference(nickname, username),
+	}
+}
+
+func newTelegramInboundHistoryItem(job telegramJob) chathistory.ChatHistoryItem {
+	sentAt := job.SentAt.UTC()
+	if sentAt.IsZero() {
+		sentAt = time.Now().UTC()
+	}
+	text, quote := splitTaskQuoteForHistory(job.Text)
+	text = formatTelegramAtMentionsForHistory(text)
+	if text == "" {
+		text = "(empty)"
+	}
+	messageID := ""
+	if job.MessageID > 0 {
+		messageID = strconv.FormatInt(job.MessageID, 10)
+	}
+	replyToMessageID := ""
+	if job.ReplyToMessageID > 0 {
+		replyToMessageID = strconv.FormatInt(job.ReplyToMessageID, 10)
+	}
+	return chathistory.ChatHistoryItem{
+		Channel:          chathistory.ChannelTelegram,
+		Kind:             chathistory.KindInboundUser,
+		ChatID:           strconv.FormatInt(job.ChatID, 10),
+		ChatType:         strings.TrimSpace(job.ChatType),
+		MessageID:        messageID,
+		ReplyToMessageID: replyToMessageID,
+		SentAt:           sentAt,
+		Sender:           telegramSenderFromJob(job),
+		Text:             text,
+		Quote:            quote,
+	}
+}
+
+func newTelegramOutboundAgentHistoryItem(chatID int64, chatType string, text string, sentAt time.Time, botUser string) chathistory.ChatHistoryItem {
+	if sentAt.IsZero() {
+		sentAt = time.Now().UTC()
+	}
+	botUser = strings.TrimPrefix(strings.TrimSpace(botUser), "@")
+	nickname := botUser
+	if nickname == "" {
+		nickname = "MisterMorph"
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = "(empty)"
+	}
+	return chathistory.ChatHistoryItem{
+		Channel:  chathistory.ChannelTelegram,
+		Kind:     chathistory.KindOutboundAgent,
+		ChatID:   strconv.FormatInt(chatID, 10),
+		ChatType: strings.TrimSpace(chatType),
+		SentAt:   sentAt.UTC(),
+		Sender: chathistory.ChatHistorySender{
+			Username:   botUser,
+			Nickname:   nickname,
+			IsBot:      true,
+			DisplayRef: formatTelegramPersonReference(nickname, botUser),
+		},
+		Text: text,
+	}
+}
+
+func newTelegramOutboundReactionHistoryItem(chatID int64, chatType string, note string, emoji string, sentAt time.Time, botUser string) chathistory.ChatHistoryItem {
+	item := newTelegramOutboundAgentHistoryItem(chatID, chatType, note, sentAt, botUser)
+	item.Kind = chathistory.KindOutboundReaction
+	if strings.TrimSpace(emoji) != "" {
+		item.Text = strings.TrimSpace(note)
+	}
+	return item
+}
+
+func newTelegramSystemHistoryItem(chatID int64, chatType string, text string, sentAt time.Time, botUser string) chathistory.ChatHistoryItem {
+	item := newTelegramOutboundAgentHistoryItem(chatID, chatType, text, sentAt, botUser)
+	item.Kind = chathistory.KindSystem
+	return item
 }
 
 func collectMAEPUserUtterances(history []llm.Message, latestTask string) []string {
@@ -4234,7 +4560,7 @@ type telegramAddressingLLMDecision struct {
 	Reason     string  `json:"reason"`
 }
 
-func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, botUser string, aliases []string, text string) (telegramAddressingLLMDecision, bool, error) {
+func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, botUser string, aliases []string, text string, history []chathistory.ChatHistoryItem) (telegramAddressingLLMDecision, bool, error) {
 	if ctx == nil || client == nil {
 		return telegramAddressingLLMDecision{}, false, nil
 	}
@@ -4244,12 +4570,13 @@ func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model stri
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("missing model for addressing_llm")
 	}
 
-	sys, user, err := renderTelegramAddressingPrompts(botUser, aliases, text)
+	historyPayload := chathistory.BuildContextPayload(chathistory.ChannelTelegram, history)
+	sys, user, err := renderTelegramAddressingPrompts(botUser, aliases, text, historyPayload)
 	if err != nil {
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("render addressing prompts: %w", err)
 	}
 
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.addressing_decision"), llm.Request{
 		Model:     model,
 		ForceJSON: true,
 		Messages: []llm.Message{
@@ -4370,6 +4697,13 @@ func messageTextOrCaption(msg *telegramMessage) string {
 		return msg.Text
 	}
 	return msg.Caption
+}
+
+func telegramMessageSentAt(msg *telegramMessage) time.Time {
+	if msg != nil && msg.Date > 0 {
+		return time.Unix(msg.Date, 0).UTC()
+	}
+	return time.Now().UTC()
 }
 
 func messageHasDownloadableFile(msg *telegramMessage) bool {

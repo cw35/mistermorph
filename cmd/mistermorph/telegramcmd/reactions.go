@@ -7,6 +7,7 @@ import (
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
+	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/spf13/viper"
 )
@@ -118,7 +119,7 @@ func decideTelegramReaction(ctx context.Context, client llm.Client, model string
 	if cancel != nil {
 		defer cancel()
 	}
-	intent, err := agent.InferIntent(intentCtx, client, model, task, history, intentCfg.IntentMaxHistory)
+	intent, err := agent.InferIntent(llminspect.WithModelScene(intentCtx, "telegram.intent_infer"), client, model, task, history, intentCfg.IntentMaxHistory)
 	if err != nil {
 		return decision, err
 	}
@@ -302,7 +303,7 @@ func classifyReactionCategoryViaIntent(ctx context.Context, client llm.Client, m
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	res, err := client.Chat(ctx, req)
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.reaction_category"), req)
 	if err != nil {
 		return reactionMatch{}, err
 	}
