@@ -1,12 +1,11 @@
 package skills
 
 import (
-	"bufio"
 	"fmt"
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/quailyquaily/mistermorph/internal/markdown"
 )
 
 type Frontmatter struct {
@@ -17,39 +16,17 @@ type Frontmatter struct {
 }
 
 func ParseFrontmatter(contents string) (Frontmatter, bool) {
-	// Minimal frontmatter support: YAML between leading --- ... ---.
-	r := strings.NewReader(contents)
-	sc := bufio.NewScanner(r)
-	if !sc.Scan() {
-		return Frontmatter{}, false
-	}
-	if strings.TrimSpace(sc.Text()) != "---" {
-		return Frontmatter{}, false
-	}
-
-	var yamlLines []string
-	foundEnd := false
-	for sc.Scan() {
-		line := sc.Text()
-		if strings.TrimSpace(line) == "---" {
-			foundEnd = true
-			break
-		}
-		yamlLines = append(yamlLines, line)
-	}
-	if !foundEnd {
-		return Frontmatter{}, false
-	}
-
-	var raw struct {
+	type rawFrontmatter struct {
 		Name         string   `yaml:"name"`
 		Description  string   `yaml:"description"`
 		AuthProfiles []string `yaml:"auth_profiles"`
 		Requirements any      `yaml:"requirements"`
 	}
-	if err := yaml.Unmarshal([]byte(strings.Join(yamlLines, "\n")), &raw); err != nil {
+	parsed, _, ok := markdown.ParseFrontmatter[rawFrontmatter](contents)
+	if !ok {
 		return Frontmatter{}, false
 	}
+	raw := parsed
 
 	fm := Frontmatter{
 		Name:         strings.TrimSpace(raw.Name),
