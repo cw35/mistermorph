@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/quailyquaily/mistermorph/agent"
@@ -33,8 +32,8 @@ func TestPromptSpecWithSkills_LoadAllWildcard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PromptSpecWithSkills: %v", err)
 	}
-	if len(spec.Blocks) != 2 {
-		t.Fatalf("expected 2 loaded skill blocks, got %d", len(spec.Blocks))
+	if len(spec.Skills) != 2 {
+		t.Fatalf("expected 2 loaded skills, got %d", len(spec.Skills))
 	}
 	sort.Strings(loaded)
 	if len(loaded) != 2 || loaded[0] != "alpha" || loaded[1] != "beta" {
@@ -106,27 +105,23 @@ very long instructions that should not be injected
 	if len(loaded) != 1 || loaded[0] != "jsonbill" {
 		t.Fatalf("unexpected loaded skills: %#v", loaded)
 	}
-	if len(spec.Blocks) < 1 {
-		t.Fatalf("expected at least 1 block, got %d", len(spec.Blocks))
+	if len(spec.Skills) < 1 {
+		t.Fatalf("expected at least 1 skill, got %d", len(spec.Skills))
 	}
-	if len(spec.Blocks) != 1 {
-		t.Fatalf("expected only 1 skill metadata block, got %d", len(spec.Blocks))
+	if len(spec.Skills) != 1 {
+		t.Fatalf("expected only 1 skill metadata, got %d", len(spec.Skills))
 	}
-	content := spec.Blocks[0].Content
-	if !strings.Contains(content, "Name: jsonbill") {
-		t.Fatalf("skill name missing from prompt block: %q", content)
+	sk := spec.Skills[0]
+	if sk.Name != "jsonbill" {
+		t.Fatalf("unexpected skill name: %q", sk.Name)
 	}
-	if !strings.Contains(content, "Description: Generate invoice PDF.") {
-		t.Fatalf("skill description missing from prompt block: %q", content)
+	if sk.Description != "Generate invoice PDF." {
+		t.Fatalf("unexpected skill description: %q", sk.Description)
 	}
-	if !strings.Contains(content, "- http_client") || !strings.Contains(content, "- optional: file_send (chat)") {
-		t.Fatalf("skill requirements missing from prompt block: %q", content)
-	}
-	if !strings.Contains(content, "- auth_profile: jsonbill") {
-		t.Fatalf("auth_profile requirement missing from prompt block: %q", content)
-	}
-	if strings.Contains(content, "very long instructions that should not be injected") {
-		t.Fatalf("skill full contents should not be injected: %q", content)
+	if len(sk.Requirements) != 2 ||
+		sk.Requirements[0] != "http_client" ||
+		sk.Requirements[1] != "optional: file_send (chat)" {
+		t.Fatalf("unexpected skill requirements: %#v", sk.Requirements)
 	}
 }
 

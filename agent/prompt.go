@@ -9,12 +9,20 @@ import (
 type PromptSpec struct {
 	Identity string
 	Rules    []string
+	Skills   []PromptSkill
 	Blocks   []PromptBlock
 }
 
 type PromptBlock struct {
 	Title   string
 	Content string
+}
+
+type PromptSkill struct {
+	Name         string
+	FilePath     string
+	Description  string
+	Requirements []string
 }
 
 func DefaultPromptSpec() PromptSpec {

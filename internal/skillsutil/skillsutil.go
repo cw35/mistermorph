@@ -2,7 +2,6 @@ package skillsutil
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -17,13 +16,12 @@ import (
 )
 
 type SkillsConfig struct {
-	Roots        []string
-	Mode         string
-	Requested    []string
-	Auto         bool
-	MaxLoad      int
-	PreviewBytes int64
-	Trace        bool
+	Roots     []string
+	Mode      string
+	Requested []string
+	Auto      bool
+	MaxLoad   int
+	Trace     bool
 }
 
 func SkillsConfigFromViper() SkillsConfig {
@@ -35,9 +33,8 @@ func SkillsConfigFromViper() SkillsConfig {
 			append([]string{}, viper.GetStringSlice("skill")...), // legacy
 			viper.GetStringSlice("skills")...,                    // legacy
 		),
-		MaxLoad:      viper.GetInt("skills.max_load"),
-		PreviewBytes: viper.GetInt64("skills.preview_bytes"),
-		Trace:        strings.EqualFold(strings.TrimSpace(viper.GetString("logging.level")), "debug"),
+		MaxLoad: viper.GetInt("skills.max_load"),
+		Trace:   strings.EqualFold(strings.TrimSpace(viper.GetString("logging.level")), "debug"),
 	}
 	cfg.Requested = append(cfg.Requested, getStringSlice("skills.load")...)
 	if strings.TrimSpace(cfg.Mode) == "" {
@@ -63,7 +60,6 @@ func SkillsConfigFromRunCmd(cmd *cobra.Command) SkillsConfig {
 	}
 
 	cfg.MaxLoad = configutil.FlagOrViperInt(cmd, "skills-max-load", "skills.max_load")
-	cfg.PreviewBytes = configutil.FlagOrViperInt64(cmd, "skills-preview-bytes", "skills.preview_bytes")
 
 	if strings.TrimSpace(cfg.Mode) == "" {
 		cfg.Mode = "on"
@@ -143,7 +139,7 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 		if loadedSkillIDs[strings.ToLower(s.ID)] {
 			continue
 		}
-		skillLoaded, err := skills.Load(s, 512*1024)
+		skillLoaded, err := skills.LoadFrontmatter(s, 64*1024)
 		if err != nil {
 			return agent.PromptSpec{}, nil, nil, err
 		}
@@ -152,22 +148,40 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 		}
 		loadedSkillIDs[strings.ToLower(skillLoaded.ID)] = true
 		loadedOrdered = append(loadedOrdered, skillLoaded.ID)
-		spec.Blocks = append(spec.Blocks, agent.PromptBlock{
-			Title:   fmt.Sprintf("%s (%s)", skillLoaded.Name, skillLoaded.ID),
-			Content: buildSkillPromptMetadata(skillLoaded),
+		name := strings.TrimSpace(skillLoaded.Name)
+		if name == "" {
+			name = strings.TrimSpace(skillLoaded.ID)
+		}
+		desc := strings.TrimSpace(skillLoaded.Description)
+		if desc == "" {
+			desc = "(not provided)"
+		}
+		reqs := make([]string, 0, len(skillLoaded.Requirements))
+		for _, req := range skillLoaded.Requirements {
+			req = strings.TrimSpace(req)
+			if req == "" {
+				continue
+			}
+			reqs = append(reqs, req)
+		}
+		if len(reqs) == 0 {
+			reqs = []string{"(not specified)"}
+		}
+		spec.Skills = append(spec.Skills, agent.PromptSkill{
+			Name:         name,
+			FilePath:     skillLoaded.SkillMD,
+			Description:  desc,
+			Requirements: reqs,
 		})
 
-		log.Info("skill_loaded", "mode", mode, "name", skillLoaded.Name, "id", skillLoaded.ID, "path", skillLoaded.SkillMD, "bytes", len(skillLoaded.Contents))
-		if logOpts.IncludeSkillContents {
-			log.Debug("skill_contents", "id", skillLoaded.ID, "content", truncateString(skillLoaded.Contents, logOpts.MaxSkillContentChars))
-		}
+		log.Info("skill_loaded", "mode", mode, "name", name, "id", skillLoaded.ID, "path", skillLoaded.SkillMD)
 	}
 
 	ap := mapKeysSorted(declaredAuthProfiles)
 	if len(ap) > 0 {
 		log.Info("skills_auth_profiles_declared", "count", len(ap), "profiles", ap)
 	}
-	log.Info("skills_loaded", "mode", mode, "count", len(spec.Blocks))
+	log.Info("skills_loaded", "mode", mode, "count", len(spec.Skills))
 	return spec, loadedOrdered, ap, nil
 }
 
@@ -228,55 +242,4 @@ func mapKeysSorted(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func buildSkillPromptMetadata(skill skills.Skill) string {
-	name := strings.TrimSpace(skill.Name)
-	if name == "" {
-		name = strings.TrimSpace(skill.ID)
-	}
-	desc := strings.TrimSpace(skill.Description)
-	if desc == "" {
-		desc = "(not provided)"
-	}
-	reqs := make([]string, 0, len(skill.Requirements))
-	seen := make(map[string]bool, len(skill.Requirements))
-	for _, req := range skill.Requirements {
-		req = strings.TrimSpace(req)
-		if req == "" || seen[req] {
-			continue
-		}
-		seen[req] = true
-		reqs = append(reqs, req)
-	}
-	for _, ap := range skill.AuthProfiles {
-		ap = strings.TrimSpace(ap)
-		if ap == "" {
-			continue
-		}
-		req := "auth_profile: " + ap
-		if seen[req] {
-			continue
-		}
-		seen[req] = true
-		reqs = append(reqs, req)
-	}
-	if len(reqs) == 0 {
-		reqs = []string{"(not specified)"}
-	}
-
-	var b strings.Builder
-	b.WriteString("Name: ")
-	b.WriteString(name)
-	b.WriteString("\n")
-	b.WriteString("Description: ")
-	b.WriteString(desc)
-	b.WriteString("\n")
-	b.WriteString("Requirements:\n")
-	for _, req := range reqs {
-		b.WriteString("- ")
-		b.WriteString(req)
-		b.WriteString("\n")
-	}
-	return strings.TrimSpace(b.String())
 }

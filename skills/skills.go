@@ -24,6 +24,16 @@ type Skill struct {
 	AuthProfiles []string
 }
 
+func applyFrontmatter(skill Skill, fm Frontmatter) Skill {
+	if strings.TrimSpace(fm.Name) != "" {
+		skill.Name = strings.TrimSpace(fm.Name)
+	}
+	skill.Description = strings.TrimSpace(fm.Description)
+	skill.Requirements = append([]string{}, fm.Requirements...)
+	skill.AuthProfiles = append([]string{}, fm.AuthProfiles...)
+	return skill
+}
+
 type DiscoverOptions struct {
 	Roots []string
 }
@@ -126,12 +136,7 @@ func Load(skill Skill, maxBytes int64) (Skill, error) {
 	}
 	skill.Contents = string(data)
 	if fm, ok := ParseFrontmatter(skill.Contents); ok {
-		if strings.TrimSpace(fm.Name) != "" {
-			skill.Name = strings.TrimSpace(fm.Name)
-		}
-		skill.Description = strings.TrimSpace(fm.Description)
-		skill.Requirements = append([]string{}, fm.Requirements...)
-		skill.AuthProfiles = fm.AuthProfiles
+		skill = applyFrontmatter(skill, fm)
 	}
 	return skill, nil
 }
@@ -152,12 +157,23 @@ func LoadPreview(skill Skill, maxBytes int64) (Skill, error) {
 	}
 	skill.Contents = string(data)
 	if fm, ok := ParseFrontmatter(skill.Contents); ok {
-		if strings.TrimSpace(fm.Name) != "" {
-			skill.Name = strings.TrimSpace(fm.Name)
-		}
-		skill.Description = strings.TrimSpace(fm.Description)
-		skill.Requirements = append([]string{}, fm.Requirements...)
-		skill.AuthProfiles = fm.AuthProfiles
+		skill = applyFrontmatter(skill, fm)
+	}
+	return skill, nil
+}
+
+// LoadFrontmatter loads only metadata parsed from SKILL.md frontmatter.
+// It does not populate Skill.Contents.
+func LoadFrontmatter(skill Skill, maxBytes int64) (Skill, error) {
+	data, err := os.ReadFile(skill.SkillMD)
+	if err != nil {
+		return Skill{}, err
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		data = data[:maxBytes]
+	}
+	if fm, ok := ParseFrontmatter(string(data)); ok {
+		skill = applyFrontmatter(skill, fm)
 	}
 	return skill, nil
 }

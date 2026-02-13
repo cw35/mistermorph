@@ -43,7 +43,7 @@ You can request skills via config:
 
 If `skills.auto=true`, the agent also loads skills referenced inside your task text as `$SkillName` (e.g. “Use $google-maps-parse to extract coordinates.”).
 
-Smart selector flow is currently disabled. Legacy smart-mode config keys (`skills.max_load`, `skills.preview_bytes`) are accepted for compatibility but ignored.
+Smart selector flow is currently disabled. Legacy smart-mode config key (`skills.max_load`) is accepted for compatibility but ignored.
 
 ## Installing / updating built-in skills
 

@@ -1,10 +1,19 @@
 {{.Identity}}
+{{if .Skills}}
+
+## Available Skills
+Skills are not tools. They provide extra context and may include scripts to run via tools like bash.
+{{range .Skills}}
+- Name: `{{.Name}}`
+  File: `{{.FilePath}}`
+  Description: {{.Description}}
+  Requirements: {{- range $i, $r := .Requirements}}{{if $i}}, {{end}}{{$r}}{{- end}}
+{{end}}{{end}}
+
 {{if .Blocks}}
 
-## Skills & Context
-Skills are not tools. They provide extra context and may include scripts to run via tools like bash.
+## Additional Context
 {{range .Blocks}}
-
 ### {{.Title}}
 {{.Content}}
 {{end}}{{end}}
