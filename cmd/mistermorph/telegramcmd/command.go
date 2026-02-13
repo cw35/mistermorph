@@ -1596,7 +1596,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	promptSpec.Rules = append(promptSpec.Rules,
 		"In your final.output string, write for Telegram MarkdownV2 with LIMITED syntax only: *bold*, _italic_, __underline__, ~strikethrough~, ||spoiler||. Avoid inline code, code blocks, or any other Markdown features. If unsure, output plain text. Escape underscores in identifiers (e.g., new\\_york) instead of using backticks.",
 	)
-	applyTelegramGroupRuntimePromptRules(&promptSpec, job.ChatType, job.MentionUsers, reactionCfg.Enabled)
+	applyTelegramGroupRuntimePromptRules(&promptSpec, job.ChatType, job.MentionUsers)
 	promptSpec.Rules = append(promptSpec.Rules,
 		"If you need to send a Telegram voice message: call telegram_send_voice. If you do not already have a voice file path, do NOT ask the user for one; instead call telegram_send_voice without path and provide a short `text` to synthesize from the current context.",
 	)
@@ -1728,44 +1728,28 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	return final, agentCtx, loadedSkills, reaction, nil
 }
 
-func applyTelegramGroupRuntimePromptRules(spec *agent.PromptSpec, chatType string, mentionUsers []string, reactionsEnabled bool) {
+func applyTelegramGroupRuntimePromptRules(spec *agent.PromptSpec, chatType string, mentionUsers []string) {
 	if spec == nil || !isGroupChat(chatType) {
 		return
 	}
 	if len(mentionUsers) > 0 {
 		spec.Blocks = append(spec.Blocks, agent.PromptBlock{
-			Title:   "Group Usernames",
+			Title:   "[Group Usernames]",
 			Content: strings.Join(mentionUsers, "\n"),
 		})
-		spec.Rules = append(spec.Rules,
-			"When replying in a group chat and you need to address someone directly, mention their username with @ using only the usernames listed in Group Usernames. Do not invent usernames.",
-		)
-	} else {
-		spec.Rules = append(spec.Rules,
-			"When replying in a group chat, only @mention someone if you are confident of their username from the conversation; otherwise avoid @mentions.",
-		)
 	}
 
 	notes := []string{
-		"Mode: humanlike",
 		"- Participate, but do not dominate the group thread.",
 		"- Send text only when it adds clear incremental value beyond prior context.",
 		"- If no incremental value, prefer lightweight acknowledgement instead of text.",
 		"- Avoid triple-tap: never split one thought across multiple short follow-up messages.",
+		"- Use `@username` to mention someone if you can find their username from the message history or [Group Usernames]. " +
+			"For example, [Nickname](tg:@username); don't invent username.",
+		"- Send text only when it adds clear incremental value; otherwise prefer a lightweight acknowledgement, send a reaction by using `telegram_react`",
+		"- Never send multiple fragmented follow-up messages for one incoming group message; combine into one concise reply (anti triple-tap).",
 	}
-	spec.Rules = append(spec.Rules,
-		"In group chats (humanlike mode), send text only when it adds clear incremental value; otherwise prefer a lightweight acknowledgement.",
-		"Never send multiple fragmented follow-up messages for one incoming group message; combine into one concise reply (anti triple-tap).",
-	)
-	if reactionsEnabled {
-		spec.Rules = append(spec.Rules,
-			"In group chats, when there is no clear incremental value in text, prefer telegram_react and do not send extra text.",
-		)
-	} else {
-		spec.Rules = append(spec.Rules,
-			"In group chats, when there is no clear incremental value in text, keep acknowledgement minimal and avoid extra chatter.",
-		)
-	}
+
 	spec.Blocks = append(spec.Blocks, agent.PromptBlock{
 		Title:   "Group Reply Policy",
 		Content: strings.Join(notes, "\n"),
