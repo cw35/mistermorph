@@ -12,6 +12,7 @@ import (
 
 	"github.com/quailyquaily/mistermorph/assets"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
+	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/llm"
 )
@@ -139,7 +140,7 @@ func buildInitQuestions(ctx context.Context, client llm.Client, model string, dr
 		return defaultQuestions, defaultMessage, err
 	}
 
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.init_questions"), llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: true,
 		Messages: []llm.Message{
@@ -243,7 +244,7 @@ func generatePostInitGreeting(ctx context.Context, client llm.Client, model stri
 		return fallbackPostInitGreeting(userAnswer, fallback), err
 	}
 
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.init_post_greeting"), llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: false,
 		Messages: []llm.Message{
@@ -320,7 +321,7 @@ func buildInitFill(ctx context.Context, client llm.Client, model string, draft i
 		return fallback, nil
 	}
 
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.init_fill"), llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: true,
 		Messages: []llm.Message{
@@ -468,7 +469,7 @@ func polishInitSoulMarkdown(ctx context.Context, client llm.Client, model string
 		return original
 	}
 
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.init_soul_polish"), llm.Request{
 		Model:     strings.TrimSpace(model),
 		ForceJSON: false,
 		Messages: []llm.Message{

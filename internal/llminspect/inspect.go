@@ -30,6 +30,10 @@ type PromptInspector struct {
 	requestCount int
 }
 
+type modelSceneContextKey struct{}
+
+const defaultModelScene = "unknown"
+
 func NewPromptInspector(opts Options) (*PromptInspector, error) {
 	startedAt := time.Now()
 	dumpDir := strings.TrimSpace(opts.DumpDir)
@@ -64,16 +68,51 @@ func (p *PromptInspector) Close() error {
 	return p.file.Close()
 }
 
+func WithModelScene(ctx context.Context, scene string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	scene = strings.TrimSpace(scene)
+	if scene == "" {
+		scene = defaultModelScene
+	}
+	return context.WithValue(ctx, modelSceneContextKey{}, scene)
+}
+
+func ModelSceneFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return defaultModelScene
+	}
+	if v := ctx.Value(modelSceneContextKey{}); v != nil {
+		if scene, ok := v.(string); ok {
+			scene = strings.TrimSpace(scene)
+			if scene != "" {
+				return scene
+			}
+		}
+	}
+	return defaultModelScene
+}
+
 func (p *PromptInspector) Dump(messages []llm.Message) error {
+	return p.DumpWithScene(defaultModelScene, messages)
+}
+
+func (p *PromptInspector) DumpWithScene(scene string, messages []llm.Message) error {
 	if p == nil || p.file == nil {
 		return nil
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	scene = strings.TrimSpace(scene)
+	if scene == "" {
+		scene = defaultModelScene
+	}
 	p.requestCount++
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n## Request #%d\n\n", p.requestCount)
+	fmt.Fprintf(&b, "model_scene: %s\n\n", scene)
 	for i, msg := range messages {
 		fmt.Fprintf(&b, "### Message #%d-%d\n\n", p.requestCount, i+1)
 		b.WriteString("```\n")
@@ -200,7 +239,7 @@ func (c *PromptClient) Chat(ctx context.Context, req llm.Request) (llm.Result, e
 		return llm.Result{}, fmt.Errorf("inspect client is not initialized")
 	}
 	if c.Inspector != nil {
-		if err := c.Inspector.Dump(req.Messages); err != nil {
+		if err := c.Inspector.DumpWithScene(ModelSceneFromContext(ctx), req.Messages); err != nil {
 			return llm.Result{}, err
 		}
 	}

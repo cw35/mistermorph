@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
+	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/llm"
 )
 
@@ -89,7 +90,7 @@ Return JSON:
 }
 `), opts.MaxLoad)
 
-	res, err := client.Chat(ctx, llm.Request{
+	res, err := client.Chat(llminspect.WithModelScene(ctx, "skills.select"), llm.Request{
 		Model:     opts.Model,
 		ForceJSON: true,
 		Messages: []llm.Message{
