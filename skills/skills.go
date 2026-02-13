@@ -14,11 +14,13 @@ import (
 type Skill struct {
 	ID           string
 	Name         string
+	Description  string
 	RootDir      string
 	RootRank     int
 	Dir          string
 	SkillMD      string
 	Contents     string
+	Requirements []string
 	AuthProfiles []string
 }
 
@@ -124,6 +126,11 @@ func Load(skill Skill, maxBytes int64) (Skill, error) {
 	}
 	skill.Contents = string(data)
 	if fm, ok := ParseFrontmatter(skill.Contents); ok {
+		if strings.TrimSpace(fm.Name) != "" {
+			skill.Name = strings.TrimSpace(fm.Name)
+		}
+		skill.Description = strings.TrimSpace(fm.Description)
+		skill.Requirements = append([]string{}, fm.Requirements...)
 		skill.AuthProfiles = fm.AuthProfiles
 	}
 	return skill, nil
@@ -145,6 +152,11 @@ func LoadPreview(skill Skill, maxBytes int64) (Skill, error) {
 	}
 	skill.Contents = string(data)
 	if fm, ok := ParseFrontmatter(skill.Contents); ok {
+		if strings.TrimSpace(fm.Name) != "" {
+			skill.Name = strings.TrimSpace(fm.Name)
+		}
+		skill.Description = strings.TrimSpace(fm.Description)
+		skill.Requirements = append([]string{}, fm.Requirements...)
 		skill.AuthProfiles = fm.AuthProfiles
 	}
 	return skill, nil

@@ -26,3 +26,27 @@ func TestParseFrontmatter_NoFrontmatter(t *testing.T) {
 		t.Fatal("expected ok=false")
 	}
 }
+
+func TestParseFrontmatter_Requirements(t *testing.T) {
+	in := `---
+name: jsonbill
+description: Call JSONBill API safely.
+requirements:
+  - http_client
+  - file_io
+  - optional: file_send (chat)
+---
+`
+	fm, ok := ParseFrontmatter(in)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if len(fm.Requirements) != 3 {
+		t.Fatalf("unexpected requirements count: %#v", fm.Requirements)
+	}
+	if fm.Requirements[0] != "http_client" ||
+		fm.Requirements[1] != "file_io" ||
+		fm.Requirements[2] != "optional: file_send (chat)" {
+		t.Fatalf("unexpected requirements: %#v", fm.Requirements)
+	}
+}
