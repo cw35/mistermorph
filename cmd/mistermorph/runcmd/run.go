@@ -267,7 +267,7 @@ func New(deps Dependencies) *cobra.Command {
 	cmd.Flags().Bool("interactive", false, "Ctrl-C pauses and lets you inject extra context, then continues.")
 	cmd.Flags().Bool("inspect-prompt", false, "Dump prompts (messages) to ./dump/prompt_YYYYMMDD_HHmm.md.")
 	cmd.Flags().Bool("inspect-request", false, "Dump LLM request/response payloads to ./dump/request_YYYYMMDD_HHmm.md.")
-	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: ~/.codex/skills, ~/.claude/skills")
+	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Default: file_state_dir/skills")
 	cmd.Flags().StringArray("skill", nil, "Skill(s) to load by name or id (repeatable).")
 	cmd.Flags().Bool("skills-auto", true, "Auto-load skills referenced in task via $SkillName.")
 	cmd.Flags().String("skills-mode", "on", "Skills mode: off|on. Legacy values explicit/smart map to on.")

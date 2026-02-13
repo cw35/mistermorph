@@ -237,7 +237,6 @@ intent:
 skills:
   # Directory name under file_state_dir for skills.
   dir_name: "skills"
-  # Note: the default scan also includes ~/.claude/skills and ~/.codex/skills.
   # off|on
   # - off: never load skills
   # - on: only load skills from skills.load and/or $SkillName references (if skills.auto=true)

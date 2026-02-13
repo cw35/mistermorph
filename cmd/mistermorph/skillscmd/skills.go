@@ -27,7 +27,7 @@ func newSkillsListCmd() *cobra.Command {
 		RunE:  runSkillsListCmd,
 	}
 
-	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: file_state_dir/skills + ~/.claude/skills + ~/.codex/skills")
+	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Default: file_state_dir/skills")
 
 	return cmd
 }

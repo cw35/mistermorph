@@ -62,12 +62,7 @@ func TODODONEPath() string {
 }
 
 func DefaultSkillsRoots() []string {
-	roots := []string{
-		SkillsDir(),
-		pathutil.ExpandHomePath("~/.claude/skills"),
-		pathutil.ExpandHomePath("~/.codex/skills"),
-	}
-	return dedupeNonEmptyStrings(roots)
+	return dedupeNonEmptyStrings([]string{SkillsDir()})
 }
 
 func dedupeNonEmptyStrings(items []string) []string {

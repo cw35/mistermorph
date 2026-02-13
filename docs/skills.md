@@ -12,13 +12,11 @@ Important: a skill is **not automatically a tool**. Skills add prompt context; t
 
 Skills are discovered by scanning roots recursively for `SKILL.md`.
 
-Default roots (highest priority first):
+Default root:
 
-1. `~/.morph/skills`
-2. `~/.claude/skills`
-3. `~/.codex/skills`
+1. `file_state_dir/skills` (usually `~/.morph/skills`)
 
-If the same skill `name` appears in multiple roots, the first root wins (higher priority). This avoids duplicates and allows you to override a built-in or shared skill by installing a modified copy into `~/.morph/skills`.
+You can add custom roots via `--skills-dir` when listing or running.
 
 ## Listing skills
 

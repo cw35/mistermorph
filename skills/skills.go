@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/quailyquaily/mistermorph/internal/statepaths"
 )
 
 type Skill struct {
@@ -39,15 +41,7 @@ type DiscoverOptions struct {
 }
 
 func DefaultRoots() []string {
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return nil
-	}
-	return []string{
-		filepath.Join(home, ".morph", "skills"),
-		filepath.Join(home, ".claude", "skills"),
-		filepath.Join(home, ".codex", "skills"),
-	}
+	return statepaths.DefaultSkillsRoots()
 }
 
 func Discover(opts DiscoverOptions) ([]Skill, error) {
@@ -262,39 +256,26 @@ func normalizeRoots(roots []string) []string {
 		expanded = append(expanded, r)
 	}
 
-	// Enforce priority order for the well-known roots (even if provided out of order).
-	home, _ := os.UserHomeDir()
-	if strings.TrimSpace(home) == "" {
+	defaultRoots := DefaultRoots()
+	if len(defaultRoots) == 0 {
 		return expanded
 	}
-	want := []string{
-		filepath.Join(home, ".morph", "skills"),
-		filepath.Join(home, ".claude", "skills"),
-		filepath.Join(home, ".codex", "skills"),
-	}
-	wantKeys := map[string]int{}
-	for i, w := range want {
-		wantKeys[strings.ToLower(filepath.Clean(w))] = i
-	}
-
-	var prioritized []string
-	rest := make([]string, 0, len(expanded))
-	tmp := make([]string, len(want))
-	for _, r := range expanded {
-		k := strings.ToLower(filepath.Clean(r))
-		if idx, ok := wantKeys[k]; ok {
-			tmp[idx] = r
-			continue
-		}
-		rest = append(rest, r)
-	}
-	for _, r := range tmp {
-		if strings.TrimSpace(r) != "" {
-			prioritized = append(prioritized, r)
+	preferred := strings.ToLower(filepath.Clean(defaultRoots[0]))
+	idx := -1
+	for i, r := range expanded {
+		if strings.ToLower(filepath.Clean(r)) == preferred {
+			idx = i
+			break
 		}
 	}
-	prioritized = append(prioritized, rest...)
-	return prioritized
+	if idx <= 0 {
+		return expanded
+	}
+	out := make([]string, 0, len(expanded))
+	out = append(out, expanded[idx])
+	out = append(out, expanded[:idx]...)
+	out = append(out, expanded[idx+1:]...)
+	return out
 }
 
 func expandHome(p string) string {
