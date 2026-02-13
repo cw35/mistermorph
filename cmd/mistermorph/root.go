@@ -113,7 +113,7 @@ func newRootCmd() *cobra.Command {
 		RegisterPlanTool:       toolsutil.RegisterPlanTool,
 		GuardFromViper:         guardFromViper,
 		PromptSpecForTelegram: func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error) {
-			cfg := skillsutil.SkillsConfigFromViper(model)
+			cfg := skillsutil.SkillsConfigFromViper()
 			if len(stickySkills) > 0 {
 				cfg.Requested = append(cfg.Requested, stickySkills...)
 			}

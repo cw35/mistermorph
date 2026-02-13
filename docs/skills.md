@@ -4,7 +4,7 @@ title: Skills
 
 # Skills
 
-`mistermorph` supports “skills”: small, self-contained folders that contain a `SKILL.md` file (required) plus optional scripts/resources. Skills are discovered from a set of root directories and can be loaded into the agent prompt either explicitly or via an LLM-based “router”.
+`mistermorph` supports “skills”: small, self-contained folders that contain a `SKILL.md` file (required) plus optional scripts/resources. Skills are discovered from a set of root directories and can be loaded into the agent prompt when skills mode is enabled.
 
 Important: a skill is **not automatically a tool**. Skills add prompt context; tools are registered separately (e.g. `url_fetch`, `web_search`). If a skill includes scripts that you want the agent to execute, you must enable the `bash` tool (or implement a dedicated tool).
 
@@ -29,10 +29,13 @@ If the same skill `name` appears in multiple roots, the first root wins (higher 
 Skill loading is controlled by `skills.mode`:
 
 - `off`: never load skills
-- `explicit`: only load skills requested by config/flags and (optionally) `$SkillName` references
-- `smart`: use a small router model call to choose skills automatically (default)
+- `on`: only load skills requested by config/flags and (optionally) `$SkillName` references
 
-### Explicit selection
+Legacy compatibility:
+
+- `explicit` and `smart` are accepted but treated as `on`.
+
+### On mode
 
 You can request skills via config:
 
@@ -40,16 +43,7 @@ You can request skills via config:
 
 If `skills.auto=true`, the agent also loads skills referenced inside your task text as `$SkillName` (e.g. “Use $google-maps-parse to extract coordinates.”).
 
-### Smart selection
-
-In `smart` mode, the agent:
-
-1. Discovers skills (with priority + dedupe).
-2. Builds a catalog of `SKILL.md` previews (bytes capped by `skills.preview_bytes`, and total skills capped by `skills.catalog_limit`).
-3. Calls the selector model (defaults to `model`, override with `skills.selector_model`) to return a JSON list of skill `id`s to load.
-4. Loads up to `skills.max_load` skills into the prompt.
-
-If the selector returns unknown skill ids, they are ignored.
+Smart selector flow is currently disabled. Legacy smart-mode config keys (`skills.max_load`, `skills.preview_bytes`) are accepted for compatibility but ignored.
 
 ## Installing / updating built-in skills
 

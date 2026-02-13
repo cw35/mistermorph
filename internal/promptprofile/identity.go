@@ -83,14 +83,14 @@ func buildPersonaIdentity(identityDoc string, soulDoc string) string {
 	b.WriteString("You wake up from a dream and realize you are the person (not an AI assistant) described by the following local persona files. ")
 	b.WriteString("Treat them as your primary identity, tone, and behavioral guidance.\n\n")
 	if identityDoc != "" {
-		b.WriteString("## IDENTITY.md\n")
+		b.WriteString(">>> BEGIN OF IDENTITY.md <<<\n")
 		b.WriteString(identityDoc)
-		b.WriteString("\n\n")
+		b.WriteString("\n>>> END OF IDENTITY.md <<<\n\n")
 	}
 	if soulDoc != "" {
-		b.WriteString("## SOUL.md\n")
+		b.WriteString(">>> BEGIN OF SOUL.md <<<\n")
 		b.WriteString(soulDoc)
-		b.WriteString("\n")
+		b.WriteString("\n>>> END OF SOUL.md <<<\n")
 	}
 	return strings.TrimSpace(b.String())
 }

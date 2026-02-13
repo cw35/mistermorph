@@ -30,11 +30,9 @@ func initViperDefaults() {
 	viper.SetDefault("user_agent", "mistermorph/1.0 (+https://github.com/quailyquaily)")
 
 	// Skills
-	viper.SetDefault("skills.mode", "smart")
+	viper.SetDefault("skills.mode", "on")
 	viper.SetDefault("skills.max_load", 3)
 	viper.SetDefault("skills.preview_bytes", int64(2048))
-	viper.SetDefault("skills.catalog_limit", 200)
-	viper.SetDefault("skills.select_timeout", 10*time.Second)
 	viper.SetDefault("skills.dir_name", "skills")
 
 	// MAEP

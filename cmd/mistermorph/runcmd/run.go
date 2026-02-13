@@ -141,7 +141,7 @@ func New(deps Dependencies) *cobra.Command {
 				client = &llminspect.PromptClient{Base: client, Inspector: inspector}
 			}
 
-			promptSpec, _, skillAuthProfiles, err := skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsutil.SkillsConfigFromRunCmd(cmd, model))
+			promptSpec, _, skillAuthProfiles, err := skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsutil.SkillsConfigFromRunCmd(cmd))
 			if err != nil {
 				return err
 			}
@@ -270,11 +270,9 @@ func New(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: ~/.codex/skills, ~/.claude/skills")
 	cmd.Flags().StringArray("skill", nil, "Skill(s) to load by name or id (repeatable).")
 	cmd.Flags().Bool("skills-auto", true, "Auto-load skills referenced in task via $SkillName.")
-	cmd.Flags().String("skills-mode", "smart", "Skills mode: off|explicit|smart.")
-	cmd.Flags().Int("skills-max-load", 3, "Max skills to load in smart mode.")
-	cmd.Flags().Int64("skills-preview-bytes", 2048, "Bytes to preview per skill during smart selection.")
-	cmd.Flags().Int("skills-catalog-limit", 200, "Max number of discovered skills to include in smart selection catalog.")
-	cmd.Flags().Duration("skills-select-timeout", 10*time.Second, "Timeout for smart skills selection call.")
+	cmd.Flags().String("skills-mode", "on", "Skills mode: off|on. Legacy values explicit/smart map to on.")
+	cmd.Flags().Int("skills-max-load", 3, "Legacy smart-mode option (currently ignored).")
+	cmd.Flags().Int64("skills-preview-bytes", 2048, "Legacy smart-mode option (currently ignored).")
 
 	cmd.Flags().Int("max-steps", 15, "Max tool-call steps.")
 	cmd.Flags().Int("parse-retries", 2, "Max JSON parse retries.")

@@ -780,10 +780,7 @@ func installSkillFromURL(ctx context.Context, log *slog.Logger, client llm.Clien
 }
 
 func llmClientForRemoteSkillReview() (llm.Client, string, error) {
-	model := strings.TrimSpace(viper.GetString("skills.selector_model"))
-	if model == "" {
-		model = llmutil.ModelFromViper()
-	}
+	model := llmutil.ModelFromViper()
 	if model == "" {
 		model = "gpt-5.2"
 	}
