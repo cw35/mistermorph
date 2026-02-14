@@ -13,11 +13,7 @@
       "image": "./Dockerfile",
       "image_build_context": "../../",
       "instance_type": "basic",
-      "max_instances": 3,
-      "disk": {
-        "mount_path": "/data",
-        "reserved_size_mb": 512
-      }
+      "max_instances": 3
     }
   ],
   "durable_objects": {
@@ -39,11 +35,7 @@
   "observability": {
     "enabled": true
   },
-  "vars": {
-    "MISTER_MORPH_LLM_PROVIDER": "openai",
-    "MISTER_MORPH_LLM_ENDPOINT": "https://api.openai.com",
-    "MISTER_MORPH_LLM_MODEL": "gpt-5.2",
-    "MISTER_MORPH_LOG_LEVEL": "info",
-    "MISTER_MORPH_TOOLS_BASH_ENABLED": "false"
+  "env": {
+    "prod": {}
   }
 }

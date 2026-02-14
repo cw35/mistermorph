@@ -19,8 +19,14 @@ RUN apk add --no-cache ca-certificates tzdata \
   && adduser -S -G morph -h /app morph
 
 COPY --from=builder /out/mistermorph /usr/local/bin/mistermorph
+COPY deploy/cloudflare/start.sh /usr/local/bin/start-mistermorph.sh
+COPY deploy/cloudflare /tmp/cloudflare-deploy
 
 RUN mkdir -p /data/state /data/cache /app \
+  && cp /tmp/cloudflare-deploy/config.yaml /app/config.yaml \
+  && if [ -f /tmp/cloudflare-deploy/config.runtime.yaml ]; then cp /tmp/cloudflare-deploy/config.runtime.yaml /app/config.yaml; fi \
+  && chmod +x /usr/local/bin/start-mistermorph.sh \
+  && rm -rf /tmp/cloudflare-deploy \
   && chown -R morph:morph /data /app
 
 USER morph
@@ -33,5 +39,4 @@ ENV MISTER_MORPH_FILE_STATE_DIR=/data/state \
 
 EXPOSE 8787
 
-ENTRYPOINT ["/usr/local/bin/mistermorph"]
-CMD ["serve", "--server-bind", "0.0.0.0", "--server-port", "8787", "--log-level", "info"]
+ENTRYPOINT ["/usr/local/bin/start-mistermorph.sh"]

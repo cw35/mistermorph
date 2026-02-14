@@ -13,12 +13,12 @@ function sanitizeInstanceName(value) {
   return compact || DEFAULT_INSTANCE_NAME;
 }
 
-function stringOrDefault(value, fallback) {
+function optionalString(value) {
   if (typeof value !== "string") {
-    return fallback;
+    return null;
   }
   const trimmed = value.trim();
-  return trimmed || fallback;
+  return trimmed || null;
 }
 
 function optionalSecret(value) {
@@ -35,15 +35,40 @@ export class MisterMorphContainer extends Container {
 
   get envVars() {
     const vars = {
-      MISTER_MORPH_LLM_PROVIDER: stringOrDefault(workerEnv.MISTER_MORPH_LLM_PROVIDER, "openai"),
-      MISTER_MORPH_LLM_ENDPOINT: stringOrDefault(workerEnv.MISTER_MORPH_LLM_ENDPOINT, "https://api.openai.com"),
-      MISTER_MORPH_LLM_MODEL: stringOrDefault(workerEnv.MISTER_MORPH_LLM_MODEL, "gpt-5.2"),
-      MISTER_MORPH_LOG_LEVEL: stringOrDefault(workerEnv.MISTER_MORPH_LOG_LEVEL, "info"),
       MISTER_MORPH_LOG_FORMAT: "json",
-      MISTER_MORPH_TOOLS_BASH_ENABLED: stringOrDefault(workerEnv.MISTER_MORPH_TOOLS_BASH_ENABLED, "false"),
       MISTER_MORPH_FILE_STATE_DIR: "/data/state",
       MISTER_MORPH_FILE_CACHE_DIR: "/data/cache",
     };
+
+    const provider = optionalString(workerEnv.MISTER_MORPH_LLM_PROVIDER);
+    if (provider) {
+      vars.MISTER_MORPH_LLM_PROVIDER = provider;
+    }
+
+    const endpoint = optionalString(workerEnv.MISTER_MORPH_LLM_ENDPOINT);
+    if (endpoint) {
+      vars.MISTER_MORPH_LLM_ENDPOINT = endpoint;
+    }
+
+    const model = optionalString(workerEnv.MISTER_MORPH_LLM_MODEL);
+    if (model) {
+      vars.MISTER_MORPH_LLM_MODEL = model;
+    }
+
+    const logLevel = optionalString(workerEnv.MISTER_MORPH_LOG_LEVEL);
+    if (logLevel) {
+      vars.MISTER_MORPH_LOG_LEVEL = logLevel;
+    }
+
+    const bashEnabled = optionalString(workerEnv.MISTER_MORPH_TOOLS_BASH_ENABLED);
+    if (bashEnabled) {
+      vars.MISTER_MORPH_TOOLS_BASH_ENABLED = bashEnabled;
+    }
+
+    const runMode = optionalString(workerEnv.MISTER_MORPH_RUN_MODE);
+    if (runMode) {
+      vars.MISTER_MORPH_RUN_MODE = runMode;
+    }
 
     const llmAPIKey = optionalSecret(workerEnv.MISTER_MORPH_LLM_API_KEY);
     if (llmAPIKey) {

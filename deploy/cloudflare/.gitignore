@@ -1,2 +1,8 @@
 node_modules/
 .wrangler/
+env.sh
+.env
+.env.*
+config.runtime.yaml
+!config.yaml
+!env.example.sh

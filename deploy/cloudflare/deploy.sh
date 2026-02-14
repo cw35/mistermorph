@@ -4,8 +4,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
+STAGED_CONFIG_PATH="${SCRIPT_DIR}/config.runtime.yaml"
+
+if [[ -f "${SCRIPT_DIR}/env.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "${SCRIPT_DIR}/env.sh"
+fi
+
 WRANGLER_ENV="${WRANGLER_ENV:-}"
 SKIP_NPM_INSTALL="${SKIP_NPM_INSTALL:-0}"
+WRANGLER_CONFIG_PATH="${WRANGLER_CONFIG_PATH:-${SCRIPT_DIR}/wrangler.jsonc}"
+MISTER_MORPH_CONFIG_PATH="${MISTER_MORPH_CONFIG_PATH:-${SCRIPT_DIR}/config.yaml}"
+
+cleanup() {
+  rm -f "${STAGED_CONFIG_PATH}"
+}
+
+trap cleanup EXIT
 
 require_cmd() {
   local cmd="$1"
@@ -16,7 +31,7 @@ require_cmd() {
 }
 
 wrangler() {
-  npx --yes wrangler "$@"
+  npx --yes wrangler --config "${WRANGLER_CONFIG_PATH}" "$@"
 }
 
 put_secret() {
@@ -30,6 +45,15 @@ put_secret() {
 
   printf '%s' "${value}" | wrangler "${cmd[@]}" >/dev/null
   echo "Set Cloudflare secret: ${name}"
+}
+
+add_optional_var() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -n "${value}" ]]; then
+    DEPLOY_VAR_FLAGS+=(--var "${name}:${value}")
+    echo "Set Cloudflare var from shell env: ${name}"
+  fi
 }
 
 require_cmd npm
@@ -50,6 +74,14 @@ if [[ -z "${MISTER_MORPH_LLM_API_KEY:-}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${MISTER_MORPH_CONFIG_PATH}" ]]; then
+  echo "Config file not found: ${MISTER_MORPH_CONFIG_PATH}" >&2
+  exit 1
+fi
+
+cp "${MISTER_MORPH_CONFIG_PATH}" "${STAGED_CONFIG_PATH}"
+echo "Using config file: ${MISTER_MORPH_CONFIG_PATH}"
+
 GENERATED_SERVER_TOKEN=0
 if [[ -z "${MISTER_MORPH_SERVER_AUTH_TOKEN:-}" ]]; then
   if command -v openssl >/dev/null 2>&1; then
@@ -67,11 +99,19 @@ if [[ -n "${MISTER_MORPH_TELEGRAM_BOT_TOKEN:-}" ]]; then
   put_secret "MISTER_MORPH_TELEGRAM_BOT_TOKEN" "${MISTER_MORPH_TELEGRAM_BOT_TOKEN}"
 fi
 
+DEPLOY_VAR_FLAGS=()
+add_optional_var "MISTER_MORPH_LLM_PROVIDER"
+add_optional_var "MISTER_MORPH_LLM_ENDPOINT"
+add_optional_var "MISTER_MORPH_LLM_MODEL"
+add_optional_var "MISTER_MORPH_LOG_LEVEL"
+add_optional_var "MISTER_MORPH_TOOLS_BASH_ENABLED"
+add_optional_var "MISTER_MORPH_RUN_MODE"
+
 echo "Deploying Cloudflare Worker + Container..."
 if [[ -n "${WRANGLER_ENV}" ]]; then
-  wrangler deploy --env "${WRANGLER_ENV}" "$@"
+  wrangler deploy --env "${WRANGLER_ENV}" "${DEPLOY_VAR_FLAGS[@]}" "$@"
 else
-  wrangler deploy "$@"
+  wrangler deploy "${DEPLOY_VAR_FLAGS[@]}" "$@"
 fi
 
 echo

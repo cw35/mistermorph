@@ -5,8 +5,10 @@ This folder contains a Cloudflare Worker + Container setup for `mistermorph serv
 ## Files
 
 - `Dockerfile`: builds and runs `mistermorph` in daemon mode (`serve` on port `8787`)
+- `config.yaml`: container-side runtime config (`--config /app/config.yaml`)
 - `src/index.js`: Worker entrypoint, routes requests to container instances
 - `wrangler.jsonc`: Cloudflare Containers and Durable Object bindings
+- `env.example.sh`: environment variable template (`account id`, `api token`, LLM key, etc.)
 - `deploy.sh`: one-command deployment helper
 
 ## Prerequisites
@@ -20,7 +22,15 @@ This folder contains a Cloudflare Worker + Container setup for `mistermorph serv
 
 ```bash
 cd deploy/cloudflare
-MISTER_MORPH_LLM_API_KEY="your-openai-key" ./deploy.sh
+cp env.example.sh env.sh
+# edit env.sh and fill real values
+./deploy.sh
+```
+
+Manual deploy (without helper script):
+
+```bash
+npx wrangler deploy --config ./wrangler.jsonc --env prod
 ```
 
 Optional env vars:
@@ -29,6 +39,57 @@ Optional env vars:
 - `MISTER_MORPH_TELEGRAM_BOT_TOKEN`: if you want to run Telegram mode later
 - `WRANGLER_ENV`: target wrangler environment
 - `SKIP_NPM_INSTALL=1`: skip `npm install`
+- `WRANGLER_CONFIG_PATH`: override wrangler config path (default: `./wrangler.jsonc`)
+- `MISTER_MORPH_CONFIG_PATH`: custom `config.yaml` path (default: `./config.yaml`)
+- `MISTER_MORPH_LLM_PROVIDER` / `MISTER_MORPH_LLM_ENDPOINT` / `MISTER_MORPH_LLM_MODEL`
+- `MISTER_MORPH_LOG_LEVEL` / `MISTER_MORPH_TOOLS_BASH_ENABLED`
+- `MISTER_MORPH_RUN_MODE` (`serve` or `telegram`)
+
+`config.yaml` stores non-sensitive defaults. Secrets still come from Cloudflare secrets env vars:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+- `MISTER_MORPH_LLM_API_KEY`
+- `MISTER_MORPH_SERVER_AUTH_TOKEN`
+
+`deploy.sh` will auto-load `./env.sh` if the file exists.
+If `MISTER_MORPH_CONFIG_PATH` is set, `deploy.sh` will stage that file into the image for this deployment only.
+If runtime override vars (above) are set in shell, `deploy.sh` passes them to Wrangler with `--var`.
+
+Example with an external config path:
+
+```bash
+MISTER_MORPH_CONFIG_PATH="/absolute/path/to/config.yaml" ./deploy.sh
+```
+
+Run in Telegram mode:
+
+```bash
+MISTER_MORPH_RUN_MODE="telegram" \
+MISTER_MORPH_TELEGRAM_BOT_TOKEN="123456:bot-token" \
+./deploy.sh
+```
+
+Recommended:
+- Set `telegram.allowed_chat_ids` in your `config.yaml`.
+- Keep `MISTER_MORPH_TELEGRAM_BOT_TOKEN` in secret env (not in config file).
+
+## Common errors
+
+- `Unexpected fields found in containers field: "disk"`:
+  - This has been removed from `wrangler.jsonc`; use `instance_type` only.
+- `No environment found in configuration with name "prod"`:
+  - Ensure `WRANGLER_ENV=prod` only when `env.prod` exists in `wrangler.jsonc`.
+- `Authentication error [code: 10000]`:
+  - Usually means `CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN` is invalid or token permissions are insufficient.
+  - Quick checks:
+    - `npx wrangler whoami`
+    - `echo \"$CLOUDFLARE_ACCOUNT_ID\"`
+    - Confirm the API token includes Workers deploy permissions for that account.
+  - If you use OAuth login locally, try unsetting token env vars:
+    - `unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID`
+    - `npx wrangler login`
+    - rerun `./deploy.sh`
 
 ## Routing
 
