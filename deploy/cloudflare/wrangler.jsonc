@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mistermorph-container",
+  "main": "src/index.js",
+  "compatibility_date": "2025-04-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "containers": [
+    {
+      "name": "mistermorph",
+      "class_name": "MisterMorphContainer",
+      "image": "./Dockerfile",
+      "image_build_context": "../../",
+      "instance_type": "basic",
+      "max_instances": 3,
+      "disk": {
+        "mount_path": "/data",
+        "reserved_size_mb": 512
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MISTER_MORPH_CONTAINER",
+        "class_name": "MisterMorphContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "MisterMorphContainer"
+      ]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "MISTER_MORPH_LLM_PROVIDER": "openai",
+    "MISTER_MORPH_LLM_ENDPOINT": "https://api.openai.com",
+    "MISTER_MORPH_LLM_MODEL": "gpt-5.2",
+    "MISTER_MORPH_LOG_LEVEL": "info",
+    "MISTER_MORPH_TOOLS_BASH_ENABLED": "false"
+  }
+}
