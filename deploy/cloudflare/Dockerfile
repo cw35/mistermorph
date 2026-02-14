@@ -23,8 +23,14 @@ COPY deploy/cloudflare/start.sh /usr/local/bin/start-mistermorph.sh
 COPY deploy/cloudflare /tmp/cloudflare-deploy
 
 RUN mkdir -p /data/state /data/cache /app \
-  && cp /tmp/cloudflare-deploy/config.yaml /app/config.yaml \
-  && if [ -f /tmp/cloudflare-deploy/config.runtime.yaml ]; then cp /tmp/cloudflare-deploy/config.runtime.yaml /app/config.yaml; fi \
+  && if [ -f /tmp/cloudflare-deploy/config.runtime.yaml ]; then \
+       cp /tmp/cloudflare-deploy/config.runtime.yaml /app/config.yaml; \
+     elif [ -f /tmp/cloudflare-deploy/config.yaml ]; then \
+       cp /tmp/cloudflare-deploy/config.yaml /app/config.yaml; \
+     else \
+       echo "Missing deploy/cloudflare config: expected config.runtime.yaml or config.yaml" >&2; \
+       exit 1; \
+     fi \
   && chmod +x /usr/local/bin/start-mistermorph.sh \
   && rm -rf /tmp/cloudflare-deploy \
   && chown -R morph:morph /data /app
