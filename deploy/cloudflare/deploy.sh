@@ -121,5 +121,10 @@ if [[ "${GENERATED_SERVER_TOKEN}" == "1" ]]; then
   echo
 fi
 
-echo "Example health check (replace worker domain):"
-echo "curl -H \"Authorization: Bearer ${MISTER_MORPH_SERVER_AUTH_TOKEN}\" https://<worker-domain>/health"
+if [[ "${MISTER_MORPH_RUN_MODE:-serve}" == "telegram" ]]; then
+  echo "Telegram mode deployed. Example status check (replace worker domain):"
+  echo "curl -H \"Authorization: Bearer ${MISTER_MORPH_SERVER_AUTH_TOKEN}\" https://<worker-domain>/_mistermorph/state"
+else
+  echo "Serve mode deployed. Example health check (replace worker domain):"
+  echo "curl -H \"Authorization: Bearer ${MISTER_MORPH_SERVER_AUTH_TOKEN}\" https://<worker-domain>/health"
+fi

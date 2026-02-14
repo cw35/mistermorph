@@ -74,6 +74,27 @@ Recommended:
 - Set `telegram.allowed_chat_ids` in your `config.yaml`.
 - Keep `MISTER_MORPH_TELEGRAM_BOT_TOKEN` in secret env (not in config file).
 
+## Observe runtime status
+
+Tail deployment/runtime logs:
+
+```bash
+npx wrangler tail --config ./wrangler.jsonc --env prod
+```
+
+Look for:
+- `mistermorph_boot mode=telegram` (container entrypoint started in telegram mode)
+- `telegram_start` (mistermorph telegram loop started)
+
+Container control/state endpoints (protected by `MISTER_MORPH_SERVER_AUTH_TOKEN`):
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" "https://<worker-domain>/_mistermorph/start?instance=default"
+curl -H "Authorization: Bearer <token>" "https://<worker-domain>/_mistermorph/state?instance=default"
+```
+
+In telegram mode, normal HTTP proxy endpoints are not used; requests return a mode/status JSON response.
+
 ## Common errors
 
 - `Unexpected fields found in containers field: "disk"`:
@@ -101,3 +122,5 @@ Example:
 ```bash
 curl -H "Authorization: Bearer <token>" "https://<worker-domain>/health"
 ```
+
+(` /health` applies to `serve` mode. For `telegram` mode use `/_mistermorph/state`.)

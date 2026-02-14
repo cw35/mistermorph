@@ -36,6 +36,25 @@
     "enabled": true
   },
   "env": {
-    "prod": {}
+    "prod": {
+      "containers": [
+        {
+          "name": "mistermorph",
+          "class_name": "MisterMorphContainer",
+          "image": "./Dockerfile",
+          "image_build_context": "../../",
+          "instance_type": "basic",
+          "max_instances": 3
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MISTER_MORPH_CONTAINER",
+            "class_name": "MisterMorphContainer"
+          }
+        ]
+      }
+    }
   }
 }

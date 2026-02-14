@@ -3,6 +3,7 @@ import { env as workerEnv } from "cloudflare:workers";
 
 const DEFAULT_INSTANCE_NAME = "default";
 const INSTANCE_PARAM = "instance";
+const ADMIN_PREFIX = "/_mistermorph";
 
 function sanitizeInstanceName(value) {
   if (!value) {
@@ -27,6 +28,37 @@ function optionalSecret(value) {
   }
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+    },
+  });
+}
+
+function readBearerToken(request) {
+  const auth = request.headers.get("authorization");
+  if (!auth) {
+    return null;
+  }
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return null;
+  }
+  const token = match[1].trim();
+  return token || null;
+}
+
+function isAdminAuthorized(request) {
+  const expected = optionalSecret(workerEnv.MISTER_MORPH_SERVER_AUTH_TOKEN);
+  if (!expected) {
+    return true;
+  }
+  const actual = readBearerToken(request);
+  return actual === expected;
 }
 
 export class MisterMorphContainer extends Container {
@@ -93,10 +125,54 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const instanceName = sanitizeInstanceName(url.searchParams.get(INSTANCE_PARAM));
+    const runMode = optionalString(workerEnv.MISTER_MORPH_RUN_MODE) || "serve";
+    if (!env.MISTER_MORPH_CONTAINER) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: "missing durable object binding: MISTER_MORPH_CONTAINER",
+          hint: "Check wrangler env.* durable_objects + containers config.",
+        },
+        500
+      );
+    }
+    const container = getContainer(env.MISTER_MORPH_CONTAINER, instanceName);
+
+    if (url.pathname === `${ADMIN_PREFIX}/start`) {
+      if (!isAdminAuthorized(request)) {
+        return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+      }
+      await container.start();
+      const state = await container.getState();
+      return jsonResponse({ ok: true, mode: runMode, instance: instanceName, state });
+    }
+
+    if (url.pathname === `${ADMIN_PREFIX}/state`) {
+      if (!isAdminAuthorized(request)) {
+        return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+      }
+      const state = await container.getState();
+      return jsonResponse({ ok: true, mode: runMode, instance: instanceName, state });
+    }
+
+    if (runMode === "telegram") {
+      await container.start();
+      const state = await container.getState();
+      return jsonResponse(
+        {
+          ok: true,
+          mode: runMode,
+          instance: instanceName,
+          state,
+          message: "Container is running in telegram mode. Use Telegram bot to interact.",
+        },
+        202
+      );
+    }
 
     url.searchParams.delete(INSTANCE_PARAM);
     const upstreamRequest = new Request(url.toString(), request);
 
-    return getContainer(env.MISTER_MORPH_CONTAINER, instanceName).fetch(upstreamRequest);
+    return container.fetch(upstreamRequest);
   },
 };
