@@ -14,7 +14,8 @@ This document tracks where prompts are defined, how they are composed at runtime
   - Static rules in `agent/prompts/system.tmpl` (includes URL guidance)
   - Registry-aware prompt blocks (`agent/prompt_rules.go`, e.g. `plan_create` guidance block only when tool exists)
   - Skills/auth-profile blocks (`internal/skillsutil/skillsutil.go`)
-  - Telegram runtime prompt blocks (`cmd/mistermorph/telegramcmd/prompt_blocks.go`)
+  - Telegram runtime prompt block (`cmd/mistermorph/telegramcmd/prompts/telegram_block.tmpl`, injected by `cmd/mistermorph/telegramcmd/prompt_blocks.go`)
+  - MAEP reply policy block (`cmd/mistermorph/telegramcmd/prompts/maep_block.tmpl`, injected on MAEP inbound path)
 - `BuildSystemPrompt(...)` also checks registry capabilities for response-format sections (plan format appears only with `plan_create`).
 
 ## Main Agent Prompt
@@ -61,7 +62,14 @@ This document tracks where prompts are defined, how they are composed at runtime
 
 - File: `cmd/mistermorph/telegramcmd/prompt_blocks.go`
 - Definition:
-  - Injects Telegram-specific prompt blocks (chat persona, markdown/runtime guidance, optional group policy and usernames block)
+  - Injects `Telegram Runtime Rules` from `cmd/mistermorph/telegramcmd/prompts/telegram_block.tmpl`
+  - Group-only guidance is template-gated (`{{if .IsGroup}}`) and can be accompanied by `[Group Usernames]` block
+
+### 5.5) MAEP reply policy prompt mutation
+
+- File: `cmd/mistermorph/telegramcmd/prompt_blocks.go`
+- Definition:
+  - Injects `MAEP Reply Policy` from `cmd/mistermorph/telegramcmd/prompts/maep_block.tmpl` on MAEP inbound runs
 
 ### 6) Heartbeat task prompt template
 
@@ -92,6 +100,9 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 | Template | Role | Purpose |
 |---|---|---|
 | `agent/prompts/system.tmpl` | system | Renders the main system prompt (Identity, Blocks, Tools, response format, Rules). |
+| `agent/prompts/block_plan_create.tmpl` | block | Injected as `Plan Create Guidance` block when `plan_create` tool is registered. |
+| `telegramcmd/prompts/telegram_block.tmpl` | block | Injected as `Telegram Runtime Rules` block (includes optional group-only policy). |
+| `telegramcmd/prompts/maep_block.tmpl` | block | Injected as `MAEP Reply Policy` block for MAEP inbound chat replies. |
 | `telegramcmd/prompts/init_questions_system.tmpl` | system | Defines output contract for Telegram persona-bootstrap question generation. |
 | `telegramcmd/prompts/init_questions_user.tmpl` | user | Carries draft identity/soul context, user text, and required target fields for init question generation. |
 | `telegramcmd/prompts/init_fill_system.tmpl` | system | Defines output contract for Telegram persona field filling. |
@@ -314,7 +325,7 @@ Guidance is provided through both message placement and explicit rules.
 - This keeps metadata separate from task text while preserving recency.
 
 2. Explicit base prompt rules
-- `agent/prompt.go` rules explicitly instruct the model to:
+- `agent/prompts/system.tmpl` rules explicitly instruct the model to:
   - treat `mister_morph_meta` as run context metadata
   - not treat metadata as an action request by itself
   - when `mister_morph_meta.heartbeat` exists, return a concise check/action summary and avoid placeholder outputs

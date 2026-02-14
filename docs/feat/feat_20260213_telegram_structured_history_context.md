@@ -1,7 +1,7 @@
 ---
 date: 2026-02-13
 title: Telegram Structured History Context
-status: draft
+status: done
 ---
 
 # Telegram Structured History Context Proposal
