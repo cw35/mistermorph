@@ -20,6 +20,7 @@ import (
 	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
 	"github.com/quailyquaily/mistermorph/internal/chathistory"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/healthcheck"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
@@ -88,6 +89,10 @@ type maepFeedbackClassification struct {
 	SignalBored    float64 `json:"signal_bored"`
 	NextAction     string  `json:"next_action"`
 	Confidence     float64 `json:"confidence"`
+}
+
+func resolveHealthListen(cmd *cobra.Command) string {
+	return healthcheck.NormalizeListen(configutil.FlagOrViperString(cmd, "health-listen", "health.listen"))
 }
 
 func newTelegramCmd() *cobra.Command {
@@ -293,6 +298,10 @@ func newTelegramCmd() *cobra.Command {
 			if pollTimeout <= 0 {
 				pollTimeout = 30 * time.Second
 			}
+			pollCtx := cmd.Context()
+			if pollCtx == nil {
+				pollCtx = context.Background()
+			}
 			taskTimeout := configutil.FlagOrViperDuration(cmd, "telegram-task-timeout", "telegram.task_timeout")
 			if taskTimeout <= 0 {
 				taskTimeout = viper.GetDuration("timeout")
@@ -305,6 +314,19 @@ func newTelegramCmd() *cobra.Command {
 				maxConc = 3
 			}
 			sem := make(chan struct{}, maxConc)
+			healthListen := resolveHealthListen(cmd)
+			if healthListen != "" {
+				healthServer, err := healthcheck.StartServer(pollCtx, logger, healthListen, "telegram")
+				if err != nil {
+					logger.Warn("telegram_health_server_start_error", "addr", healthListen, "error", err.Error())
+				} else {
+					defer func() {
+						shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+						_ = healthServer.Shutdown(shutdownCtx)
+						cancel()
+					}()
+				}
+			}
 
 			maepMaxTurnsPerSession := configuredMAEPMaxTurnsPerSession()
 			maepSessionCooldown := configuredMAEPSessionCooldown()
@@ -314,7 +336,9 @@ func newTelegramCmd() *cobra.Command {
 			}
 			runtimeSnapshot, runtimeStateFound, err := runtimeStore.Load()
 			if err != nil {
-				return fmt.Errorf("load telegram runtime state: %w", err)
+				logger.Warn("telegram_runtime_state_load_error", "error", err.Error())
+				runtimeSnapshot = maepruntime.StateSnapshot{}
+				runtimeStateFound = false
 			}
 
 			httpClient := &http.Client{Timeout: 60 * time.Second}
@@ -365,9 +389,23 @@ func newTelegramCmd() *cobra.Command {
 				logger.Warn("file_cache_cleanup_error", "error", err.Error())
 			}
 
-			me, err := api.getMe(context.Background())
-			if err != nil {
-				return err
+			var me *telegramUser
+			for {
+				me, err = api.getMe(pollCtx)
+				if err == nil {
+					break
+				}
+				if errors.Is(err, context.Canceled) || pollCtx.Err() != nil {
+					logger.Info("telegram_stop", "reason", "context_canceled")
+					return nil
+				}
+				logger.Warn("telegram_get_me_error", "error", err.Error())
+				select {
+				case <-pollCtx.Done():
+					logger.Info("telegram_stop", "reason", "context_canceled")
+					return nil
+				case <-time.After(2 * time.Second):
+				}
 			}
 
 			botUser := me.Username
@@ -427,11 +465,12 @@ func newTelegramCmd() *cobra.Command {
 			if runtimeStateFound {
 				restoredOffset, ok := runtimeSnapshot.ChannelOffsets[maepruntime.ChannelTelegram]
 				if !ok {
-					return fmt.Errorf("runtime state missing channel offset %q", maepruntime.ChannelTelegram)
+					logger.Warn("telegram_runtime_state_missing_offset", "channel", maepruntime.ChannelTelegram)
+				} else {
+					offset = restoredOffset
+					maepSessions = restoreMAEPSessionStates(runtimeSnapshot.SessionStates)
+					logger.Info("telegram_runtime_state_loaded", "offset", offset, "session_states", len(maepSessions))
 				}
-				offset = restoredOffset
-				maepSessions = restoreMAEPSessionStates(runtimeSnapshot.SessionStates)
-				logger.Info("telegram_runtime_state_loaded", "offset", offset, "session_states", len(maepSessions))
 			}
 			initRequired := false
 			if _, err := loadInitProfileDraft(); err == nil {
@@ -976,10 +1015,6 @@ func newTelegramCmd() *cobra.Command {
 				}()
 			}
 
-			pollCtx := cmd.Context()
-			if pollCtx == nil {
-				pollCtx = context.Background()
-			}
 			for {
 				updates, nextOffset, err := api.getUpdates(pollCtx, offset, pollTimeout)
 				if err != nil {
@@ -1449,7 +1484,7 @@ func newTelegramCmd() *cobra.Command {
 						SessionStates: exportMAEPSessionStates(maepSessionsSnapshot),
 					}
 					if err := runtimeStore.Save(snapshot); err != nil {
-						return fmt.Errorf("persist telegram runtime state: %w", err)
+						logger.Warn("telegram_runtime_state_persist_error", "error", err.Error())
 					}
 				}
 			}

@@ -22,14 +22,17 @@ type Config struct {
 
 	RequestTimeout time.Duration
 
-	ToolsEmulationMode string
-	AzureAPIKey        string
-	AzureEndpoint      string
-	AzureDeployment    string
-	AwsKey             string
-	AwsSecret          string
-	AwsRegion          string
-	AwsBedrockModelArn string
+	ToolsEmulationMode  string
+	AzureAPIKey         string
+	AzureEndpoint       string
+	AzureDeployment     string
+	AwsKey              string
+	AwsSecret           string
+	AwsRegion           string
+	AwsBedrockModelArn  string
+	CloudflareAccountID string
+	CloudflareAPIToken  string
+	CloudflareAPIBase   string
 
 	Debug bool
 }
@@ -75,6 +78,9 @@ func New(cfg Config) *Client {
 		AwsSecret:           strings.TrimSpace(cfg.AwsSecret),
 		AwsRegion:           strings.TrimSpace(cfg.AwsRegion),
 		AwsBedrockModelArn:  strings.TrimSpace(cfg.AwsBedrockModelArn),
+		CloudflareAccountID: strings.TrimSpace(cfg.CloudflareAccountID),
+		CloudflareAPIToken:  strings.TrimSpace(cfg.CloudflareAPIToken),
+		CloudflareAPIBase:   strings.TrimSpace(cfg.CloudflareAPIBase),
 		SusanooAPIBase:      strings.TrimSpace(susanooBase),
 		SusanooAPIKey:       strings.TrimSpace(susanooKey),
 		GeminiAPIKey:        strings.TrimSpace(geminiKey),

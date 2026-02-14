@@ -14,6 +14,10 @@ func initViperDefaults() {
 	viper.SetDefault("llm.api_key", "")
 	viper.SetDefault("llm.request_timeout", 90*time.Second)
 	viper.SetDefault("llm.tools_emulation_mode", "off")
+	viper.SetDefault("llm.cloudflare.account_id", "")
+	viper.SetDefault("llm.cloudflare.api_token", "")
+	viper.SetDefault("llm.cloudflare.api_base", "")
+	viper.SetDefault("health.listen", "0.0.0.0:8787")
 
 	viper.SetDefault("max_steps", 15)
 	viper.SetDefault("parse_retries", 2)

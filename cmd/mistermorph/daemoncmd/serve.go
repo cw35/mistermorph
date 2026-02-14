@@ -14,6 +14,7 @@ import (
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
+	"github.com/quailyquaily/mistermorph/internal/healthcheck"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
@@ -52,6 +53,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			if strings.TrimSpace(auth) == "" {
 				return fmt.Errorf("missing server.auth_token (set via --server-auth-token or MISTER_MORPH_SERVER_AUTH_TOKEN)")
 			}
+			healthListen := strings.TrimSpace(configutil.FlagOrViperString(cmd, "health-listen", "health.listen"))
 
 			maxQueue := configutil.FlagOrViperInt(cmd, "server-max-queue", "server.max_queue")
 			store := NewTaskStore(maxQueue)
@@ -253,12 +255,6 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			}
 
 			mux := http.NewServeMux()
-			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"ok":   true,
-					"time": time.Now().Format(time.RFC3339Nano),
-				})
-			})
 			mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodPost {
 					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -437,6 +433,9 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			})
 
 			addr := bind + ":" + strconv.Itoa(port)
+			if healthListen != "" {
+				healthcheck.RegisterHealthEndpoint(mux, "serve")
+			}
 			srv := &http.Server{
 				Addr:              addr,
 				Handler:           mux,

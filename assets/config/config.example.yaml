@@ -5,12 +5,13 @@
 #
 # Env vars (override config):
 #   - Preferred: MISTER_MORPH_LLM_PROVIDER, MISTER_MORPH_LLM_ENDPOINT, MISTER_MORPH_LLM_MODEL, MISTER_MORPH_LLM_API_KEY
+#   - Cloudflare: MISTER_MORPH_LLM_CLOUDFLARE_ACCOUNT_ID, MISTER_MORPH_LLM_CLOUDFLARE_API_TOKEN, MISTER_MORPH_LLM_CLOUDFLARE_API_BASE
 
 # Global User-Agent for outbound HTTP requests (tools like url_fetch, web_search, etc).
 user_agent: "mistermorph/1.0 (+https://github.com/quailyquaily)"
 
 llm:
-  # LLM provider name. Supported: openai|openai_custom|deepseek|xai|gemini|azure|anthropic|bedrock|susanoo.
+  # LLM provider name. Supported: openai|openai_custom|deepseek|xai|gemini|azure|anthropic|bedrock|susanoo|cloudflare.
   provider: openai
   # Default model used by the main agent loop.
   model: "gpt-5.2"
@@ -34,6 +35,13 @@ llm:
     aws_secret: ""
     region: ""
     model_arn: ""
+  # Provider-specific settings for Cloudflare Workers AI.
+  cloudflare:
+    account_id: ""
+    api_token: ""
+    # Optional. Leave empty to use the default:
+    # https://api.cloudflare.com/client/v4
+    api_base: ""
 
 logging:
   # debug|info|warn|error
@@ -286,6 +294,17 @@ telegram:
   # Max number of chats processed concurrently (each chat remains serial).
   max_concurrency: 3
   # Note: file handling is always enabled; files are downloaded under file_cache_dir/telegram/ (max size is hardcoded).
+
+# Shared health check HTTP endpoint for long-running modes:
+# - `mistermorph serve` (daemon HTTP server)
+# - `mistermorph maep serve`
+# - `mistermorph telegram`
+# Notes:
+# - Empty `health.listen` disables health check in all three modes.
+# - `serve`: non-empty `health.listen` enables `/health` on `server.bind:server.port`.
+# - `maep serve` and `telegram`: `health.listen` is the standalone health server listen address.
+health:
+  listen: "0.0.0.0:8787"
 
 # Heartbeat (periodic awareness/checkpoint).
 heartbeat:

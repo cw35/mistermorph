@@ -31,6 +31,16 @@ func EndpointForProvider(provider string) string {
 	switch provider {
 	case "azure":
 		return firstNonEmpty(viper.GetString("llm.azure.endpoint"), viper.GetString("llm.endpoint"))
+	case "cloudflare":
+		cfBase := strings.TrimSpace(viper.GetString("llm.cloudflare.api_base"))
+		if cfBase != "" {
+			return cfBase
+		}
+		generic := strings.TrimSpace(viper.GetString("llm.endpoint"))
+		if generic != "" && generic != "https://api.openai.com" && generic != "https://api.openai.com/v1" {
+			return generic
+		}
+		return ""
 	default:
 		return strings.TrimSpace(viper.GetString("llm.endpoint"))
 	}
@@ -41,6 +51,8 @@ func APIKeyForProvider(provider string) string {
 	switch provider {
 	case "azure":
 		return firstNonEmpty(viper.GetString("llm.azure.api_key"), viper.GetString("llm.api_key"))
+	case "cloudflare":
+		return firstNonEmpty(viper.GetString("llm.cloudflare.api_token"), viper.GetString("llm.api_key"))
 	default:
 		return strings.TrimSpace(viper.GetString("llm.api_key"))
 	}
@@ -65,7 +77,7 @@ func ClientFromConfig(cfg llmconfig.ClientConfig) (llm.Client, error) {
 		return nil, err
 	}
 	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
-	case "openai", "openai_custom", "deepseek", "xai", "gemini", "azure", "anthropic", "bedrock", "susanoo":
+	case "openai", "openai_custom", "deepseek", "xai", "gemini", "azure", "anthropic", "bedrock", "susanoo", "cloudflare":
 		c := uniaiProvider.New(uniaiProvider.Config{
 			Provider:           strings.ToLower(strings.TrimSpace(cfg.Provider)),
 			Endpoint:           strings.TrimSpace(cfg.Endpoint),
@@ -80,6 +92,17 @@ func ClientFromConfig(cfg llmconfig.ClientConfig) (llm.Client, error) {
 			AwsSecret:          firstNonEmpty(viper.GetString("llm.bedrock.aws_secret"), viper.GetString("llm.aws.secret")),
 			AwsRegion:          firstNonEmpty(viper.GetString("llm.bedrock.region"), viper.GetString("llm.aws.region")),
 			AwsBedrockModelArn: firstNonEmpty(viper.GetString("llm.bedrock.model_arn"), viper.GetString("llm.aws.bedrock_model_arn")),
+			CloudflareAccountID: firstNonEmpty(
+				viper.GetString("llm.cloudflare.account_id"),
+			),
+			CloudflareAPIToken: firstNonEmpty(
+				viper.GetString("llm.cloudflare.api_token"),
+				viper.GetString("llm.api_key"),
+			),
+			CloudflareAPIBase: firstNonEmpty(
+				viper.GetString("llm.cloudflare.api_base"),
+				EndpointForProvider(cfg.Provider),
+			),
 		})
 		return c, nil
 	default:
