@@ -14,11 +14,10 @@ if [[ -f "${SCRIPT_DIR}/env.sh" ]]; then
 fi
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
-AWS_PROFILE="${AWS_PROFILE:-}"
 export AWS_PAGER=""
 LIGHTSAIL_SERVICE_NAME="${LIGHTSAIL_SERVICE_NAME:-mistermorph}"
 LIGHTSAIL_POWER="${LIGHTSAIL_POWER:-micro}"
-LIGHTSAIL_SCALE="${LIGHTSAIL_SCALE:-1}"
+LIGHTSAIL_SCALE="1"
 LIGHTSAIL_CONTAINER_NAME="${LIGHTSAIL_CONTAINER_NAME:-mistermorph}"
 LIGHTSAIL_IMAGE_LABEL="${LIGHTSAIL_IMAGE_LABEL:-mistermorph}"
 LIGHTSAIL_CONTAINER_PORT="${LIGHTSAIL_CONTAINER_PORT:-8787}"
@@ -76,11 +75,7 @@ DEPLOYMENT_PATH="$(mktemp /tmp/mistermorph-lightsail-deployment.XXXXXX.json)"
 chmod 600 "${DEPLOYMENT_PATH}"
 
 aws_cli() {
-  if [[ -n "${AWS_PROFILE}" ]]; then
-    aws --no-cli-pager --profile "${AWS_PROFILE}" "$@"
-  else
-    aws --no-cli-pager "$@"
-  fi
+  aws --no-cli-pager "$@"
 }
 
 require_json() {
@@ -142,14 +137,13 @@ fi
 
 require_nonempty "MISTER_MORPH_LLM_API_KEY" "${MISTER_MORPH_LLM_API_KEY:-}"
 require_nonempty "MISTER_MORPH_TELEGRAM_BOT_TOKEN" "${MISTER_MORPH_TELEGRAM_BOT_TOKEN:-}"
+require_nonempty "AWS_ACCESS_KEY_ID" "${AWS_ACCESS_KEY_ID:-}"
+require_nonempty "AWS_SECRET_ACCESS_KEY" "${AWS_SECRET_ACCESS_KEY:-}"
+require_nonempty "MISTER_MORPH_S3_STATE_BUCKET" "${MISTER_MORPH_S3_STATE_BUCKET:-}"
 
 if ! aws_cli sts get-caller-identity --region "${AWS_REGION}" >/dev/null 2>&1; then
   echo "AWS credentials are not configured or invalid for region ${AWS_REGION}." >&2
-  if [[ -n "${AWS_PROFILE}" ]]; then
-    echo "Run: aws sso login --profile ${AWS_PROFILE}   (or configure static creds), then retry." >&2
-  else
-    echo "Run: aws configure sso   (or aws configure) and retry." >&2
-  fi
+  echo "Set valid AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then retry." >&2
   exit 1
 fi
 
@@ -170,6 +164,9 @@ require_json "aws lightsail get-container-services" "${services_json}"
 service_exists="$(
   jq -r --arg name "${LIGHTSAIL_SERVICE_NAME}" '[.containerServices[]? | select(.containerServiceName == $name)] | length' <<<"${services_json}"
 )"
+service_current_scale="$(
+  jq -r --arg name "${LIGHTSAIL_SERVICE_NAME}" '.containerServices[]? | select(.containerServiceName == $name) | (.scale // empty)' <<<"${services_json}"
+)"
 
 if [[ "${service_exists}" == "0" ]]; then
   echo "Creating Lightsail container service: ${LIGHTSAIL_SERVICE_NAME} (${LIGHTSAIL_POWER} x ${LIGHTSAIL_SCALE})"
@@ -180,6 +177,13 @@ if [[ "${service_exists}" == "0" ]]; then
     --scale "${LIGHTSAIL_SCALE}" >/dev/null
 else
   echo "Using existing Lightsail service: ${LIGHTSAIL_SERVICE_NAME}"
+  if [[ "${service_current_scale}" != "${LIGHTSAIL_SCALE}" ]]; then
+    echo "Forcing Lightsail service scale to ${LIGHTSAIL_SCALE} (current: ${service_current_scale:-unknown})..."
+    aws_cli lightsail update-container-service \
+      --region "${AWS_REGION}" \
+      --service-name "${LIGHTSAIL_SERVICE_NAME}" \
+      --scale "${LIGHTSAIL_SCALE}" >/dev/null
+  fi
 fi
 
 echo "Pushing local image to Lightsail..."
@@ -322,15 +326,7 @@ if [[ -n "${service_url}" ]]; then
 fi
 echo
 echo "Check service status:"
-if [[ -n "${AWS_PROFILE}" ]]; then
-  echo "aws --profile ${AWS_PROFILE} lightsail get-container-services --region ${AWS_REGION} --output json | jq '.containerServices[] | select(.containerServiceName == \"${LIGHTSAIL_SERVICE_NAME}\")'"
-else
-  echo "aws lightsail get-container-services --region ${AWS_REGION} --output json | jq '.containerServices[] | select(.containerServiceName == \"${LIGHTSAIL_SERVICE_NAME}\")'"
-fi
+echo "aws lightsail get-container-services --region ${AWS_REGION} --output json | jq '.containerServices[] | select(.containerServiceName == \"${LIGHTSAIL_SERVICE_NAME}\")'"
 echo
 echo "Fetch container logs:"
-if [[ -n "${AWS_PROFILE}" ]]; then
-  echo "aws --profile ${AWS_PROFILE} lightsail get-container-log --region ${AWS_REGION} --service-name ${LIGHTSAIL_SERVICE_NAME} --container-name ${LIGHTSAIL_CONTAINER_NAME}"
-else
-  echo "aws lightsail get-container-log --region ${AWS_REGION} --service-name ${LIGHTSAIL_SERVICE_NAME} --container-name ${LIGHTSAIL_CONTAINER_NAME}"
-fi
+echo "aws lightsail get-container-log --region ${AWS_REGION} --service-name ${LIGHTSAIL_SERVICE_NAME} --container-name ${LIGHTSAIL_CONTAINER_NAME}"

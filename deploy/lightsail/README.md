@@ -14,7 +14,7 @@ This folder provides a one-command AWS Lightsail container deployment flow for `
 - Docker
 - AWS CLI v2 (`aws`)
 - `jq`
-- AWS credentials configured (`aws configure` or `aws configure sso`)
+- AWS credentials configured via env vars: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 - IAM permission for Lightsail Container Service APIs
 
 ## Quickstart
@@ -26,12 +26,13 @@ cp env.example.sh env.sh
 ./deploy.sh
 ```
 
-If you use a non-default AWS profile, set `AWS_PROFILE` in `env.sh` (or in your shell before running `deploy.sh`).
-
 Required env vars:
 
 - `MISTER_MORPH_LLM_API_KEY`
 - `MISTER_MORPH_TELEGRAM_BOT_TOKEN`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `MISTER_MORPH_S3_STATE_BUCKET`
 
 If `MISTER_MORPH_CONFIG_PATH` is not set, `deploy.sh` defaults to repo root `config.yaml`.
 
@@ -43,11 +44,10 @@ If `MISTER_MORPH_CONFIG_PATH` is not set, `deploy.sh` defaults to repo root `con
 - `MISTER_MORPH_TELEGRAM_HEALTH_PORT=8787`
 - Lightsail public endpoint health check path: `/health`
 
-## Optional: Persist `file_state_dir` to S3
+## S3 persistence settings
 
 Set these env vars (in `env.sh` or shell) before `./deploy.sh`:
 
-- `MISTER_MORPH_S3_STATE_BUCKET`
 - `MISTER_MORPH_S3_STATE_PREFIX` (for example: `prod/default`)
 - `MISTER_MORPH_S3_STATE_REGION` (optional, defaults to `AWS_REGION`)
 - `MISTER_MORPH_S3_SYNC_INTERVAL` (seconds, default `30`)
@@ -61,13 +61,13 @@ Behavior when enabled:
 
 Recommended:
 
-- keep Lightsail scale at `1` for one shared state prefix
+- `deploy.sh` enforces Lightsail scale at `1` for Telegram long polling safety
 - use a dedicated IAM user with least privilege to that bucket/prefix only
 
 ## Notes
 
 - `deploy.sh` builds with `--platform linux/amd64` (required for many hosted runtimes).
-- `deploy.sh` never injects `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` into container runtime env.
+- `deploy.sh` never injects deployment AWS credentials into container runtime env.
 - Lightsail deployment env vars are visible in deployment metadata. Treat this as sensitive and avoid sharing deployment JSON output.
 - To view logs:
 

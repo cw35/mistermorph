@@ -28,10 +28,11 @@ jq --version
 
 ### 2) Configure AWS credentials
 
-If you use default credentials (no profile):
+Export deploy credentials:
 
 ```bash
-aws configure
+export AWS_ACCESS_KEY_ID="<your-key-id>"
+export AWS_SECRET_ACCESS_KEY="<your-access-key>"
 aws sts get-caller-identity
 ```
 
@@ -48,6 +49,9 @@ Edit `deploy/lightsail/env.sh` and set at least:
 
 - `MISTER_MORPH_LLM_API_KEY`
 - `MISTER_MORPH_TELEGRAM_BOT_TOKEN`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `MISTER_MORPH_S3_STATE_BUCKET`
 - `MISTER_MORPH_CONFIG_PATH` (path to your `config.yaml`)
 
 Optional but common:
@@ -65,7 +69,7 @@ cd deploy/lightsail
 What `deploy.sh` does:
 
 1. Builds `linux/amd64` image.
-2. Creates Lightsail service if missing.
+2. Creates Lightsail service if missing, and enforces service `scale=1`.
 3. Pushes image to Lightsail registry.
 4. Creates deployment with health check on `8787/health`.
 
@@ -104,12 +108,11 @@ Look for:
 
 Then test your bot in Telegram (for example `/id`).
 
-## Optional: Persist state to S3
+## S3 state persistence
 
 Lightsail container filesystem is ephemeral.  
 To persist `file_state_dir`, enable S3 sync in `deploy/lightsail/env.sh`:
 
-- `MISTER_MORPH_S3_STATE_BUCKET`
 - `MISTER_MORPH_S3_STATE_PREFIX` (example: `mistermorph/default`)
 - `MISTER_MORPH_S3_STATE_REGION` (optional)
 - `MISTER_MORPH_S3_SYNC_INTERVAL` (default `30`)
@@ -126,7 +129,6 @@ For S3 sync to work inside container, runtime credentials must be provided by yo
 
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
-- `AWS_SESSION_TOKEN` (if temporary credentials)
 
 ## Required IAM permissions
 

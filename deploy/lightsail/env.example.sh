@@ -2,18 +2,29 @@
 # Copy to ./env.sh and fill values.
 # Do not commit env.sh with real secrets.
 
-# AWS settings.
+# ============================================================
+# REQUIRED: deploy.sh will fail without these.
+# ============================================================
+# Mister Morph settings.
+export MISTER_MORPH_LLM_API_KEY="your-llm-api-key"
+export MISTER_MORPH_TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+
+# AWS / Lightsail settings.
 export AWS_REGION="us-east-1"
-# Optional: use a named AWS profile instead of default.
-export AWS_PROFILE=""
-# Optional: deployment credentials for local AWS CLI.
-# Security policy: deploy.sh never passes AWS_* into container runtime env.
+# deployment credentials for local AWS CLI.
 export AWS_ACCESS_KEY_ID=""
 export AWS_SECRET_ACCESS_KEY=""
-export AWS_SESSION_TOKEN=""
+
+# S3 persistence bucket name for file_state_dir.
+export MISTER_MORPH_S3_STATE_BUCKET=""
+
+# ============================================================
+# DEFAULTS: usually work well out of the box; override only if needed.
+# ============================================================
+
 export LIGHTSAIL_SERVICE_NAME="mistermorph"
+# Optional power values: nano | micro | small | medium | large | xlarge
 export LIGHTSAIL_POWER="micro"
-export LIGHTSAIL_SCALE="1"
 
 # Container settings.
 export LIGHTSAIL_CONTAINER_NAME="mistermorph"
@@ -26,14 +37,11 @@ export LIGHTSAIL_CONTAINER_PORT="8787"
 export LIGHTSAIL_HEALTH_PATH="/health"
 
 # Runtime config path in this repo.
+# Fill only when your config is not at repo-root ./config.yaml.
 # Example: /home/you/Codework/arch/mistermorph/config.yaml
 export MISTER_MORPH_CONFIG_PATH=""
 
-# Required secrets for telegram mode.
-export MISTER_MORPH_LLM_API_KEY="your-llm-api-key"
-export MISTER_MORPH_TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
-
-# Optional runtime overrides.
+# Runtime overrides.
 export MISTER_MORPH_RUN_MODE="telegram"
 export MISTER_MORPH_LLM_PROVIDER=""
 export MISTER_MORPH_LLM_ENDPOINT=""
@@ -49,12 +57,11 @@ export MISTER_MORPH_TELEGRAM_HEALTH_BIND="0.0.0.0"
 # Keep this aligned with LIGHTSAIL_CONTAINER_PORT.
 export MISTER_MORPH_TELEGRAM_HEALTH_PORT="8787"
 
-# Optional S3 persistence for file_state_dir.
-# When MISTER_MORPH_S3_STATE_BUCKET is set:
+# S3 persistence defaults options
+# Using MISTER_MORPH_S3_STATE_BUCKET:
 # - startup: restore from s3://bucket/prefix/state/
 # - runtime: periodic sync
 # - shutdown: final sync
-export MISTER_MORPH_S3_STATE_BUCKET=""
 export MISTER_MORPH_S3_STATE_PREFIX="default"
 export MISTER_MORPH_S3_STATE_REGION=""
 export MISTER_MORPH_S3_SYNC_INTERVAL="30"

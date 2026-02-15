@@ -6,11 +6,6 @@ cd "${SCRIPT_DIR}"
 
 STAGED_CONFIG_PATH="${SCRIPT_DIR}/config.runtime.yaml"
 
-if [[ -f "${SCRIPT_DIR}/env.sh" ]]; then
-  # shellcheck disable=SC1091
-  source "${SCRIPT_DIR}/env.sh"
-fi
-
 WRANGLER_ENV="${WRANGLER_ENV:-}"
 SKIP_NPM_INSTALL="${SKIP_NPM_INSTALL:-0}"
 WRANGLER_CONFIG_PATH="${WRANGLER_CONFIG_PATH:-${SCRIPT_DIR}/wrangler.jsonc}"
