@@ -19,6 +19,7 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
 	"github.com/quailyquaily/mistermorph/internal/logutil"
+	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
@@ -148,9 +149,26 @@ func initConfig() {
 	if cfgFile == "" {
 		return
 	}
+	cfgFile = pathutil.ExpandHomePath(cfgFile)
 
 	viper.SetConfigFile(cfgFile)
 	if err := viper.ReadInConfig(); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Failed to read config: %v\n", err)
+		return
 	}
+
+	expandConfiguredDirKey("file_state_dir")
+	expandConfiguredDirKey("file_cache_dir")
+}
+
+func expandConfiguredDirKey(key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+	raw := strings.TrimSpace(viper.GetString(key))
+	if raw == "" {
+		return
+	}
+	viper.Set(key, pathutil.ExpandHomePath(raw))
 }
