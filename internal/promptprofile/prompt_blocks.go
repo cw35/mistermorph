@@ -67,7 +67,7 @@ func AppendLocalToolNotesBlock(spec *agent.PromptSpec, log *slog.Logger) {
 		log = slog.Default()
 	}
 
-	path := filepath.Join(statepaths.FileStateDir(), "TOOLS.md")
+	path := filepath.Join(statepaths.FileStateDir(), "SCRIPTS.md")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -82,8 +82,9 @@ func AppendLocalToolNotesBlock(spec *agent.PromptSpec, log *slog.Logger) {
 	}
 
 	content = "* The following are notes about the local scripts. Please read them carefully before using any local scripts.\n" +
-		"* You can use python or bash to create new script to satisfy specific needs.\n" +
+		"* You can use `python` or `bash` to create new scripts to satisfy specific needs.\n" +
 		"* Always put your scripts at `file_state_dir/`, and update the SCRIPTS.md in following format:" +
+		"* Use `bash` tool to run the scripts.\n" +
 		"```" + "\n" +
 		`- name: "get_weather"` + "\n" +
 		"  script: `file_state_dir/scripts/get_weather.sh`" + "\n" +

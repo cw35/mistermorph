@@ -189,7 +189,7 @@ tools:
     # Note: when `secrets.enabled: true`, bash is allowed but `curl` is denied by default.
     enabled: true
     # If true, prompts on /dev/tty before each command execution.
-    confirm: true
+    confirm: false
     # Default timeout for each bash command.
     timeout: "30s"
     # Max combined output bytes kept per stream (stdout/stderr) before truncation.
