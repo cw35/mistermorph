@@ -78,7 +78,7 @@ func quoteReplyMessageIDForGroupTrigger(msg *telegramMessage, dec telegramGroupT
 // groupTriggerDecision belongs to the trigger layer.
 // It decides whether this group message should enter an agent run.
 // It must not decide output modality (text reply vs reaction), which is handled in the generation layer.
-func groupTriggerDecision(ctx context.Context, client llm.Client, model string, msg *telegramMessage, botUser string, botID int64, aliases []string, mode string, aliasPrefixMaxChars int, addressingLLMTimeout time.Duration, smartAddressingConfidence float64, talkativeAddressingConfidence float64, history []chathistory.ChatHistoryItem) (telegramGroupTriggerDecision, bool, error) {
+func groupTriggerDecision(ctx context.Context, client llm.Client, model string, msg *telegramMessage, botUser string, botID int64, aliases []string, mode string, aliasPrefixMaxChars int, addressingLLMTimeout time.Duration, addressingConfidenceThreshold float64, addressingIrrelevanceThreshold float64, history []chathistory.ChatHistoryItem) (telegramGroupTriggerDecision, bool, error) {
 	if msg == nil {
 		return telegramGroupTriggerDecision{}, false, nil
 	}
@@ -86,17 +86,17 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 	if mode == "" {
 		mode = "smart"
 	}
-	if smartAddressingConfidence <= 0 {
-		smartAddressingConfidence = 0.55
+	if addressingConfidenceThreshold <= 0 {
+		addressingConfidenceThreshold = 0.6
 	}
-	if smartAddressingConfidence > 1 {
-		smartAddressingConfidence = 1
+	if addressingConfidenceThreshold > 1 {
+		addressingConfidenceThreshold = 1
 	}
-	if talkativeAddressingConfidence <= 0 {
-		talkativeAddressingConfidence = 0.55
+	if addressingIrrelevanceThreshold <= 0 {
+		addressingIrrelevanceThreshold = 0.3
 	}
-	if talkativeAddressingConfidence > 1 {
-		talkativeAddressingConfidence = 1
+	if addressingIrrelevanceThreshold > 1 {
+		addressingIrrelevanceThreshold = 1
 	}
 
 	text := strings.TrimSpace(messageTextOrCaption(msg))
@@ -108,7 +108,7 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		}, true, nil
 	}
 
-	runAddressingLLM := func(confidenceThreshold float64, fallbackReason string) (telegramGroupTriggerDecision, bool, error) {
+	runAddressingLLM := func(confidenceThreshold float64, irrelevanceThreshold float64, fallbackReason string) (telegramGroupTriggerDecision, bool, error) {
 		dec := telegramGroupTriggerDecision{
 			AddressingLLMAttempted: true,
 			Reason:                 strings.TrimSpace(fallbackReason),
@@ -129,12 +129,16 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		dec.AddressingLLMOK = llmOK
 		dec.AddressingLLMAddressed = llmDec.Addressed
 		dec.AddressingLLMConfidence = llmDec.Confidence
-		dec.AddressingImpulse = llmDec.Impulse
 		dec.AddressingLLMIrrelevance = llmDec.Irrelevance
+		dec.AddressingImpulse = llmDec.Impulse
 		if strings.TrimSpace(llmDec.Reason) != "" {
 			dec.Reason = llmDec.Reason
 		}
 		if llmOK && llmDec.Addressed && llmDec.Confidence >= confidenceThreshold {
+			if llmDec.Irrelevance > irrelevanceThreshold {
+				dec.UsedAddressingLLM = false
+				return dec, false, nil
+			}
 			dec.UsedAddressingLLM = true
 			return dec, true, nil
 		}
@@ -143,13 +147,13 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 
 	switch mode {
 	case "talkative":
-		return runAddressingLLM(talkativeAddressingConfidence, "talkative")
+		return runAddressingLLM(addressingConfidenceThreshold, addressingIrrelevanceThreshold, "talkative")
 	case "smart":
 		mentionReason, _ := groupAliasMentionReason(text, aliases, aliasPrefixMaxChars)
 		if strings.TrimSpace(mentionReason) == "" {
 			return telegramGroupTriggerDecision{}, false, nil
 		}
-		return runAddressingLLM(smartAddressingConfidence, mentionReason)
+		return runAddressingLLM(addressingConfidenceThreshold, addressingIrrelevanceThreshold, mentionReason)
 	default: // strict (and unknown values fallback to strict behavior)
 		return telegramGroupTriggerDecision{}, false, nil
 	}

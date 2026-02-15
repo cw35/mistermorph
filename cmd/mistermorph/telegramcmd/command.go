@@ -440,19 +440,19 @@ func newTelegramCmd() *cobra.Command {
 				smartAddressingMaxChars = 24
 			}
 			addressingLLMTimeout := requestTimeout
-			smartAddressingConfidence := configutil.FlagOrViperFloat64(cmd, "telegram-smart-addressing-confidence", "telegram.smart_addressing_confidence")
-			if smartAddressingConfidence <= 0 {
-				smartAddressingConfidence = 0.55
+			addressingConfidenceThreshold := configutil.FlagOrViperFloat64(cmd, "telegram-addressing-confidence-threshold", "telegram.addressing_confidence_threshold")
+			if addressingConfidenceThreshold <= 0 {
+				addressingConfidenceThreshold = 0.6
 			}
-			if smartAddressingConfidence > 1 {
-				smartAddressingConfidence = 1
+			if addressingConfidenceThreshold > 1 {
+				addressingConfidenceThreshold = 1
 			}
-			talkativeAddressingConfidence := configutil.FlagOrViperFloat64(cmd, "telegram-talkative-addressing-confidence", "telegram.talkative_addressing_confidence")
-			if talkativeAddressingConfidence <= 0 {
-				talkativeAddressingConfidence = 0.55
+			addressingIrrelevanceThreshold := configutil.FlagOrViperFloat64(cmd, "telegram-addressing-irrelevance-threshold", "telegram.addressing_irrelevance_threshold")
+			if addressingIrrelevanceThreshold <= 0 {
+				addressingIrrelevanceThreshold = 0.3
 			}
-			if talkativeAddressingConfidence > 1 {
-				talkativeAddressingConfidence = 1
+			if addressingIrrelevanceThreshold > 1 {
+				addressingIrrelevanceThreshold = 1
 			}
 
 			var (
@@ -519,8 +519,8 @@ func newTelegramCmd() *cobra.Command {
 				"group_trigger_mode", groupTriggerMode,
 				"group_reply_policy", "humanlike",
 				"smart_addressing_max_chars", smartAddressingMaxChars,
-				"smart_addressing_confidence", smartAddressingConfidence,
-				"talkative_addressing_confidence", talkativeAddressingConfidence,
+				"addressing_confidence_threshold", addressingConfidenceThreshold,
+				"addressing_irrelevance_threshold", addressingIrrelevanceThreshold,
 				"telegram_history_cap", telegramHistoryCap,
 			)
 
@@ -1366,7 +1366,7 @@ func newTelegramCmd() *cobra.Command {
 							mu.Lock()
 							historySnapshot := append([]chathistory.ChatHistoryItem(nil), history[chatID]...)
 							mu.Unlock()
-							dec, ok, decErr := groupTriggerDecision(context.Background(), client, model, msg, botUser, botID, aliases, groupTriggerMode, smartAddressingMaxChars, addressingLLMTimeout, smartAddressingConfidence, talkativeAddressingConfidence, historySnapshot)
+							dec, ok, decErr := groupTriggerDecision(context.Background(), client, model, msg, botUser, botID, aliases, groupTriggerMode, smartAddressingMaxChars, addressingLLMTimeout, addressingConfidenceThreshold, addressingIrrelevanceThreshold, historySnapshot)
 							if decErr != nil {
 								logger.Warn("telegram_addressing_llm_error",
 									"chat_id", chatID,
@@ -1534,8 +1534,8 @@ func newTelegramCmd() *cobra.Command {
 	cmd.Flags().StringArray("telegram-alias", nil, "Bot alias keywords (group messages containing these may trigger a response).")
 	cmd.Flags().String("telegram-group-trigger-mode", "smart", "Group trigger mode: strict|smart|talkative.")
 	cmd.Flags().Int("telegram-smart-addressing-max-chars", 24, "In smart mode, max chars from message start for alias addressing (0 uses default).")
-	cmd.Flags().Float64("telegram-smart-addressing-confidence", 0.55, "Minimum confidence (0-1) required to accept an addressing LLM decision.")
-	cmd.Flags().Float64("telegram-talkative-addressing-confidence", 0.55, "In talkative mode, minimum confidence (0-1) required to accept an addressing LLM decision.")
+	cmd.Flags().Float64("telegram-addressing-confidence-threshold", 0.6, "Minimum confidence (0-1) required to accept an addressing LLM decision.")
+	cmd.Flags().Float64("telegram-addressing-irrelevance-threshold", 0.3, "Maximum irrelevance (0-1) allowed to accept an addressing LLM decision.")
 	cmd.Flags().Bool("with-maep", false, "Start MAEP listener together with telegram mode.")
 	cmd.Flags().StringArray("maep-listen", nil, "MAEP listen multiaddr for --with-maep (repeatable). Defaults to maep.listen_addrs or MAEP defaults.")
 	cmd.Flags().Duration("telegram-poll-timeout", 30*time.Second, "Long polling timeout for getUpdates.")

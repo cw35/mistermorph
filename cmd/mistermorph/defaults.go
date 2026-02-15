@@ -65,8 +65,8 @@ func initViperDefaults() {
 	viper.SetDefault("telegram.aliases", []string{})
 	viper.SetDefault("telegram.group_trigger_mode", "smart")
 	viper.SetDefault("telegram.smart_addressing_max_chars", 24)
-	viper.SetDefault("telegram.smart_addressing_confidence", 0.55)
-	viper.SetDefault("telegram.talkative_addressing_confidence", 0.55)
+	viper.SetDefault("telegram.addressing_confidence_threshold", 0.6)
+	viper.SetDefault("telegram.addressing_irrelevance_threshold", 0.3)
 	viper.SetDefault("telegram.max_concurrency", 3)
 	viper.SetDefault("telegram.with_maep", false)
 
