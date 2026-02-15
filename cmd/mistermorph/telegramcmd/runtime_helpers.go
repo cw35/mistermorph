@@ -57,11 +57,12 @@ type telegramGroupTriggerDecision struct {
 	Reason            string
 	UsedAddressingLLM bool
 
-	AddressingLLMAttempted  bool
-	AddressingLLMOK         bool
-	AddressingLLMAddressed  bool
-	AddressingLLMConfidence float64
-	AddressingImpulse       float64
+	AddressingLLMAttempted   bool
+	AddressingLLMOK          bool
+	AddressingLLMAddressed   bool
+	AddressingLLMConfidence  float64
+	AddressingLLMIrrelevance float64
+	AddressingImpulse        float64
 }
 
 func quoteReplyMessageIDForGroupTrigger(msg *telegramMessage, dec telegramGroupTriggerDecision) int64 {
@@ -129,6 +130,7 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		dec.AddressingLLMAddressed = llmDec.Addressed
 		dec.AddressingLLMConfidence = llmDec.Confidence
 		dec.AddressingImpulse = llmDec.Impulse
+		dec.AddressingLLMIrrelevance = llmDec.Irrelevance
 		if strings.TrimSpace(llmDec.Reason) != "" {
 			dec.Reason = llmDec.Reason
 		}
@@ -1595,10 +1597,11 @@ func lowerASCII(b byte) byte {
 }
 
 type telegramAddressingLLMDecision struct {
-	Addressed  bool    `json:"addressed"`
-	Confidence float64 `json:"confidence"`
-	Impulse    float64 `json:"impulse"`
-	Reason     string  `json:"reason"`
+	Addressed   bool    `json:"addressed"`
+	Confidence  float64 `json:"confidence"`
+	Irrelevance float64 `json:"irrelevance"`
+	Impulse     float64 `json:"impulse"`
+	Reason      string  `json:"reason"`
 }
 
 func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, msg *telegramMessage, text string, history []chathistory.ChatHistoryItem) (telegramAddressingLLMDecision, bool, error) {
@@ -1665,6 +1668,12 @@ func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model stri
 	}
 	if out.Impulse > 1 {
 		out.Impulse = 1
+	}
+	if out.Irrelevance < 0 {
+		out.Irrelevance = 0
+	}
+	if out.Irrelevance > 1 {
+		out.Irrelevance = 1
 	}
 	out.Reason = strings.TrimSpace(out.Reason)
 	return out, true, nil

@@ -1385,6 +1385,7 @@ func newTelegramCmd() *cobra.Command {
 										"llm_ok", dec.AddressingLLMOK,
 										"llm_addressed", dec.AddressingLLMAddressed,
 										"confidence", dec.AddressingLLMConfidence,
+										"irrelevance", dec.AddressingLLMIrrelevance,
 										"impulse", dec.AddressingImpulse,
 										"reason", dec.Reason,
 									)
@@ -1408,6 +1409,7 @@ func newTelegramCmd() *cobra.Command {
 									"type", chatType,
 									"reason", dec.Reason,
 									"confidence", dec.AddressingLLMConfidence,
+									"irrelevance", dec.AddressingLLMIrrelevance,
 									"impulse", dec.AddressingImpulse,
 									"quote_reply", quoteReply,
 								)
@@ -1418,6 +1420,9 @@ func newTelegramCmd() *cobra.Command {
 									"chat_id", chatID,
 									"type", chatType,
 									"reason", dec.Reason,
+									"confidence", dec.AddressingLLMConfidence,
+									"irrelevance", dec.AddressingLLMIrrelevance,
+									"impulse", dec.AddressingImpulse,
 									"quote_reply", quoteReply,
 								)
 							}

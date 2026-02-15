@@ -64,13 +64,59 @@ Recommended:
 - `deploy.sh` enforces Lightsail scale at `1` for Telegram long polling safety
 - use a dedicated IAM user with least privilege to that bucket/prefix only
 
+## View Logs
+
+```bash
+cd deploy/lightsail
+source ./env.sh
+
+aws lightsail get-container-log \
+  --region "${AWS_REGION}" \
+  --service-name "${LIGHTSAIL_SERVICE_NAME}" \
+  --container-name "${LIGHTSAIL_CONTAINER_NAME}"
+```
+
+Query a time window (Unix timestamp, UTC):
+
+```bash
+aws lightsail get-container-log \
+  --region "${AWS_REGION}" \
+  --service-name "${LIGHTSAIL_SERVICE_NAME}" \
+  --container-name "${LIGHTSAIL_CONTAINER_NAME}" \
+  --start-time 1739606400 \
+  --end-time 1739610000
+```
+
+Filter logs by keyword (for example `error`):
+
+```bash
+aws lightsail get-container-log \
+  --region "${AWS_REGION}" \
+  --service-name "${LIGHTSAIL_SERVICE_NAME}" \
+  --container-name "${LIGHTSAIL_CONTAINER_NAME}" \
+  --filter-pattern "error"
+```
+
+List local deploy files (confirm `env.sh` exists):
+
+```bash
+cd deploy/lightsail
+ls -la
+```
+
+List S3 state files:
+
+```bash
+cd deploy/lightsail
+source ./env.sh
+
+aws s3 ls "s3://${MISTER_MORPH_S3_STATE_BUCKET}/${MISTER_MORPH_S3_STATE_PREFIX:-default}/state/" \
+  --region "${AWS_REGION:-us-east-1}" \
+  --recursive
+```
+
 ## Notes
 
 - `deploy.sh` builds with `--platform linux/amd64` (required for many hosted runtimes).
 - `deploy.sh` never injects deployment AWS credentials into container runtime env.
 - Lightsail deployment env vars are visible in deployment metadata. Treat this as sensitive and avoid sharing deployment JSON output.
-- To view logs:
-
-```bash
-aws lightsail get-container-log --region <region> --service-name <service> --container-name <container>
-```
