@@ -48,9 +48,9 @@ logging:
   # Include source file:line in each log record.
   add_source: false
   # If true, logs the model's "thought" fields (may contain sensitive info).
-  include_thoughts: false
+  include_thoughts: true
   # If true, logs tool_call parameters (redacted and truncated).
-  include_tool_params: false
+  include_tool_params: true
   # Even if include_tool_params=false, logs a small per-tool args summary (for example url_fetch.url, web_search.q, contacts_send.contact_id).
   # For bash, the full command is only logged when include_tool_params=true.
   # If true, logs loaded SKILL.md contents (truncated).
