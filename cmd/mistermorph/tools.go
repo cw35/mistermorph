@@ -54,7 +54,7 @@ func runToolsCmd(cmd *cobra.Command, _ []string) error {
 	})
 	addToolPreview(telegramPreviews, toolPreview{
 		Name:        "telegram_send_voice",
-		Description: "[telegram only] Sends a voice message from local audio or synthesized text.",
+		Description: "[telegram only] Sends a voice message from a local audio file under file_cache_dir.",
 	})
 	addToolPreview(telegramPreviews, toolPreview{
 		Name:        "telegram_react",

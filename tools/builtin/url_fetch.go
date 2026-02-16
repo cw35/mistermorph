@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -432,6 +433,13 @@ func (t *URLFetchTool) Execute(ctx context.Context, params map[string]any) (stri
 		}
 	}
 
+	debugEnabled := slog.Default().Enabled(reqCtx, slog.LevelDebug)
+	if debugEnabled {
+		slog.DebugContext(reqCtx, "url_fetch_request_url", "url", sanitizeOutputURL(req.URL.String()))
+		slog.DebugContext(reqCtx, "url_fetch_request_method", "method", method)
+		slog.DebugContext(reqCtx, "url_fetch_request_headers", "headers", sanitizeHeadersForDebugLog(req.Header))
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -447,6 +455,11 @@ func (t *URLFetchTool) Execute(ctx context.Context, params map[string]any) (stri
 	if int64(len(body)) > maxBytes {
 		body = body[:maxBytes]
 		truncated = true
+	}
+
+	if debugEnabled {
+		rawText, logTruncated := debugRawTextForLog(body, urlFetchDebugRespMaxBytes)
+		slog.DebugContext(reqCtx, "url_fetch_response_raw_text", "text", rawText, "response_truncated", truncated, "log_truncated", logTruncated)
 	}
 
 	ct := resp.Header.Get("Content-Type")
@@ -596,6 +609,100 @@ const (
 	urlFetchDebugBodyMaxBytes   = 8 * 1024
 	urlFetchDebugRespMaxBytes   = 32 * 1024
 )
+
+func sanitizeHeadersForDebugLog(headers http.Header) string {
+	if len(headers) == 0 {
+		return "{}"
+	}
+	safe := make(map[string]string, len(headers))
+	for key, values := range headers {
+		joined := strings.Join(values, ", ")
+		if shouldRedactDebugHeader(key) {
+			safe[key] = "[redacted]"
+			continue
+		}
+		safe[key] = redactSimpleKeyValue(joined)
+	}
+	b, err := json.Marshal(safe)
+	if err != nil {
+		return "{}"
+	}
+	return truncateForDebugLog(string(b), urlFetchDebugHeaderMaxChars)
+}
+
+func debugRawTextForLog(raw []byte, limit int) (string, bool) {
+	if len(raw) == 0 {
+		return "", false
+	}
+	var text string
+	if jsonText, ok := redactStructuredJSONForLog(raw); ok {
+		text = jsonText
+	} else {
+		text = string(bytes.ToValidUTF8(raw, []byte("\n[non-utf8 body]\n")))
+	}
+	text = redactResponseBody(text)
+	return truncateWithDebugFlag(text, limit)
+}
+
+func truncateForDebugLog(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
+}
+
+func truncateWithDebugFlag(s string, max int) (string, bool) {
+	if max <= 0 || len(s) <= max {
+		return s, false
+	}
+	return s[:max] + "...(truncated)", true
+}
+
+func shouldRedactDebugHeader(name string) bool {
+	if isDeniedUserHeader(name) {
+		return true
+	}
+	return isSensitiveKeyLike(name)
+}
+
+func redactStructuredJSONForLog(raw []byte) (string, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || !json.Valid(trimmed) {
+		return "", false
+	}
+	var decoded any
+	if err := json.Unmarshal(trimmed, &decoded); err != nil {
+		return "", false
+	}
+	safe := redactStructuredValueForLog(decoded, "")
+	b, err := json.Marshal(safe)
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
+}
+
+func redactStructuredValueForLog(v any, keyHint string) any {
+	if keyHint != "" && isSensitiveKeyLike(keyHint) {
+		return "[redacted]"
+	}
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, vv := range x {
+			out[k] = redactStructuredValueForLog(vv, k)
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(x))
+		for _, vv := range x {
+			out = append(out, redactStructuredValueForLog(vv, ""))
+		}
+		return out
+	default:
+		return v
+	}
+}
 
 func inferContentTypeFromStringBody(body string) string {
 	trimmed := strings.TrimSpace(body)
