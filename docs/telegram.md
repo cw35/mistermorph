@@ -61,7 +61,6 @@ Reaction is considered applied only if `telegram_react` was successfully execute
 
 - Runtime check: `reactTool.LastReaction() != nil`
 - If true: reaction history item is appended.
-- If false: runtime logs `telegram_lightweight_without_reaction` as a signal that the model selected lightweight mode but did not actually react.
 
 ### 3.3 When text response will be generated
 
@@ -89,8 +88,6 @@ Useful logs:
   - `telegram_group_trigger`
 - reaction applied:
   - `telegram_reaction_applied`
-- lightweight without actual reaction:
-  - `telegram_lightweight_without_reaction`
 
 `telegram_reaction_applied` is an info log, not an error.
 
@@ -110,5 +107,4 @@ Telegram group inbound
           -> if is_lightweight=true:
              -> no text outbound
              -> reaction present => record reacted history
-             -> reaction missing => warn lightweight_without_reaction
 ```
