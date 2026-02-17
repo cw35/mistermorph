@@ -64,17 +64,16 @@ mistermorph install <dir>
 
 ### ステップ 3: API キーを設定
 
-`~/.morph/config.yaml` を開き、利用する LLM provider の API キーを設定します。以下は OpenAI の例です。
+`config.yaml` がなくても、まずは環境変数だけで実行できます。
 
-```yaml
-llm:
-  provider: "openai"
-  endpoint: "https://api.openai.com/v1"
-  model: "gpt-5.2"
-  api_key: "YOUR_OPENAI_API_KEY_HERE"
+```bash
+export MISTER_MORPH_LLM_API_KEY="YOUR_OPENAI_API_KEY_HERE"
+# 任意: 既定の provider/model を明示
+export MISTER_MORPH_LLM_PROVIDER="openai"
+export MISTER_MORPH_LLM_MODEL="gpt-5.2"
 ```
 
-Mister Morph は Azure OpenAI、Anthropic Claude、AWS Bedrock などにも対応しています（詳細は `../../assets/config/config.example.yaml` を参照）。
+Mister Morph は Azure OpenAI、Anthropic Claude、AWS Bedrock などにも対応しています（詳細は `../../assets/config/config.example.yaml` を参照）。ファイルベースの設定を使いたい場合は `~/.morph/config.yaml` も利用できます。
 
 ### ステップ 4: 初回実行
 
@@ -91,6 +90,7 @@ mistermorph run --task "Hello!"
 |---|---|---|
 | GPT | `gpt-5*` | ✅ Full |
 | GPT-OSS | `gpt-oss-120b` | ✅ Full |
+| Grok | `grok-4+` | ✅ Full |
 | Claude | `claude-3.5+` | ✅ Full |
 | DeepSeek | `deepseek-3*` | ✅ Full |
 | Gemini | `gemini-2.5+` | ✅ Full |

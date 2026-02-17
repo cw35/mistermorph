@@ -334,7 +334,6 @@ These arguments will dump the final system/user/tool prompts and the full LLM re
 - `--telegram-poll-timeout`
 - `--telegram-task-timeout`
 - `--telegram-max-concurrency`
-- `--file-cache-dir`
 
 **slack**
 - `--slack-bot-token`

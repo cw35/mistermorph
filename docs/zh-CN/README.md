@@ -64,17 +64,16 @@ mistermorph install <dir>
 
 ### 第 3 步：配置 API Key
 
-打开配置文件 `~/.morph/config.yaml`，填入你的 LLM provider API key。以 OpenAI 为例：
+不需要 `config.yaml` 也可以直接运行，推荐先用环境变量：
 
-```yaml
-llm:
-  provider: "openai"
-  endpoint: "https://api.openai.com/v1"
-  model: "gpt-5.2"
-  api_key: "YOUR_OPENAI_API_KEY_HERE"
+```bash
+export MISTER_MORPH_LLM_API_KEY="YOUR_OPENAI_API_KEY_HERE"
+# 可选：显式指定默认 provider/model
+export MISTER_MORPH_LLM_PROVIDER="openai"
+export MISTER_MORPH_LLM_MODEL="gpt-5.2"
 ```
 
-Mister Morph 也支持 Azure OpenAI、Anthropic Claude、AWS Bedrock 等（更多配置见 `../../assets/config/config.example.yaml`）。
+Mister Morph 也支持 Azure OpenAI、Anthropic Claude、AWS Bedrock 等（更多配置见 `../../assets/config/config.example.yaml`）。如果你更喜欢文件配置，也可以使用 `~/.morph/config.yaml`。
 
 ### 第 4 步：首次运行
 
@@ -91,6 +90,7 @@ mistermorph run --task "Hello!"
 |---|---|---|
 | GPT | `gpt-5*` | ✅ Full |
 | GPT-OSS | `gpt-oss-120b` | ✅ Full |
+| Grok | `grok-4+` | ✅ Full |
 | Claude | `claude-3.5+` | ✅ Full |
 | DeepSeek | `deepseek-3*` | ✅ Full |
 | Gemini | `gemini-2.5+` | ✅ Full |
