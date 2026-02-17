@@ -42,7 +42,7 @@ If explicit match succeeds, trigger is accepted directly.
 Trigger layer only decides whether to run the agent.
 It does not decide text vs reaction modality.
 
-## 3) Reaction vs Text Decision
+## 3) Reaction Decision
 
 Entry point:
 - `internal/channelruntime/telegram/runtime_task.go`
@@ -57,25 +57,27 @@ Entry point:
 
 ### 3.2 What actually decides "react"
 
-Reaction is considered applied only if the model called `telegram_react` successfully.
+Reaction is considered applied only if `telegram_react` was successfully executed:
 
-Runtime checks:
-- `reactTool.LastReaction() != nil`
+- Runtime check: `reactTool.LastReaction() != nil`
+- If true: reaction history item is appended.
+- If false: runtime logs `telegram_lightweight_without_reaction` as a signal that the model selected lightweight mode but did not actually react.
 
-If true:
-- no outbound text message is published for that inbound message
-- reaction history item is appended
+### 3.3 When text response will be generated
 
-If false:
-- normal text reply path is used
+Text response is decided by `final.is_lightweight`:
 
-## 4) `is_lightweight` semantics
+- `final.is_lightweight = false`: runtime sends normal text reply.
+- `final.is_lightweight = true`: runtime does not send text reply.
 
-Addressing output includes `is_lightweight`.
-Current runtime treats it as model context/log signal, not as a hard runtime switch.
+## 4) Text Decision
 
-Hard switch for output modality is still:
-- whether `telegram_react` was executed successfully in that run
+### 4.1 `is_lightweight` semantics
+
+`is_lightweight` is now a runtime switch for Telegram text publishing:
+
+- `true` -> no text outbound
+- `false` -> text outbound
 
 ## 5) Runtime Signals
 
@@ -87,6 +89,8 @@ Useful logs:
   - `telegram_group_trigger`
 - reaction applied:
   - `telegram_reaction_applied`
+- lightweight without actual reaction:
+  - `telegram_lightweight_without_reaction`
 
 `telegram_reaction_applied` is an info log, not an error.
 
@@ -99,9 +103,12 @@ Telegram group inbound
      -> not triggered: ignore
      -> triggered: runTelegramTask
           -> agent.Engine.Run
+             -> output final.is_lightweight
              -> optional tool call: telegram_react
-          -> reactTool.LastReaction()
-             -> reaction != nil: keep reaction only (no text outbound)
-             -> reaction == nil: publish normal text reply
+          -> if is_lightweight=false: 
+             -> publish normal text reply
+          -> if is_lightweight=true:
+             -> no text outbound
+             -> reaction present => record reacted history
+             -> reaction missing => warn lightweight_without_reaction
 ```
-

@@ -199,7 +199,9 @@ func runTelegramTask(ctx context.Context, d Dependencies, logger *slog.Logger, l
 		}
 	}
 
-	if reaction == nil && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
+	publishText := shouldPublishTelegramText(final)
+
+	if publishText && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
 		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, historyCap, final, requestTimeout); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, requestTimeout, func(retryCtx context.Context) error {

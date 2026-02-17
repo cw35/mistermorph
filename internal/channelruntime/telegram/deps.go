@@ -123,6 +123,13 @@ func formatFinalOutput(final *agent.Final) string {
 	return outputfmt.FormatFinalOutput(final)
 }
 
+func shouldPublishTelegramText(final *agent.Final) bool {
+	if final == nil {
+		return true
+	}
+	return !final.IsLightweight
+}
+
 func buildHeartbeatTask(d Dependencies, checklistPath string) (string, bool, error) {
 	if d.BuildHeartbeatTask == nil {
 		return "", true, fmt.Errorf("BuildHeartbeatTask dependency missing")
