@@ -10,31 +10,26 @@ type Decision struct {
 	Reason            string
 	UsedAddressingLLM bool
 
-	AddressingLLMAttempted  bool
-	AddressingLLMOK         bool
-	AddressingLLMAddressed  bool
-	AddressingLLMConfidence float64
-	AddressingLLMInterject  float64
-	AddressingImpulse       float64
+	AddressingLLMAttempted bool
+	AddressingLLMOK        bool
+	Addressing             Addressing
 }
 
-type AddressingDecision struct {
-	Addressed  bool
-	Confidence float64
-	Interject  float64
-	Impulse    float64
-	Reason     string
+type Addressing struct {
+	Addressed      bool
+	Confidence     float64
+	WannaInterject bool
+	Interject      float64
+	Impulse        float64
+	Reason         string
 }
 
-type AddressingFunc func(ctx context.Context) (AddressingDecision, bool, error)
+type AddressingFunc func(ctx context.Context) (Addressing, bool, error)
 
 type DecideOptions struct {
 	Mode                     string
-	DefaultMode              string
 	ConfidenceThreshold      float64
 	InterjectThreshold       float64
-	DefaultConfidence        float64
-	DefaultInterject         float64
 	ExplicitReason           string
 	ExplicitMatched          bool
 	AddressingFallbackReason string
@@ -44,92 +39,72 @@ type DecideOptions struct {
 
 func Decide(ctx context.Context, opts DecideOptions) (Decision, bool, error) {
 	mode := strings.ToLower(strings.TrimSpace(opts.Mode))
-	defaultMode := strings.ToLower(strings.TrimSpace(opts.DefaultMode))
-	if defaultMode == "" {
-		defaultMode = "smart"
-	}
 	if mode == "" {
-		mode = defaultMode
+		mode = "smart"
 	}
 
-	confidenceThreshold := opts.ConfidenceThreshold
-	if confidenceThreshold <= 0 {
-		confidenceThreshold = opts.DefaultConfidence
-	}
-	if confidenceThreshold <= 0 {
-		confidenceThreshold = 0.6
-	}
-	confidenceThreshold = clamp01(confidenceThreshold)
+	confidenceThreshold := clamp01(opts.ConfidenceThreshold)
 
-	interjectThreshold := opts.InterjectThreshold
-	if interjectThreshold <= 0 {
-		interjectThreshold = opts.DefaultInterject
-	}
-	if interjectThreshold <= 0 {
-		interjectThreshold = 0.6
-	}
-	interjectThreshold = clamp01(interjectThreshold)
+	interjectThreshold := clamp01(opts.InterjectThreshold)
 
 	if opts.ExplicitMatched {
 		return Decision{
-			Reason:            strings.TrimSpace(opts.ExplicitReason),
-			AddressingImpulse: 1,
+			Reason: strings.TrimSpace(opts.ExplicitReason),
+			Addressing: Addressing{
+				Impulse: 1,
+			},
 		}, true, nil
 	}
 
-	runAddressingLLM := func(requireAddressed bool) (Decision, bool, error) {
-		dec := Decision{
-			AddressingLLMAttempted: true,
-			Reason:                 strings.TrimSpace(opts.AddressingFallbackReason),
-		}
-		if opts.Addressing == nil {
-			return dec, false, nil
-		}
-		addrCtx := ctx
-		if addrCtx == nil {
-			addrCtx = context.Background()
-		}
-		cancel := func() {}
-		if opts.AddressingTimeout > 0 {
-			addrCtx, cancel = context.WithTimeout(addrCtx, opts.AddressingTimeout)
-		}
-		llmDec, llmOK, llmErr := opts.Addressing(addrCtx)
-		cancel()
-		if llmErr != nil {
-			return dec, false, llmErr
-		}
-		llmDec.Confidence = clamp01(llmDec.Confidence)
-		llmDec.Interject = clamp01(llmDec.Interject)
-		llmDec.Impulse = clamp01(llmDec.Impulse)
+	if mode != "talkative" && mode != "smart" {
+		return Decision{}, false, nil
+	}
 
-		dec.AddressingLLMOK = llmOK
-		dec.AddressingLLMAddressed = llmDec.Addressed
-		dec.AddressingLLMConfidence = llmDec.Confidence
-		dec.AddressingLLMInterject = llmDec.Interject
-		dec.AddressingImpulse = llmDec.Impulse
-		if strings.TrimSpace(llmDec.Reason) != "" {
-			dec.Reason = strings.TrimSpace(llmDec.Reason)
-		}
+	dec := Decision{
+		AddressingLLMAttempted: true,
+		Reason:                 strings.TrimSpace(opts.AddressingFallbackReason),
+	}
+	if opts.Addressing == nil {
+		return dec, false, nil
+	}
 
-		addressedOK := true
-		if requireAddressed {
-			addressedOK = llmDec.Addressed
-		}
-		if llmOK && addressedOK && llmDec.Confidence >= confidenceThreshold && llmDec.Interject > interjectThreshold {
-			dec.UsedAddressingLLM = true
-			return dec, true, nil
-		}
+	addrCtx := ctx
+	if addrCtx == nil {
+		addrCtx = context.Background()
+	}
+	cancel := func() {}
+	if opts.AddressingTimeout > 0 {
+		addrCtx, cancel = context.WithTimeout(addrCtx, opts.AddressingTimeout)
+	}
+	llmDec, llmOK, llmErr := opts.Addressing(addrCtx)
+	cancel()
+	if llmErr != nil {
+		return dec, false, llmErr
+	}
+	llmDec = normalizeAddressing(llmDec)
+
+	dec.AddressingLLMOK = llmOK
+	dec.Addressing = llmDec
+	if llmDec.Reason != "" {
+		dec.Reason = llmDec.Reason
+	}
+	if !llmOK {
 		return dec, false, nil
 	}
 
 	switch mode {
-	case "talkative":
-		return runAddressingLLM(false)
 	case "smart":
-		return runAddressingLLM(true)
-	default:
-		return Decision{}, false, nil
+		if llmDec.Addressed && llmDec.Confidence >= confidenceThreshold {
+			dec.UsedAddressingLLM = true
+			return dec, true, nil
+		}
+	case "talkative":
+		if llmDec.WannaInterject && llmDec.Interject > interjectThreshold {
+			dec.UsedAddressingLLM = true
+			return dec, true, nil
+		}
 	}
+	return dec, false, nil
 }
 
 func clamp01(v float64) float64 {
@@ -140,4 +115,12 @@ func clamp01(v float64) float64 {
 		return 1
 	}
 	return v
+}
+
+func normalizeAddressing(in Addressing) Addressing {
+	in.Confidence = clamp01(in.Confidence)
+	in.Interject = clamp01(in.Interject)
+	in.Impulse = clamp01(in.Impulse)
+	in.Reason = strings.TrimSpace(in.Reason)
+	return in
 }

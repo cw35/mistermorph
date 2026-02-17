@@ -103,8 +103,8 @@ func TestDecideSlackGroupTrigger_Strict(t *testing.T) {
 	if !ok {
 		t.Fatalf("decideSlackGroupTrigger(app_mention) ok=false, want true")
 	}
-	if dec.AddressingImpulse != 1 {
-		t.Fatalf("addressing_impulse mismatch: got %v want 1", dec.AddressingImpulse)
+	if dec.Addressing.Impulse != 1 {
+		t.Fatalf("addressing_impulse mismatch: got %v want 1", dec.Addressing.Impulse)
 	}
 
 	eventIgnored := slackInboundEvent{

@@ -1377,10 +1377,11 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 								"text_len", len(text),
 								"addressing_llm", true,
 								"llm_ok", dec.AddressingLLMOK,
-								"llm_addressed", dec.AddressingLLMAddressed,
-								"confidence", dec.AddressingLLMConfidence,
-								"interject", dec.AddressingLLMInterject,
-								"impulse", dec.AddressingImpulse,
+								"llm_addressed", dec.Addressing.Addressed,
+								"confidence", dec.Addressing.Confidence,
+								"wanna_interject", dec.Addressing.WannaInterject,
+								"interject", dec.Addressing.Interject,
+								"impulse", dec.Addressing.Impulse,
 								"reason", dec.Reason,
 							)
 						} else {
@@ -1401,10 +1402,11 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 						"chat_id", chatID,
 						"type", chatType,
 						"reason", dec.Reason,
-						"llm_addressed", dec.AddressingLLMAddressed,
-						"confidence", dec.AddressingLLMConfidence,
-						"interject", dec.AddressingLLMInterject,
-						"impulse", dec.AddressingImpulse,
+						"llm_addressed", dec.Addressing.Addressed,
+						"confidence", dec.Addressing.Confidence,
+						"wanna_interject", dec.Addressing.WannaInterject,
+						"interject", dec.Addressing.Interject,
+						"impulse", dec.Addressing.Impulse,
 						"quote_reply", quoteReply,
 					)
 					text = strings.TrimSpace(rawText)

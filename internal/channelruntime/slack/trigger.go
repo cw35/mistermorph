@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,12 +20,56 @@ import (
 
 type slackGroupTriggerDecision = grouptrigger.Decision
 
-type slackAddressingLLMDecision struct {
-	Addressed  bool    `json:"addressed"`
-	Confidence float64 `json:"confidence"`
-	Interject  float64 `json:"interject"`
-	Impulse    float64 `json:"impulse"`
-	Reason     string  `json:"reason"`
+type slackAddressingLLMOutput struct {
+	Addressed      bool                         `json:"addressed"`
+	Confidence     float64                      `json:"confidence"`
+	WannaInterject *slackWannaInterjectDecision `json:"wanna_interject,omitempty"`
+	Interject      float64                      `json:"interject"`
+	Impulse        float64                      `json:"impulse"`
+	Reason         string                       `json:"reason"`
+}
+
+type slackWannaInterjectDecision bool
+
+func (w *slackWannaInterjectDecision) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*w = false
+		return nil
+	}
+
+	var b bool
+	if err := json.Unmarshal(data, &b); err == nil {
+		*w = slackWannaInterjectDecision(b)
+		return nil
+	}
+
+	var f float64
+	if err := json.Unmarshal(data, &f); err == nil {
+		*w = slackWannaInterjectDecision(f >= 0.5)
+		return nil
+	}
+
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		normalized := strings.ToLower(strings.TrimSpace(s))
+		switch normalized {
+		case "true":
+			*w = true
+			return nil
+		case "false":
+			*w = false
+			return nil
+		}
+		fv, parseErr := strconv.ParseFloat(normalized, 64)
+		if parseErr != nil {
+			return fmt.Errorf("unsupported wanna_interject value: %q", s)
+		}
+		*w = slackWannaInterjectDecision(fv >= 0.5)
+		return nil
+	}
+
+	return fmt.Errorf("unsupported wanna_interject json: %s", raw)
 }
 
 func quoteReplyThreadTSForGroupTrigger(event slackInboundEvent, dec slackGroupTriggerDecision) string {
@@ -32,7 +77,7 @@ func quoteReplyThreadTSForGroupTrigger(event slackInboundEvent, dec slackGroupTr
 	if threadTS != "" {
 		return threadTS
 	}
-	if dec.AddressingImpulse > 0.8 {
+	if dec.Addressing.Impulse > 0.8 {
 		return strings.TrimSpace(event.MessageTS)
 	}
 	return ""
@@ -53,27 +98,14 @@ func decideSlackGroupTrigger(
 	explicitReason, explicitMentioned := slackExplicitMentionReason(event, botUserID)
 	return grouptrigger.Decide(ctx, grouptrigger.DecideOptions{
 		Mode:                     mode,
-		DefaultMode:              "smart",
 		ConfidenceThreshold:      addressingConfidenceThreshold,
 		InterjectThreshold:       addressingInterjectThreshold,
-		DefaultConfidence:        0.6,
-		DefaultInterject:         0.6,
 		ExplicitReason:           explicitReason,
 		ExplicitMatched:          explicitMentioned,
 		AddressingFallbackReason: mode,
 		AddressingTimeout:        addressingLLMTimeout,
-		Addressing: func(addrCtx context.Context) (grouptrigger.AddressingDecision, bool, error) {
-			llmDec, llmOK, llmErr := slackAddressingDecisionViaLLM(addrCtx, client, model, event, history)
-			if llmErr != nil {
-				return grouptrigger.AddressingDecision{}, false, llmErr
-			}
-			return grouptrigger.AddressingDecision{
-				Addressed:  llmDec.Addressed,
-				Confidence: llmDec.Confidence,
-				Interject:  llmDec.Interject,
-				Impulse:    llmDec.Impulse,
-				Reason:     strings.TrimSpace(llmDec.Reason),
-			}, llmOK, nil
+		Addressing: func(addrCtx context.Context) (grouptrigger.Addressing, bool, error) {
+			return slackAddressingDecisionViaLLM(addrCtx, client, model, event, history)
 		},
 	})
 }
@@ -91,13 +123,13 @@ func slackExplicitMentionReason(event slackInboundEvent, botUserID string) (stri
 	return "", false
 }
 
-func slackAddressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, event slackInboundEvent, history []chathistory.ChatHistoryItem) (slackAddressingLLMDecision, bool, error) {
+func slackAddressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, event slackInboundEvent, history []chathistory.ChatHistoryItem) (grouptrigger.Addressing, bool, error) {
 	if ctx == nil || client == nil {
-		return slackAddressingLLMDecision{}, false, nil
+		return grouptrigger.Addressing{}, false, nil
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return slackAddressingLLMDecision{}, false, fmt.Errorf("missing model for addressing_llm")
+		return grouptrigger.Addressing{}, false, fmt.Errorf("missing model for addressing_llm")
 	}
 	personaIdentity := loadAddressingPersonaIdentity()
 	if personaIdentity == "" {
@@ -107,7 +139,7 @@ func slackAddressingDecisionViaLLM(ctx context.Context, client llm.Client, model
 	systemPrompt := strings.TrimSpace(strings.Join([]string{
 		personaIdentity,
 		"You are deciding whether the latest Slack group message should trigger an agent run.",
-		"Return strict JSON with fields: addressed (bool), confidence (0..1), interject (0..1), impulse (0..1), reason (string).",
+		"Return strict JSON with fields: addressed (bool), confidence (0..1), wanna_interject (bool), interject (0..1), impulse (0..1), reason (string).",
 		"`addressed=true` means the user is clearly asking the bot or directly addressing the bot in context.",
 	}, "\n"))
 	userPayload, _ := json.Marshal(map[string]any{
@@ -132,36 +164,39 @@ func slackAddressingDecisionViaLLM(ctx context.Context, client llm.Client, model
 		},
 	})
 	if err != nil {
-		return slackAddressingLLMDecision{}, false, err
+		return grouptrigger.Addressing{}, false, err
 	}
 	raw := strings.TrimSpace(res.Text)
 	if raw == "" {
-		return slackAddressingLLMDecision{}, false, fmt.Errorf("empty addressing_llm response")
+		return grouptrigger.Addressing{}, false, fmt.Errorf("empty addressing_llm response")
 	}
-	var out slackAddressingLLMDecision
+	var out slackAddressingLLMOutput
 	if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
-		return slackAddressingLLMDecision{}, false, fmt.Errorf("invalid addressing_llm json")
+		return grouptrigger.Addressing{}, false, fmt.Errorf("invalid addressing_llm json")
 	}
-	if out.Confidence < 0 {
-		out.Confidence = 0
+	wannaInterject := out.Interject > 0
+	if out.WannaInterject != nil {
+		wannaInterject = bool(*out.WannaInterject)
 	}
-	if out.Confidence > 1 {
-		out.Confidence = 1
+	addressing := grouptrigger.Addressing{
+		Addressed:      out.Addressed,
+		Confidence:     clampAddressing01(out.Confidence),
+		WannaInterject: wannaInterject,
+		Interject:      clampAddressing01(out.Interject),
+		Impulse:        clampAddressing01(out.Impulse),
+		Reason:         strings.TrimSpace(out.Reason),
 	}
-	if out.Interject < 0 {
-		out.Interject = 0
+	return addressing, true, nil
+}
+
+func clampAddressing01(v float64) float64 {
+	if v < 0 {
+		return 0
 	}
-	if out.Interject > 1 {
-		out.Interject = 1
+	if v > 1 {
+		return 1
 	}
-	if out.Impulse < 0 {
-		out.Impulse = 0
-	}
-	if out.Impulse > 1 {
-		out.Impulse = 1
-	}
-	out.Reason = strings.TrimSpace(out.Reason)
-	return out, true, nil
+	return v
 }
 
 func loadAddressingPersonaIdentity() string {

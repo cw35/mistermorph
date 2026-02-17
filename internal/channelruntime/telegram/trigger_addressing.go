@@ -2,21 +2,70 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/quailyquaily/mistermorph/internal/chathistory"
+	"github.com/quailyquaily/mistermorph/internal/grouptrigger"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/llm"
 )
 
-type telegramAddressingLLMDecision struct {
-	Addressed  bool    `json:"addressed"`
-	Confidence float64 `json:"confidence"`
-	Interject  float64 `json:"interject"`
-	Impulse    float64 `json:"impulse"`
-	Reason     string  `json:"reason"`
+type telegramAddressingLLMOutput struct {
+	Addressed      bool                           `json:"addressed"`
+	Confidence     float64                        `json:"confidence"`
+	WannaInterject telegramWannaInterjectDecision `json:"wanna_interject"`
+	Interject      float64                        `json:"interject"`
+	Impulse        float64                        `json:"impulse"`
+	Reason         string                         `json:"reason"`
+}
+
+// telegramWannaInterjectDecision accepts either bool or numeric values.
+// Prompt iterations can produce true/false or 0..1; we normalize both to bool.
+type telegramWannaInterjectDecision bool
+
+func (w *telegramWannaInterjectDecision) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*w = false
+		return nil
+	}
+
+	var b bool
+	if err := json.Unmarshal(data, &b); err == nil {
+		*w = telegramWannaInterjectDecision(b)
+		return nil
+	}
+
+	var f float64
+	if err := json.Unmarshal(data, &f); err == nil {
+		*w = telegramWannaInterjectDecision(f >= 0.5)
+		return nil
+	}
+
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		normalized := strings.ToLower(strings.TrimSpace(s))
+		switch normalized {
+		case "true":
+			*w = true
+			return nil
+		case "false":
+			*w = false
+			return nil
+		}
+		fv, parseErr := strconv.ParseFloat(normalized, 64)
+		if parseErr != nil {
+			return fmt.Errorf("unsupported wanna_interject value: %q", s)
+		}
+		*w = telegramWannaInterjectDecision(fv >= 0.5)
+		return nil
+	}
+
+	return fmt.Errorf("unsupported wanna_interject json: %s", raw)
 }
 
 func addressingDecisionViaLLM(
@@ -26,14 +75,14 @@ func addressingDecisionViaLLM(
 	msg *telegramMessage,
 	text string,
 	history []chathistory.ChatHistoryItem,
-) (telegramAddressingLLMDecision, bool, error) {
+) (grouptrigger.Addressing, bool, error) {
 	if ctx == nil || client == nil {
-		return telegramAddressingLLMDecision{}, false, nil
+		return grouptrigger.Addressing{}, false, nil
 	}
 	text = strings.TrimSpace(text)
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return telegramAddressingLLMDecision{}, false, fmt.Errorf("missing model for addressing_llm")
+		return grouptrigger.Addressing{}, false, fmt.Errorf("missing model for addressing_llm")
 	}
 
 	historyMessages := chathistory.BuildMessages(chathistory.ChannelTelegram, history)
@@ -54,7 +103,7 @@ func addressingDecisionViaLLM(
 	}
 	sys, user, err := renderTelegramAddressingPrompts(currentMessage, historyMessages)
 	if err != nil {
-		return telegramAddressingLLMDecision{}, false, fmt.Errorf("render addressing prompts: %w", err)
+		return grouptrigger.Addressing{}, false, fmt.Errorf("render addressing prompts: %w", err)
 	}
 
 	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.addressing_decision"), llm.Request{
@@ -66,37 +115,36 @@ func addressingDecisionViaLLM(
 		},
 	})
 	if err != nil {
-		return telegramAddressingLLMDecision{}, false, err
+		return grouptrigger.Addressing{}, false, err
 	}
 
 	raw := strings.TrimSpace(res.Text)
 	if raw == "" {
-		return telegramAddressingLLMDecision{}, false, fmt.Errorf("empty addressing_llm response")
+		return grouptrigger.Addressing{}, false, fmt.Errorf("empty addressing_llm response")
 	}
 
-	var out telegramAddressingLLMDecision
+	var out telegramAddressingLLMOutput
 	if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
-		return telegramAddressingLLMDecision{}, false, fmt.Errorf("invalid addressing_llm json")
+		return grouptrigger.Addressing{}, false, fmt.Errorf("invalid addressing_llm json")
 	}
 
-	if out.Confidence < 0 {
-		out.Confidence = 0
+	addressing := grouptrigger.Addressing{
+		Addressed:      out.Addressed,
+		Confidence:     clampAddressing01(out.Confidence),
+		WannaInterject: bool(out.WannaInterject),
+		Interject:      clampAddressing01(out.Interject),
+		Impulse:        clampAddressing01(out.Impulse),
+		Reason:         strings.TrimSpace(out.Reason),
 	}
-	if out.Confidence > 1 {
-		out.Confidence = 1
+	return addressing, true, nil
+}
+
+func clampAddressing01(v float64) float64 {
+	if v < 0 {
+		return 0
 	}
-	if out.Impulse < 0 {
-		out.Impulse = 0
+	if v > 1 {
+		return 1
 	}
-	if out.Impulse > 1 {
-		out.Impulse = 1
-	}
-	if out.Interject < 0 {
-		out.Interject = 0
-	}
-	if out.Interject > 1 {
-		out.Interject = 1
-	}
-	out.Reason = strings.TrimSpace(out.Reason)
-	return out, true, nil
+	return v
 }

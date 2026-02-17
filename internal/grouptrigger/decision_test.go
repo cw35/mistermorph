@@ -14,9 +14,9 @@ func TestDecideExplicitMatched(t *testing.T) {
 		Mode:            "smart",
 		ExplicitReason:  "mention",
 		ExplicitMatched: true,
-		Addressing: func(ctx context.Context) (AddressingDecision, bool, error) {
+		Addressing: func(ctx context.Context) (Addressing, bool, error) {
 			called = true
-			return AddressingDecision{}, false, nil
+			return Addressing{}, false, nil
 		},
 	})
 	if err != nil {
@@ -31,8 +31,8 @@ func TestDecideExplicitMatched(t *testing.T) {
 	if dec.Reason != "mention" {
 		t.Fatalf("reason mismatch: got %q want %q", dec.Reason, "mention")
 	}
-	if dec.AddressingImpulse != 1 {
-		t.Fatalf("impulse mismatch: got %v want 1", dec.AddressingImpulse)
+	if dec.Addressing.Impulse != 1 {
+		t.Fatalf("impulse mismatch: got %v want 1", dec.Addressing.Impulse)
 	}
 }
 
@@ -42,9 +42,9 @@ func TestDecideStrictWithoutExplicit(t *testing.T) {
 	called := false
 	_, ok, err := Decide(context.Background(), DecideOptions{
 		Mode: "strict",
-		Addressing: func(ctx context.Context) (AddressingDecision, bool, error) {
+		Addressing: func(ctx context.Context) (Addressing, bool, error) {
 			called = true
-			return AddressingDecision{}, false, nil
+			return Addressing{}, false, nil
 		},
 	})
 	if err != nil {
@@ -65,8 +65,8 @@ func TestDecideSmartRequiresAddressed(t *testing.T) {
 		Mode:                "smart",
 		ConfidenceThreshold: 0.6,
 		InterjectThreshold:  0.5,
-		Addressing: func(ctx context.Context) (AddressingDecision, bool, error) {
-			return AddressingDecision{
+		Addressing: func(ctx context.Context) (Addressing, bool, error) {
+			return Addressing{
 				Addressed:  false,
 				Confidence: 0.9,
 				Interject:  0.9,
@@ -82,20 +82,18 @@ func TestDecideSmartRequiresAddressed(t *testing.T) {
 	}
 }
 
-func TestDecideTalkativeDoesNotRequireAddressed(t *testing.T) {
+func TestDecideSmartIgnoresInterject(t *testing.T) {
 	t.Parallel()
 
-	dec, ok, err := Decide(context.Background(), DecideOptions{
-		Mode:                "talkative",
+	_, ok, err := Decide(context.Background(), DecideOptions{
+		Mode:                "smart",
 		ConfidenceThreshold: 0.6,
-		InterjectThreshold:  0.5,
-		Addressing: func(ctx context.Context) (AddressingDecision, bool, error) {
-			return AddressingDecision{
-				Addressed:  false,
-				Confidence: 0.9,
-				Interject:  0.9,
-				Impulse:    0.8,
-				Reason:     "talkative",
+		InterjectThreshold:  0.9,
+		Addressing: func(ctx context.Context) (Addressing, bool, error) {
+			return Addressing{
+				Addressed:  true,
+				Confidence: 0.95,
+				Interject:  0.1,
 			}, true, nil
 		},
 	})
@@ -105,8 +103,50 @@ func TestDecideTalkativeDoesNotRequireAddressed(t *testing.T) {
 	if !ok {
 		t.Fatalf("Decide() ok=false, want true")
 	}
-	if !dec.UsedAddressingLLM {
-		t.Fatalf("used_addressing_llm mismatch: got false want true")
+}
+
+func TestDecideTalkativeUsesWannaInterjectAndInterject(t *testing.T) {
+	t.Parallel()
+
+	_, ok, err := Decide(context.Background(), DecideOptions{
+		Mode:                "talkative",
+		ConfidenceThreshold: 0.95,
+		InterjectThreshold:  0.6,
+		Addressing: func(ctx context.Context) (Addressing, bool, error) {
+			return Addressing{
+				Addressed:      false,
+				Confidence:     0.1,
+				WannaInterject: true,
+				Interject:      0.8,
+			}, true, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("Decide() ok=false, want true")
+	}
+}
+
+func TestDecideTalkativeRejectsWithoutWannaInterject(t *testing.T) {
+	t.Parallel()
+
+	_, ok, err := Decide(context.Background(), DecideOptions{
+		Mode:               "talkative",
+		InterjectThreshold: 0.6,
+		Addressing: func(ctx context.Context) (Addressing, bool, error) {
+			return Addressing{
+				WannaInterject: false,
+				Interject:      0.9,
+			}, true, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("Decide() ok=true, want false")
 	}
 }
 
@@ -116,8 +156,8 @@ func TestDecideAddressingError(t *testing.T) {
 	expected := errors.New("boom")
 	_, _, err := Decide(context.Background(), DecideOptions{
 		Mode: "smart",
-		Addressing: func(ctx context.Context) (AddressingDecision, bool, error) {
-			return AddressingDecision{}, false, expected
+		Addressing: func(ctx context.Context) (Addressing, bool, error) {
+			return Addressing{}, false, expected
 		},
 	})
 	if !errors.Is(err, expected) {

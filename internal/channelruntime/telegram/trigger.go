@@ -16,7 +16,7 @@ func quoteReplyMessageIDForGroupTrigger(msg *telegramMessage, dec telegramGroupT
 	if msg == nil || msg.MessageID <= 0 {
 		return 0
 	}
-	if dec.AddressingImpulse > 0.8 {
+	if dec.Addressing.Impulse > 0.8 {
 		return msg.MessageID
 	}
 	return 0
@@ -45,27 +45,14 @@ func groupTriggerDecision(
 	explicitReason, explicitMentioned := groupExplicitMentionReason(msg, text, botUser, botID)
 	return grouptrigger.Decide(ctx, grouptrigger.DecideOptions{
 		Mode:                     mode,
-		DefaultMode:              "smart",
 		ConfidenceThreshold:      addressingConfidenceThreshold,
 		InterjectThreshold:       addressingInterjectThreshold,
-		DefaultConfidence:        0.6,
-		DefaultInterject:         0.3,
 		ExplicitReason:           explicitReason,
 		ExplicitMatched:          explicitMentioned,
 		AddressingFallbackReason: mode,
 		AddressingTimeout:        addressingLLMTimeout,
-		Addressing: func(addrCtx context.Context) (grouptrigger.AddressingDecision, bool, error) {
-			llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, msg, text, history)
-			if llmErr != nil {
-				return grouptrigger.AddressingDecision{}, false, llmErr
-			}
-			return grouptrigger.AddressingDecision{
-				Addressed:  llmDec.Addressed,
-				Confidence: llmDec.Confidence,
-				Interject:  llmDec.Interject,
-				Impulse:    llmDec.Impulse,
-				Reason:     strings.TrimSpace(llmDec.Reason),
-			}, llmOK, nil
+		Addressing: func(addrCtx context.Context) (grouptrigger.Addressing, bool, error) {
+			return addressingDecisionViaLLM(addrCtx, client, model, msg, text, history)
 		},
 	})
 }
