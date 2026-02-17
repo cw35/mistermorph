@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
@@ -16,6 +17,7 @@ import (
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/skillscmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/slackcmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/telegramcmd"
+	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
@@ -24,6 +26,7 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -87,37 +90,44 @@ func newRootCmd() *cobra.Command {
 	viper.SetDefault("logging.max_string_value_chars", 2000)
 	viper.SetDefault("logging.max_skill_content_chars", 8000)
 
+	registryResolver := newRegistryRuntimeResolver()
+	guardResolver := newGuardRuntimeResolver()
+	telegramLLM := newLLMRuntimeResolver()
+	telegramSkills := newSkillsRuntimeResolver()
+
 	cmd.AddCommand(runcmd.New(runcmd.Dependencies{
-		RegistryFromViper: registryFromViper,
-		GuardFromViper:    guardFromViper,
+		RegistryFromViper: registryResolver.Registry,
+		GuardFromViper:    guardResolver.Guard,
 		RegisterPlanTool:  toolsutil.RegisterPlanTool,
 	}))
 	cmd.AddCommand(daemoncmd.NewServeCmd(daemoncmd.ServeDependencies{
-		RegistryFromViper: registryFromViper,
-		GuardFromViper:    guardFromViper,
+		RegistryFromViper: registryResolver.Registry,
+		GuardFromViper:    guardResolver.Guard,
 	}))
 	cmd.AddCommand(daemoncmd.NewSubmitCmd())
 	cmd.AddCommand(telegramcmd.NewCommand(telegramcmd.Dependencies{
-		LoggerFromViper:     logutil.LoggerFromViper,
-		LogOptionsFromViper: logutil.LogOptionsFromViper,
+		Logger:     logutil.LoggerFromViper,
+		LogOptions: logutil.LogOptionsFromViper,
 		CreateLLMClient: func(provider, endpoint, apiKey, model string, timeout time.Duration) (llm.Client, error) {
-			return llmutil.ClientFromConfig(llmconfig.ClientConfig{
-				Provider:       provider,
-				Endpoint:       endpoint,
-				APIKey:         apiKey,
-				Model:          model,
-				RequestTimeout: timeout,
-			})
+			return telegramLLM.CreateClient(provider, endpoint, apiKey, model, timeout)
 		},
-		LLMProviderFromViper:   llmutil.ProviderFromViper,
-		LLMEndpointForProvider: llmutil.EndpointForProvider,
-		LLMAPIKeyForProvider:   llmutil.APIKeyForProvider,
-		LLMModelForProvider:    llmutil.ModelForProvider,
-		RegistryFromViper:      registryFromViper,
-		RegisterPlanTool:       toolsutil.RegisterPlanTool,
-		GuardFromViper:         guardFromViper,
-		PromptSpecForTelegram: func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error) {
-			cfg := skillsutil.SkillsConfigFromViper()
+		LLMProvider: func() string {
+			return telegramLLM.Provider()
+		},
+		LLMEndpointForProvider: func(provider string) string {
+			return telegramLLM.EndpointForProvider(provider)
+		},
+		LLMAPIKeyForProvider: func(provider string) string {
+			return telegramLLM.APIKeyForProvider(provider)
+		},
+		LLMModelForProvider: func(provider string) string {
+			return telegramLLM.ModelForProvider(provider)
+		},
+		Registry:         registryResolver.Registry,
+		RegisterPlanTool: toolsutil.RegisterPlanTool,
+		Guard:            guardResolver.Guard,
+		PromptSpec: func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error) {
+			cfg := telegramSkills.Config()
 			if len(stickySkills) > 0 {
 				cfg.Requested = append(cfg.Requested, stickySkills...)
 			}
@@ -128,34 +138,40 @@ func newRootCmd() *cobra.Command {
 			return heartbeatutil.BuildHeartbeatMeta(source, interval, checklistPath, checklistEmpty, nil, extra)
 		},
 	}))
+
+	slackLLM := newLLMRuntimeResolver()
+	slackSkills := newSkillsRuntimeResolver()
+
 	cmd.AddCommand(slackcmd.NewCommand(slackcmd.Dependencies{
-		LoggerFromViper:     logutil.LoggerFromViper,
-		LogOptionsFromViper: logutil.LogOptionsFromViper,
+		Logger:     logutil.LoggerFromViper,
+		LogOptions: logutil.LogOptionsFromViper,
 		CreateLLMClient: func(provider, endpoint, apiKey, model string, timeout time.Duration) (llm.Client, error) {
-			return llmutil.ClientFromConfig(llmconfig.ClientConfig{
-				Provider:       provider,
-				Endpoint:       endpoint,
-				APIKey:         apiKey,
-				Model:          model,
-				RequestTimeout: timeout,
-			})
+			return slackLLM.CreateClient(provider, endpoint, apiKey, model, timeout)
 		},
-		LLMProviderFromViper:   llmutil.ProviderFromViper,
-		LLMEndpointForProvider: llmutil.EndpointForProvider,
-		LLMAPIKeyForProvider:   llmutil.APIKeyForProvider,
-		LLMModelForProvider:    llmutil.ModelForProvider,
-		RegistryFromViper:      registryFromViper,
-		RegisterPlanTool:       toolsutil.RegisterPlanTool,
-		GuardFromViper:         guardFromViper,
-		PromptSpecForSlack: func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error) {
-			cfg := skillsutil.SkillsConfigFromViper()
+		LLMProvider: func() string {
+			return slackLLM.Provider()
+		},
+		LLMEndpointForProvider: func(provider string) string {
+			return slackLLM.EndpointForProvider(provider)
+		},
+		LLMAPIKeyForProvider: func(provider string) string {
+			return slackLLM.APIKeyForProvider(provider)
+		},
+		LLMModelForProvider: func(provider string) string {
+			return slackLLM.ModelForProvider(provider)
+		},
+		Registry:         registryResolver.Registry,
+		RegisterPlanTool: toolsutil.RegisterPlanTool,
+		Guard:            guardResolver.Guard,
+		PromptSpec: func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error) {
+			cfg := slackSkills.Config()
 			if len(stickySkills) > 0 {
 				cfg.Requested = append(cfg.Requested, stickySkills...)
 			}
 			return skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, cfg)
 		},
 	}))
-	cmd.AddCommand(newToolsCmd())
+	cmd.AddCommand(newToolsCmd(registryResolver.Registry))
 	cmd.AddCommand(skillscmd.New())
 	cmd.AddCommand(maepcmd.New())
 	cmd.AddCommand(contactscmd.New())
@@ -198,4 +214,117 @@ func expandConfiguredDirKey(key string) {
 		return
 	}
 	viper.Set(key, pathutil.ExpandHomePath(raw))
+}
+
+type llmRuntimeResolver struct {
+	once   sync.Once
+	values llmutil.RuntimeValues
+}
+
+func newLLMRuntimeResolver() *llmRuntimeResolver {
+	return &llmRuntimeResolver{}
+}
+
+func (r *llmRuntimeResolver) Values() llmutil.RuntimeValues {
+	if r == nil {
+		return llmutil.RuntimeValues{}
+	}
+	r.once.Do(func() {
+		r.values = llmutil.RuntimeValuesFromViper()
+	})
+	return r.values
+}
+
+func (r *llmRuntimeResolver) Provider() string {
+	return strings.TrimSpace(r.Values().Provider)
+}
+
+func (r *llmRuntimeResolver) EndpointForProvider(provider string) string {
+	return llmutil.EndpointForProviderWithValues(provider, r.Values())
+}
+
+func (r *llmRuntimeResolver) APIKeyForProvider(provider string) string {
+	return llmutil.APIKeyForProviderWithValues(provider, r.Values())
+}
+
+func (r *llmRuntimeResolver) ModelForProvider(provider string) string {
+	return llmutil.ModelForProviderWithValues(provider, r.Values())
+}
+
+func (r *llmRuntimeResolver) CreateClient(provider, endpoint, apiKey, model string, timeout time.Duration) (llm.Client, error) {
+	return llmutil.ClientFromConfigWithValues(llmconfig.ClientConfig{
+		Provider:       provider,
+		Endpoint:       endpoint,
+		APIKey:         apiKey,
+		Model:          model,
+		RequestTimeout: timeout,
+	}, r.Values())
+}
+
+type skillsRuntimeResolver struct {
+	once sync.Once
+	cfg  skillsutil.SkillsConfig
+}
+
+func newSkillsRuntimeResolver() *skillsRuntimeResolver {
+	return &skillsRuntimeResolver{}
+}
+
+func (r *skillsRuntimeResolver) Config() skillsutil.SkillsConfig {
+	if r == nil {
+		return skillsutil.SkillsConfig{}
+	}
+	r.once.Do(func() {
+		r.cfg = skillsutil.SkillsConfigFromViper()
+	})
+	cfg := r.cfg
+	cfg.Roots = append([]string(nil), cfg.Roots...)
+	cfg.Requested = append([]string(nil), cfg.Requested...)
+	return cfg
+}
+
+type registryRuntimeResolver struct {
+	once sync.Once
+	cfg  registryConfig
+}
+
+func newRegistryRuntimeResolver() *registryRuntimeResolver {
+	return &registryRuntimeResolver{}
+}
+
+func (r *registryRuntimeResolver) Config() registryConfig {
+	if r == nil {
+		return registryConfig{}
+	}
+	r.once.Do(func() {
+		r.cfg = loadRegistryConfigFromViper()
+	})
+	return r.cfg
+}
+
+func (r *registryRuntimeResolver) Registry() *tools.Registry {
+	return buildRegistryFromConfig(r.Config(), slog.Default())
+}
+
+type guardRuntimeResolver struct {
+	once sync.Once
+	cfg  guardConfigSnapshot
+}
+
+func newGuardRuntimeResolver() *guardRuntimeResolver {
+	return &guardRuntimeResolver{}
+}
+
+func (r *guardRuntimeResolver) Config() guardConfigSnapshot {
+	if r == nil {
+		return guardConfigSnapshot{}
+	}
+	r.once.Do(func() {
+		r.cfg = loadGuardConfigFromViper()
+	})
+	return r.cfg
+}
+
+func (r *guardRuntimeResolver) Guard(log *slog.Logger) *guard.Guard {
+	return buildGuardFromConfig(r.Config(), log)
 }

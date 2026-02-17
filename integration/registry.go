@@ -4,25 +4,26 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/secrets"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/quailyquaily/mistermorph/tools/builtin"
-	"github.com/spf13/viper"
 )
 
-func (rt *Runtime) buildRegistryFromViper() *tools.Registry {
+func (rt *Runtime) buildRegistry(cfg registrySnapshot, logger *slog.Logger) *tools.Registry {
 	r := tools.NewRegistry()
 	if rt == nil {
 		return r
 	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	selectedBuiltinTools := make(map[string]struct{}, len(rt.cfg.BuiltinToolNames))
 	for _, name := range rt.cfg.BuiltinToolNames {
 		selectedBuiltinTools[name] = struct{}{}
 		if _, ok := knownBuiltinToolNames[name]; !ok {
-			slog.Default().Warn("unknown_builtin_tool_name", "name", name)
+			logger.Warn("unknown_builtin_tool_name", "name", name)
 		}
 	}
 	isToolSelected := func(name string) bool {
@@ -33,35 +34,12 @@ func (rt *Runtime) buildRegistryFromViper() *tools.Registry {
 		return ok
 	}
 
-	viper.SetDefault("tools.read_file.max_bytes", 256*1024)
-	viper.SetDefault("tools.read_file.deny_paths", []string{"config.yaml"})
-
-	viper.SetDefault("tools.write_file.enabled", true)
-	viper.SetDefault("tools.write_file.max_bytes", 512*1024)
-
-	viper.SetDefault("tools.bash.enabled", true)
-	viper.SetDefault("tools.bash.timeout", 30*time.Second)
-	viper.SetDefault("tools.bash.max_output_bytes", 256*1024)
-	viper.SetDefault("tools.bash.deny_paths", []string{"config.yaml"})
-
-	viper.SetDefault("tools.url_fetch.enabled", true)
-	viper.SetDefault("tools.url_fetch.timeout", 30*time.Second)
-	viper.SetDefault("tools.url_fetch.max_bytes", int64(512*1024))
-	viper.SetDefault("tools.url_fetch.max_bytes_download", int64(100*1024*1024))
-	viper.SetDefault("tools.web_search.enabled", true)
-	viper.SetDefault("tools.web_search.timeout", 20*time.Second)
-	viper.SetDefault("tools.web_search.max_results", 5)
-	viper.SetDefault("tools.web_search.base_url", "https://duckduckgo.com/html/")
-	viper.SetDefault("tools.contacts.enabled", true)
-	viper.SetDefault("tools.todo_update.enabled", true)
-
-	userAgent := strings.TrimSpace(viper.GetString("user_agent"))
-
-	secretsEnabled := viper.GetBool("secrets.enabled")
-	secretsRequireSkillProfiles := viper.GetBool("secrets.require_skill_profiles")
+	userAgent := strings.TrimSpace(cfg.UserAgent)
+	secretsEnabled := cfg.SecretsEnabled
+	secretsRequireSkillProfiles := cfg.SecretsRequireSkillProfiles
 
 	allowProfiles := make(map[string]bool)
-	for _, id := range viper.GetStringSlice("secrets.allow_profiles") {
+	for _, id := range cfg.SecretsAllowProfiles {
 		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
@@ -69,81 +47,75 @@ func (rt *Runtime) buildRegistryFromViper() *tools.Registry {
 		allowProfiles[id] = true
 	}
 
-	var authProfiles map[string]secrets.AuthProfile
-	_ = viper.UnmarshalKey("auth_profiles", &authProfiles)
-	for id, p := range authProfiles {
-		p.ID = id
-		authProfiles[id] = p
-	}
+	authProfiles := copyAuthProfilesMap(cfg.AuthProfiles)
 
 	for _, p := range authProfiles {
 		if err := p.Validate(); err != nil {
-			slog.Default().Warn("auth_profile_invalid", "profile", p.ID, "err", err)
+			logger.Warn("auth_profile_invalid", "profile", p.ID, "err", err)
 			delete(authProfiles, p.ID)
 		}
 	}
 
 	if secretsEnabled {
-		slog.Default().Info("secrets_enabled",
+		logger.Info("secrets_enabled",
 			"require_skill_profiles", secretsRequireSkillProfiles,
 			"allow_profiles", keysSorted(allowProfiles),
 			"auth_profiles", len(authProfiles),
 		)
 	} else {
 		if len(allowProfiles) > 0 || len(authProfiles) > 0 {
-			slog.Default().Warn("secrets_disabled_but_configured",
+			logger.Warn("secrets_disabled_but_configured",
 				"allow_profiles", keysSorted(allowProfiles),
 				"auth_profiles", len(authProfiles),
 			)
 		}
 	}
 
-	secretsAliases := make(map[string]string)
-	_ = viper.UnmarshalKey("secrets.aliases", &secretsAliases)
+	secretsAliases := copyStringMap(cfg.SecretsAliases)
 	resolver := &secrets.EnvResolver{Aliases: secretsAliases}
 	profileStore := secrets.NewProfileStore(authProfiles)
 
 	if isToolSelected("read_file") {
 		r.Register(builtin.NewReadFileToolWithDenyPaths(
-			int64(viper.GetInt("tools.read_file.max_bytes")),
-			viper.GetStringSlice("tools.read_file.deny_paths"),
-			strings.TrimSpace(viper.GetString("file_cache_dir")),
-			strings.TrimSpace(viper.GetString("file_state_dir")),
+			cfg.ToolsReadFileMaxBytes,
+			append([]string(nil), cfg.ToolsReadFileDenyPaths...),
+			strings.TrimSpace(cfg.FileCacheDir),
+			strings.TrimSpace(cfg.FileStateDir),
 		))
 	}
 
-	if isToolSelected("write_file") && viper.GetBool("tools.write_file.enabled") {
+	if isToolSelected("write_file") && cfg.ToolsWriteFileEnabled {
 		r.Register(builtin.NewWriteFileTool(
 			true,
-			viper.GetInt("tools.write_file.max_bytes"),
-			strings.TrimSpace(viper.GetString("file_cache_dir")),
-			strings.TrimSpace(viper.GetString("file_state_dir")),
+			cfg.ToolsWriteFileMaxBytes,
+			strings.TrimSpace(cfg.FileCacheDir),
+			strings.TrimSpace(cfg.FileStateDir),
 		))
 	}
 
-	if isToolSelected("bash") && viper.GetBool("tools.bash.enabled") {
+	if isToolSelected("bash") && cfg.ToolsBashEnabled {
 		bt := builtin.NewBashTool(
 			true,
-			viper.GetDuration("tools.bash.timeout"),
-			viper.GetInt("tools.bash.max_output_bytes"),
-			strings.TrimSpace(viper.GetString("file_cache_dir")),
-			strings.TrimSpace(viper.GetString("file_state_dir")),
+			cfg.ToolsBashTimeout,
+			cfg.ToolsBashMaxOutputBytes,
+			strings.TrimSpace(cfg.FileCacheDir),
+			strings.TrimSpace(cfg.FileStateDir),
 		)
-		bt.DenyPaths = viper.GetStringSlice("tools.bash.deny_paths")
+		bt.DenyPaths = append([]string(nil), cfg.ToolsBashDenyPaths...)
 		if secretsEnabled {
 			bt.DenyTokens = append(bt.DenyTokens, "curl")
 		}
 		r.Register(bt)
 	}
 
-	if isToolSelected("url_fetch") && viper.GetBool("tools.url_fetch.enabled") {
+	if isToolSelected("url_fetch") && cfg.ToolsURLFetchEnabled {
 		r.Register(builtin.NewURLFetchToolWithAuthLimits(
 			true,
-			viper.GetDuration("tools.url_fetch.timeout"),
-			viper.GetInt64("tools.url_fetch.max_bytes"),
-			viper.GetInt64("tools.url_fetch.max_bytes_download"),
+			cfg.ToolsURLFetchTimeout,
+			cfg.ToolsURLFetchMaxBytes,
+			cfg.ToolsURLFetchMaxBytesDownload,
 			userAgent,
-			strings.TrimSpace(viper.GetString("file_cache_dir")),
+			strings.TrimSpace(cfg.FileCacheDir),
 			&builtin.URLFetchAuth{
 				Enabled:       secretsEnabled,
 				AllowProfiles: allowProfiles,
@@ -153,46 +125,39 @@ func (rt *Runtime) buildRegistryFromViper() *tools.Registry {
 		))
 	}
 
-	if isToolSelected("web_search") && viper.GetBool("tools.web_search.enabled") {
+	if isToolSelected("web_search") && cfg.ToolsWebSearchEnabled {
 		r.Register(builtin.NewWebSearchTool(
 			true,
-			viper.GetString("tools.web_search.base_url"),
-			viper.GetDuration("tools.web_search.timeout"),
-			viper.GetInt("tools.web_search.max_results"),
+			cfg.ToolsWebSearchBaseURL,
+			cfg.ToolsWebSearchTimeout,
+			cfg.ToolsWebSearchMaxResults,
 			userAgent,
 		))
 	}
 
-	if isToolSelected("todo_update") && viper.GetBool("tools.todo_update.enabled") {
+	if isToolSelected("todo_update") && cfg.ToolsTodoUpdateEnabled {
 		r.Register(builtin.NewTodoUpdateTool(
 			true,
-			statepaths.TODOWIPPath(),
-			statepaths.TODODONEPath(),
-			statepaths.ContactsDir(),
+			cfg.TODOPathWIP,
+			cfg.TODOPathDone,
+			cfg.ContactsDir,
 		))
 	}
 
-	if isToolSelected("contacts_send") && viper.GetBool("tools.contacts.enabled") {
+	if isToolSelected("contacts_send") && cfg.ToolsContactsEnabled {
 		r.Register(builtin.NewContactsSendTool(builtin.ContactsSendToolOptions{
 			Enabled:          true,
-			ContactsDir:      statepaths.ContactsDir(),
-			MAEPDir:          statepaths.MAEPDir(),
-			TelegramBotToken: strings.TrimSpace(viper.GetString("telegram.bot_token")),
-			TelegramBaseURL:  "https://api.telegram.org",
-			FailureCooldown:  contactsFailureCooldown(),
+			ContactsDir:      cfg.ContactsDir,
+			MAEPDir:          cfg.MAEPDir,
+			TelegramBotToken: strings.TrimSpace(cfg.TelegramBotToken),
+			TelegramBaseURL:  strings.TrimSpace(cfg.TelegramBaseURL),
+			SlackBotToken:    strings.TrimSpace(cfg.SlackBotToken),
+			SlackBaseURL:     strings.TrimSpace(cfg.SlackBaseURL),
+			FailureCooldown:  cfg.ContactsFailureCooldown,
 		}))
 	}
 
 	return r
-}
-
-func contactsFailureCooldown() time.Duration {
-	if viper.IsSet("contacts.proactive.failure_cooldown") {
-		if v := viper.GetDuration("contacts.proactive.failure_cooldown"); v > 0 {
-			return v
-		}
-	}
-	return 72 * time.Hour
 }
 
 func keysSorted(m map[string]bool) []string {

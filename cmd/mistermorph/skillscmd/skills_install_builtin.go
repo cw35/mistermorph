@@ -780,21 +780,23 @@ func installSkillFromURL(ctx context.Context, log *slog.Logger, client llm.Clien
 }
 
 func llmClientForRemoteSkillReview() (llm.Client, string, error) {
-	model := llmutil.ModelFromViper()
+	values := llmutil.RuntimeValuesFromViper()
+	provider := strings.TrimSpace(values.Provider)
+	model := llmutil.ModelForProviderWithValues(provider, values)
 	if model == "" {
 		model = "gpt-5.2"
 	}
 	cfg := llmconfig.ClientConfig{
-		Provider:       llmutil.ProviderFromViper(),
-		Endpoint:       llmutil.EndpointFromViper(),
-		APIKey:         llmutil.APIKeyFromViper(),
+		Provider:       provider,
+		Endpoint:       llmutil.EndpointForProviderWithValues(provider, values),
+		APIKey:         llmutil.APIKeyForProviderWithValues(provider, values),
 		Model:          model,
 		RequestTimeout: viper.GetDuration("llm.request_timeout"),
 	}
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, "", fmt.Errorf("missing llm.api_key (required to review remote skills safely)")
 	}
-	c, err := llmutil.ClientFromConfig(cfg)
+	c, err := llmutil.ClientFromConfigWithValues(cfg, values)
 	if err != nil {
 		return nil, "", err
 	}

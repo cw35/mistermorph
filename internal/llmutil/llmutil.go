@@ -10,61 +10,124 @@ import (
 	"github.com/spf13/viper"
 )
 
+type ConfigReader interface {
+	GetString(string) string
+}
+
+type RuntimeValues struct {
+	Provider           string
+	Endpoint           string
+	APIKey             string
+	Model              string
+	AzureDeployment    string
+	ToolsEmulationMode string
+
+	BedrockAWSKey       string
+	BedrockAWSSecret    string
+	BedrockAWSRegion    string
+	BedrockModelARN     string
+	CloudflareAccountID string
+	CloudflareAPIToken  string
+}
+
+func RuntimeValuesFromReader(r ConfigReader) RuntimeValues {
+	if r == nil {
+		return RuntimeValues{}
+	}
+	return RuntimeValues{
+		Provider:            strings.TrimSpace(r.GetString("llm.provider")),
+		Endpoint:            strings.TrimSpace(r.GetString("llm.endpoint")),
+		APIKey:              strings.TrimSpace(r.GetString("llm.api_key")),
+		Model:               strings.TrimSpace(r.GetString("llm.model")),
+		AzureDeployment:     strings.TrimSpace(r.GetString("llm.azure.deployment")),
+		ToolsEmulationMode:  strings.TrimSpace(r.GetString("llm.tools_emulation_mode")),
+		BedrockAWSKey:       firstNonEmpty(r.GetString("llm.bedrock.aws_key"), r.GetString("llm.aws.key")),
+		BedrockAWSSecret:    firstNonEmpty(r.GetString("llm.bedrock.aws_secret"), r.GetString("llm.aws.secret")),
+		BedrockAWSRegion:    firstNonEmpty(r.GetString("llm.bedrock.region"), r.GetString("llm.aws.region")),
+		BedrockModelARN:     firstNonEmpty(r.GetString("llm.bedrock.model_arn"), r.GetString("llm.aws.bedrock_model_arn")),
+		CloudflareAccountID: firstNonEmpty(r.GetString("llm.cloudflare.account_id")),
+		CloudflareAPIToken:  firstNonEmpty(r.GetString("llm.cloudflare.api_token")),
+	}
+}
+
+func RuntimeValuesFromViper() RuntimeValues {
+	return RuntimeValuesFromReader(viper.GetViper())
+}
+
 func ProviderFromViper() string {
-	return strings.TrimSpace(viper.GetString("llm.provider"))
+	return strings.TrimSpace(RuntimeValuesFromViper().Provider)
 }
 
 func EndpointFromViper() string {
-	return EndpointForProvider(ProviderFromViper())
+	values := RuntimeValuesFromViper()
+	return EndpointForProviderWithValues(values.Provider, values)
 }
 
 func APIKeyFromViper() string {
-	return APIKeyForProvider(ProviderFromViper())
+	values := RuntimeValuesFromViper()
+	return APIKeyForProviderWithValues(values.Provider, values)
 }
 
 func ModelFromViper() string {
-	return ModelForProvider(ProviderFromViper())
+	values := RuntimeValuesFromViper()
+	return ModelForProviderWithValues(values.Provider, values)
 }
 
 func EndpointForProvider(provider string) string {
+	return EndpointForProviderWithValues(provider, RuntimeValuesFromViper())
+}
+
+func EndpointForProviderWithValues(provider string, values RuntimeValues) string {
 	provider = normalizeProvider(provider)
 	switch provider {
 	case "cloudflare":
-		generic := strings.TrimSpace(viper.GetString("llm.endpoint"))
+		generic := strings.TrimSpace(values.Endpoint)
 		if generic != "" && generic != "https://api.openai.com" && generic != "https://api.openai.com/v1" {
 			return generic
 		}
 		return ""
 	default:
-		return strings.TrimSpace(viper.GetString("llm.endpoint"))
+		return strings.TrimSpace(values.Endpoint)
 	}
 }
 
 func APIKeyForProvider(provider string) string {
+	return APIKeyForProviderWithValues(provider, RuntimeValuesFromViper())
+}
+
+func APIKeyForProviderWithValues(provider string, values RuntimeValues) string {
 	provider = normalizeProvider(provider)
 	switch provider {
 	case "cloudflare":
-		return firstNonEmpty(viper.GetString("llm.cloudflare.api_token"), viper.GetString("llm.api_key"))
+		return firstNonEmpty(values.CloudflareAPIToken, values.APIKey)
 	default:
-		return strings.TrimSpace(viper.GetString("llm.api_key"))
+		return strings.TrimSpace(values.APIKey)
 	}
 }
 
 func ModelForProvider(provider string) string {
+	return ModelForProviderWithValues(provider, RuntimeValuesFromViper())
+}
+
+func ModelForProviderWithValues(provider string, values RuntimeValues) string {
 	provider = normalizeProvider(provider)
 	switch provider {
 	case "azure":
 		return firstNonEmpty(
-			viper.GetString("llm.azure.deployment"),
-			viper.GetString("llm.model"),
+			values.AzureDeployment,
+			values.Model,
 		)
 	default:
-		return strings.TrimSpace(viper.GetString("llm.model"))
+		return strings.TrimSpace(values.Model)
 	}
 }
 
 func ClientFromConfig(cfg llmconfig.ClientConfig) (llm.Client, error) {
-	toolsEmulationMode, err := toolsEmulationModeFromViper()
+	return ClientFromConfigWithValues(cfg, RuntimeValuesFromViper())
+}
+
+func ClientFromConfigWithValues(cfg llmconfig.ClientConfig, values RuntimeValues) (llm.Client, error) {
+	toolsEmulationMode, err := toolsEmulationModeFromValue(values.ToolsEmulationMode)
 	if err != nil {
 		return nil, err
 	}
@@ -80,16 +143,16 @@ func ClientFromConfig(cfg llmconfig.ClientConfig) (llm.Client, error) {
 			AzureAPIKey:        strings.TrimSpace(cfg.APIKey),
 			AzureEndpoint:      strings.TrimSpace(cfg.Endpoint),
 			AzureDeployment:    strings.TrimSpace(cfg.Model),
-			AwsKey:             firstNonEmpty(viper.GetString("llm.bedrock.aws_key"), viper.GetString("llm.aws.key")),
-			AwsSecret:          firstNonEmpty(viper.GetString("llm.bedrock.aws_secret"), viper.GetString("llm.aws.secret")),
-			AwsRegion:          firstNonEmpty(viper.GetString("llm.bedrock.region"), viper.GetString("llm.aws.region")),
-			AwsBedrockModelArn: firstNonEmpty(viper.GetString("llm.bedrock.model_arn"), viper.GetString("llm.aws.bedrock_model_arn")),
+			AwsKey:             firstNonEmpty(values.BedrockAWSKey),
+			AwsSecret:          firstNonEmpty(values.BedrockAWSSecret),
+			AwsRegion:          firstNonEmpty(values.BedrockAWSRegion),
+			AwsBedrockModelArn: firstNonEmpty(values.BedrockModelARN),
 			CloudflareAccountID: firstNonEmpty(
-				viper.GetString("llm.cloudflare.account_id"),
+				values.CloudflareAccountID,
 			),
 			CloudflareAPIToken: firstNonEmpty(
-				viper.GetString("llm.cloudflare.api_token"),
-				viper.GetString("llm.api_key"),
+				values.CloudflareAPIToken,
+				values.APIKey,
 			),
 			CloudflareAPIBase: strings.TrimSpace(cfg.Endpoint),
 		})
@@ -100,7 +163,11 @@ func ClientFromConfig(cfg llmconfig.ClientConfig) (llm.Client, error) {
 }
 
 func toolsEmulationModeFromViper() (string, error) {
-	mode := strings.ToLower(strings.TrimSpace(viper.GetString("llm.tools_emulation_mode")))
+	return toolsEmulationModeFromValue(RuntimeValuesFromViper().ToolsEmulationMode)
+}
+
+func toolsEmulationModeFromValue(raw string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(raw))
 	if mode == "" {
 		return "off", nil
 	}

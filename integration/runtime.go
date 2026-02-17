@@ -6,24 +6,24 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
-	"github.com/quailyquaily/mistermorph/internal/logutil"
 	"github.com/quailyquaily/mistermorph/internal/promptprofile"
-	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/tools"
-	"github.com/spf13/viper"
 )
 
 // Runtime is the reusable wiring entrypoint for third-party embedding.
 type Runtime struct {
-	cfg Config
+	cfg      Config
+	initOnce sync.Once
+	snap     runtimeSnapshot
 }
 
 type PreparedRun struct {
@@ -34,16 +34,6 @@ type PreparedRun struct {
 
 func New(cfg Config) (*Runtime, error) {
 	cfg = normalizeConfig(cfg)
-	applyViperDefaults()
-
-	for k, v := range cfg.Overrides {
-		key := strings.TrimSpace(k)
-		if key == "" {
-			continue
-		}
-		viper.Set(key, v)
-	}
-
 	return &Runtime{cfg: cfg}, nil
 }
 
@@ -104,7 +94,12 @@ func (rt *Runtime) NewRegistry() *tools.Registry {
 	if rt == nil {
 		return tools.NewRegistry()
 	}
-	return rt.buildRegistryFromViper()
+	snap, err := rt.snapshot()
+	if err != nil {
+		slog.Default().Warn("integration_config_init_failed", "error", err.Error())
+		return tools.NewRegistry()
+	}
+	return rt.buildRegistry(snap.Registry, snap.Logger)
 }
 
 func (rt *Runtime) NewRunEngine(ctx context.Context, task string) (*PreparedRun, error) {
@@ -115,31 +110,32 @@ func (rt *Runtime) NewRunEngineWithRegistry(ctx context.Context, task string, ba
 	if rt == nil {
 		return nil, fmt.Errorf("runtime is nil")
 	}
+	snap, err := rt.snapshot()
+	if err != nil {
+		return nil, err
+	}
+	if snap.LoggerInitErr != nil {
+		return nil, snap.LoggerInitErr
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	task = strings.TrimSpace(task)
 
-	logger, err := logutil.LoggerFromViper()
-	if err != nil {
-		return nil, err
+	logger := snap.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
 	slog.SetDefault(logger)
-	logOpts := logutil.LogOptionsFromViper()
+	logOpts := cloneLogOptions(snap.LogOptions)
 
-	provider := llmutil.ProviderFromViper()
-	endpoint := llmutil.EndpointForProvider(provider)
-	apiKey := llmutil.APIKeyForProvider(provider)
-	model := llmutil.ModelForProvider(provider)
-	requestTimeout := viper.GetDuration("llm.request_timeout")
-
-	client, err := llmutil.ClientFromConfig(llmconfig.ClientConfig{
-		Provider:       provider,
-		Endpoint:       endpoint,
-		APIKey:         apiKey,
-		Model:          model,
-		RequestTimeout: requestTimeout,
-	})
+	client, err := llmutil.ClientFromConfigWithValues(llmconfig.ClientConfig{
+		Provider:       snap.LLMProvider,
+		Endpoint:       snap.LLMEndpoint,
+		APIKey:         snap.LLMAPIKey,
+		Model:          snap.LLMModel,
+		RequestTimeout: snap.LLMRequestTimeout,
+	}, snap.LLMValues)
 	if err != nil {
 		return nil, err
 	}
@@ -151,18 +147,18 @@ func (rt *Runtime) NewRunEngineWithRegistry(ctx context.Context, task string, ba
 
 	reg := cloneRegistry(baseReg)
 	if reg == nil {
-		reg = rt.NewRegistry()
+		reg = rt.buildRegistry(snap.Registry, logger)
 	}
 
 	if rt.cfg.Features.PlanTool {
-		toolsutil.RegisterPlanTool(reg, client, model)
+		toolsutil.RegisterPlanTool(reg, client, snap.LLMModel)
 	}
-	toolsutil.BindTodoUpdateToolLLM(reg, client, model)
+	toolsutil.BindTodoUpdateToolLLM(reg, client, snap.LLMModel)
 
 	skillAuthProfiles := []string{}
 	promptSpec := agent.DefaultPromptSpec()
 	if rt.cfg.Features.Skills {
-		spec, _, authProfiles, err := skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsutil.SkillsConfigFromViper())
+		spec, _, authProfiles, err := rt.promptSpecWithSkillsFromConfig(ctx, logger, logOpts, task, client, snap.LLMModel, snap.SkillsConfig, nil)
 		if err != nil {
 			_ = inspectCleanup()
 			return nil, err
@@ -179,9 +175,9 @@ func (rt *Runtime) NewRunEngineWithRegistry(ctx context.Context, task string, ba
 	opts := []agent.Option{
 		agent.WithLogger(logger),
 		agent.WithLogOptions(logOpts),
-		agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")),
+		agent.WithSkillAuthProfiles(skillAuthProfiles, snap.SecretsRequireSkillProfiles),
 	}
-	if g := rt.buildGuardFromViper(logger); g != nil {
+	if g := rt.buildGuard(snap.Guard, logger); g != nil {
 		opts = append(opts, agent.WithGuard(g))
 	}
 
@@ -189,9 +185,9 @@ func (rt *Runtime) NewRunEngineWithRegistry(ctx context.Context, task string, ba
 		client,
 		reg,
 		agent.Config{
-			MaxSteps:       viper.GetInt("max_steps"),
-			ParseRetries:   viper.GetInt("parse_retries"),
-			MaxTokenBudget: viper.GetInt("max_token_budget"),
+			MaxSteps:       snap.AgentMaxSteps,
+			ParseRetries:   snap.AgentParseRetries,
+			MaxTokenBudget: snap.AgentMaxTokenBudget,
 		},
 		promptSpec,
 		opts...,
@@ -199,7 +195,7 @@ func (rt *Runtime) NewRunEngineWithRegistry(ctx context.Context, task string, ba
 
 	return &PreparedRun{
 		Engine: engine,
-		Model:  model,
+		Model:  snap.LLMModel,
 		Cleanup: func() error {
 			return inspectCleanup()
 		},
@@ -287,5 +283,29 @@ func (rt *Runtime) RequestTimeout() time.Duration {
 	if rt == nil {
 		return 0
 	}
-	return viper.GetDuration("llm.request_timeout")
+	snap, err := rt.snapshot()
+	if err != nil {
+		return 0
+	}
+	return snap.LLMRequestTimeout
+}
+
+func (rt *Runtime) snapshot() (runtimeSnapshot, error) {
+	if rt == nil {
+		return runtimeSnapshot{}, fmt.Errorf("runtime is nil")
+	}
+	if err := rt.ensureRuntimeSnapshot(); err != nil {
+		return runtimeSnapshot{}, err
+	}
+	return rt.snap, nil
+}
+
+func (rt *Runtime) ensureRuntimeSnapshot() error {
+	if rt == nil {
+		return fmt.Errorf("runtime is nil")
+	}
+	rt.initOnce.Do(func() {
+		rt.snap = newRuntimeSnapshot(loadRuntimeSnapshotInput(rt.cfg))
+	})
+	return nil
 }

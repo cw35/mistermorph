@@ -81,14 +81,17 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 				logger.Info("daemon_maep_ready", "peer_id", maepNode.PeerID(), "addresses", maepNode.AddrStrings())
 			}
 
+			llmValues := llmutil.RuntimeValuesFromViper()
+			provider := strings.TrimSpace(llmValues.Provider)
+			model := llmutil.ModelForProviderWithValues(provider, llmValues)
 			requestTimeout := viper.GetDuration("llm.request_timeout")
-			client, err := llmutil.ClientFromConfig(llmconfig.ClientConfig{
-				Provider:       llmutil.ProviderFromViper(),
-				Endpoint:       llmutil.EndpointFromViper(),
-				APIKey:         llmutil.APIKeyFromViper(),
-				Model:          llmutil.ModelFromViper(),
+			client, err := llmutil.ClientFromConfigWithValues(llmconfig.ClientConfig{
+				Provider:       provider,
+				Endpoint:       llmutil.EndpointForProviderWithValues(provider, llmValues),
+				APIKey:         llmutil.APIKeyForProviderWithValues(provider, llmValues),
+				Model:          model,
 				RequestTimeout: requestTimeout,
-			})
+			}, llmValues)
 			if err != nil {
 				return err
 			}
@@ -99,10 +102,12 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			if reg == nil {
 				reg = tools.NewRegistry()
 			}
-			toolsutil.RegisterPlanTool(reg, client, llmutil.ModelFromViper())
-			toolsutil.BindTodoUpdateToolLLM(reg, client, llmutil.ModelFromViper())
+			toolsutil.RegisterPlanTool(reg, client, model)
+			toolsutil.BindTodoUpdateToolLLM(reg, client, model)
 
 			logOpts := logutil.LogOptionsFromViper()
+			skillsCfg := skillsutil.SkillsConfigFromViper()
+			requireSkillProfiles := viper.GetBool("secrets.require_skill_profiles")
 
 			baseCfg := agent.Config{
 				MaxSteps:       viper.GetInt("max_steps"),
@@ -146,7 +151,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 						qt.resumeApprovalID = ""
 						final, runCtx, runErr = resumeOneTask(qt.ctx, logger, logOpts, client, reg, baseCfg, sharedGuard, resumeApprovalID)
 					} else {
-						final, runCtx, runErr = runOneTask(qt.ctx, logger, logOpts, client, reg, baseCfg, sharedGuard, qt.info.Task, qt.info.Model, qt.meta)
+						final, runCtx, runErr = runOneTask(qt.ctx, logger, logOpts, client, reg, baseCfg, sharedGuard, qt.info.Task, qt.info.Model, qt.meta, skillsCfg, requireSkillProfiles)
 					}
 
 					if pendingID, ok := pendingApprovalID(final); ok && runErr == nil {
@@ -235,7 +240,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 									"queue_len": store.QueueLen(),
 								})
 								timeout := viper.GetDuration("timeout")
-								if _, err := store.EnqueueHeartbeat(context.Background(), task, llmutil.ModelFromViper(), timeout, meta, hbState); err != nil {
+								if _, err := store.EnqueueHeartbeat(context.Background(), task, model, timeout, meta, hbState); err != nil {
 									return err.Error()
 								}
 								return ""
@@ -287,7 +292,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 				}
 				model := strings.TrimSpace(req.Model)
 				if model == "" {
-					model = llmutil.ModelFromViper()
+					model = llmutil.ModelForProviderWithValues(provider, llmValues)
 				}
 
 				info, err := store.Enqueue(context.Background(), req.Task, model, timeout)
@@ -473,8 +478,10 @@ func errorsIsContextDeadline(ctx context.Context, err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded")
 }
 
-func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, registry *tools.Registry, baseCfg agent.Config, sharedGuard *guard.Guard, task string, model string, meta map[string]any) (*agent.Final, *agent.Context, error) {
-	promptSpec, _, skillAuthProfiles, err := skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsutil.SkillsConfigFromViper())
+func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, registry *tools.Registry, baseCfg agent.Config, sharedGuard *guard.Guard, task string, model string, meta map[string]any, skillsCfg skillsutil.SkillsConfig, requireSkillProfiles bool) (*agent.Final, *agent.Context, error) {
+	skillsCfg.Roots = append([]string(nil), skillsCfg.Roots...)
+	skillsCfg.Requested = append([]string(nil), skillsCfg.Requested...)
+	promptSpec, _, skillAuthProfiles, err := skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsCfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -488,7 +495,7 @@ func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptio
 		promptSpec,
 		agent.WithLogger(logger),
 		agent.WithLogOptions(logOpts),
-		agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")),
+		agent.WithSkillAuthProfiles(skillAuthProfiles, requireSkillProfiles),
 		agent.WithGuard(sharedGuard),
 	)
 	return engine.Run(ctx, task, agent.RunOptions{Model: model, Meta: meta})

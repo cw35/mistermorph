@@ -6,6 +6,7 @@ import (
 
 	"github.com/quailyquaily/mistermorph/internal/clifmt"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
+	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 )
 
@@ -14,16 +15,23 @@ type toolPreview struct {
 	Description string
 }
 
-func newToolsCmd() *cobra.Command {
+func newToolsCmd(registryFactory func() *tools.Registry) *cobra.Command {
 	return &cobra.Command{
 		Use:   "tools",
 		Short: "List available tools",
-		RunE:  runToolsCmd,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runToolsCmd(cmd, args, registryFactory)
+		},
 	}
 }
 
-func runToolsCmd(cmd *cobra.Command, _ []string) error {
-	r := registryFromViper()
+func runToolsCmd(cmd *cobra.Command, _ []string, registryFactory func() *tools.Registry) error {
+	r := tools.NewRegistry()
+	if registryFactory != nil {
+		if reg := registryFactory(); reg != nil {
+			r = reg
+		}
+	}
 	corePreviews := make(map[string]toolPreview, len(r.All()))
 	for _, tool := range r.All() {
 		name := strings.TrimSpace(tool.Name())

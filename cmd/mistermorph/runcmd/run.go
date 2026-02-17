@@ -72,31 +72,32 @@ func New(deps Dependencies) *cobra.Command {
 				}
 			}
 
-			provider := llmutil.ProviderFromViper()
+			llmValues := llmutil.RuntimeValuesFromViper()
+			provider := strings.TrimSpace(llmValues.Provider)
 			if cmd.Flags().Changed("provider") {
 				provider = strings.TrimSpace(configutil.FlagOrViperString(cmd, "provider", ""))
 			}
-			endpoint := llmutil.EndpointForProvider(provider)
+			endpoint := llmutil.EndpointForProviderWithValues(provider, llmValues)
 			if cmd.Flags().Changed("endpoint") {
 				endpoint = strings.TrimSpace(configutil.FlagOrViperString(cmd, "endpoint", ""))
 			}
-			apiKey := llmutil.APIKeyForProvider(provider)
+			apiKey := llmutil.APIKeyForProviderWithValues(provider, llmValues)
 			if cmd.Flags().Changed("api-key") {
 				apiKey = strings.TrimSpace(configutil.FlagOrViperString(cmd, "api-key", ""))
 			}
-			model := llmutil.ModelForProvider(provider)
+			model := llmutil.ModelForProviderWithValues(provider, llmValues)
 			if cmd.Flags().Changed("model") {
 				model = strings.TrimSpace(configutil.FlagOrViperString(cmd, "model", ""))
 			}
 
 			requestTimeout := configutil.FlagOrViperDuration(cmd, "llm-request-timeout", "llm.request_timeout")
-			client, err := llmutil.ClientFromConfig(llmconfig.ClientConfig{
+			client, err := llmutil.ClientFromConfigWithValues(llmconfig.ClientConfig{
 				Provider:       provider,
 				Endpoint:       endpoint,
 				APIKey:         apiKey,
 				Model:          model,
 				RequestTimeout: requestTimeout,
-			})
+			}, llmValues)
 			if err != nil {
 				return err
 			}

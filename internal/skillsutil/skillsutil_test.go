@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/quailyquaily/mistermorph/agent"
-	"github.com/spf13/viper"
 )
 
 func TestPromptSpecWithSkills_LoadAllWildcard(t *testing.T) {
@@ -71,12 +70,6 @@ func TestPromptSpecWithSkills_LoadAllWildcardIgnoresUnknownRequests(t *testing.T
 }
 
 func TestPromptSpecWithSkills_InjectsSkillMetadataOnly(t *testing.T) {
-	prevSkillsDirName := viper.GetString("skills.dir_name")
-	viper.Set("skills.dir_name", "skills")
-	t.Cleanup(func() {
-		viper.Set("skills.dir_name", prevSkillsDirName)
-	})
-
 	root := t.TempDir()
 	writeSkillWithFrontmatter(t, root, "jsonbill", `---
 name: jsonbill
@@ -101,6 +94,7 @@ very long instructions that should not be injected
 		"gpt-5.2",
 		SkillsConfig{
 			Roots:     []string{root},
+			DirName:   "skills",
 			Mode:      "on",
 			Requested: []string{"jsonbill"},
 			Auto:      false,
@@ -136,12 +130,6 @@ very long instructions that should not be injected
 }
 
 func TestPromptSpecWithSkills_InjectsSkillFilePathWithConfiguredSkillsDir(t *testing.T) {
-	prevSkillsDirName := viper.GetString("skills.dir_name")
-	viper.Set("skills.dir_name", "my_skills")
-	t.Cleanup(func() {
-		viper.Set("skills.dir_name", prevSkillsDirName)
-	})
-
 	root := t.TempDir()
 	writeSkillWithFrontmatter(t, root, "alpha", `---
 name: alpha
@@ -158,6 +146,7 @@ description: d
 		"gpt-5.2",
 		SkillsConfig{
 			Roots:     []string{root},
+			DirName:   "my_skills",
 			Mode:      "on",
 			Requested: []string{"alpha"},
 			Auto:      false,

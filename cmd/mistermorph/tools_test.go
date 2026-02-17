@@ -9,7 +9,8 @@ import (
 func TestToolsCommand_IncludesRuntimeTools(t *testing.T) {
 	initViperDefaults()
 
-	cmd := newToolsCmd()
+	registryResolver := newRegistryRuntimeResolver()
+	cmd := newToolsCmd(registryResolver.Registry)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)

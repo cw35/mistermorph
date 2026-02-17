@@ -16,30 +16,47 @@ import (
 	"github.com/spf13/viper"
 )
 
+type ConfigReader interface {
+	GetString(string) string
+	GetStringSlice(string) []string
+	GetBool(string) bool
+	IsSet(string) bool
+}
+
 type SkillsConfig struct {
 	Roots     []string
+	DirName   string
 	Mode      string
 	Requested []string
 	Auto      bool
 	Trace     bool
 }
 
-func SkillsConfigFromViper() SkillsConfig {
-	cfg := SkillsConfig{
-		Roots: statepaths.DefaultSkillsRoots(),
-		Mode:  strings.TrimSpace(viper.GetString("skills.mode")),
-		Auto:  skillsAutoFromViper(),
-		Requested: append(
-			append([]string{}, viper.GetStringSlice("skill")...), // legacy
-			viper.GetStringSlice("skills")...,                    // legacy
-		),
-		Trace: strings.EqualFold(strings.TrimSpace(viper.GetString("logging.level")), "debug"),
+func SkillsConfigFromReader(r ConfigReader) SkillsConfig {
+	if r == nil {
+		r = viper.GetViper()
 	}
-	cfg.Requested = append(cfg.Requested, getStringSlice("skills.load")...)
+	cfg := SkillsConfig{
+		Roots:   statepaths.DefaultSkillsRoots(),
+		DirName: strings.TrimSpace(r.GetString("skills.dir_name")),
+		Mode:    strings.TrimSpace(r.GetString("skills.mode")),
+		Auto:    skillsAutoFromReader(r),
+		Requested: append(
+			append([]string{}, r.GetStringSlice("skill")...), // legacy
+			r.GetStringSlice("skills")...,                    // legacy
+		),
+		Trace: strings.EqualFold(strings.TrimSpace(r.GetString("logging.level")), "debug"),
+	}
+	cfg.Requested = append(cfg.Requested, getStringSliceFromReader(r, "skills.load")...)
 	if strings.TrimSpace(cfg.Mode) == "" {
 		cfg.Mode = "on"
 	}
+	cfg.DirName = normalizeSkillsDirName(cfg.DirName)
 	return cfg
+}
+
+func SkillsConfigFromViper() SkillsConfig {
+	return SkillsConfigFromReader(viper.GetViper())
 }
 
 func SkillsConfigFromRunCmd(cmd *cobra.Command) SkillsConfig {
@@ -69,6 +86,8 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 	if log == nil {
 		log = slog.Default()
 	}
+	dirName := normalizeSkillsDirName(cfg.DirName)
+
 	spec := agent.DefaultPromptSpec()
 	var loadedOrdered []string
 	declaredAuthProfiles := make(map[string]bool)
@@ -158,7 +177,7 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 		}
 		spec.Skills = append(spec.Skills, agent.PromptSkill{
 			Name:         name,
-			FilePath:     skillPromptFilePath(skillLoaded.ID),
+			FilePath:     skillPromptFilePath(skillLoaded.ID, dirName),
 			Description:  desc,
 			Requirements: reqs,
 		})
@@ -186,24 +205,30 @@ func normalizeSkillsMode(raw string) (mode string) {
 	}
 }
 
-func skillsAutoFromViper() bool {
-	if viper.IsSet("skills.auto") {
-		return viper.GetBool("skills.auto")
+func skillsAutoFromReader(r ConfigReader) bool {
+	if r == nil {
+		return true
 	}
-	if viper.IsSet("skills_auto") {
-		return viper.GetBool("skills_auto")
+	if r.IsSet("skills.auto") {
+		return r.GetBool("skills.auto")
+	}
+	if r.IsSet("skills_auto") {
+		return r.GetBool("skills_auto")
 	}
 	return true
 }
 
-func getStringSlice(keys ...string) []string {
+func getStringSliceFromReader(r ConfigReader, keys ...string) []string {
+	if r == nil {
+		return nil
+	}
 	for _, key := range keys {
 		key = strings.TrimSpace(key)
 		if key == "" {
 			continue
 		}
-		if viper.IsSet(key) {
-			return viper.GetStringSlice(key)
+		if r.IsSet(key) {
+			return r.GetStringSlice(key)
 		}
 	}
 	return nil
@@ -231,11 +256,16 @@ func mapKeysSorted(m map[string]bool) []string {
 	return out
 }
 
-func skillPromptFilePath(skillID string) string {
-	dirName := strings.TrimSpace(viper.GetString("skills.dir_name"))
+func normalizeSkillsDirName(raw string) string {
+	dirName := strings.TrimSpace(raw)
 	if dirName == "" {
-		dirName = "skills"
+		return "skills"
 	}
+	return dirName
+}
+
+func skillPromptFilePath(skillID string, dirName string) string {
+	dirName = normalizeSkillsDirName(dirName)
 	id := strings.Trim(strings.TrimSpace(skillID), "/\\")
 	if id == "" {
 		return path.Join("file_state_dir", dirName, "SKILL.md")

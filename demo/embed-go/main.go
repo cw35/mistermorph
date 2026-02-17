@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
@@ -113,12 +117,32 @@ func (t *GetWeatherTool) Execute(ctx context.Context, params map[string]any) (st
 
 func main() {
 	var (
-		task           = flag.String("task", "List files and summarize the project.", "Task to run.")
+		mode           = flag.String("mode", "task", "Run mode: task|telegram|slack.")
+		task           = flag.String("task", "List files and summarize the project.", "Task to run in --mode task.")
 		model          = flag.String("model", "gpt-5.2", "Model name.")
 		endpoint       = flag.String("endpoint", "https://api.openai.com", "OpenAI-compatible base URL.")
 		apiKey         = flag.String("api-key", os.Getenv("OPENAI_API_KEY"), "API key (defaults to OPENAI_API_KEY).")
 		inspectPrompt  = flag.Bool("inspect-prompt", false, "Dump prompts to ./dump.")
 		inspectRequest = flag.Bool("inspect-request", false, "Dump request/response payloads to ./dump.")
+
+		telegramBotToken = flag.String("telegram-bot-token", os.Getenv("TG_BOT_TOKEN"), "Telegram bot token (or TG_BOT_TOKEN).")
+		telegramAllowed  = flag.String("telegram-allowed-chat-ids", "", "Comma-separated allowed Telegram chat IDs.")
+		telegramPoll     = flag.Duration("telegram-poll-timeout", 30*time.Second, "Telegram long polling timeout.")
+		telegramTaskTO   = flag.Duration("telegram-task-timeout", 0, "Telegram per-message timeout (0 means global timeout).")
+		telegramMaxConc  = flag.Int("telegram-max-concurrency", 3, "Telegram max in-flight tasks.")
+		telegramTrigger  = flag.String("telegram-group-trigger-mode", "smart", "Telegram group trigger mode: strict|smart|talkative.")
+		telegramConf     = flag.Float64("telegram-addressing-confidence-threshold", 0.6, "Telegram addressing confidence threshold.")
+		telegramInter    = flag.Float64("telegram-addressing-interject-threshold", 0.3, "Telegram addressing interject threshold.")
+
+		slackBotToken  = flag.String("slack-bot-token", os.Getenv("SLACK_BOT_TOKEN"), "Slack bot token xoxb-... (or SLACK_BOT_TOKEN).")
+		slackAppToken  = flag.String("slack-app-token", os.Getenv("SLACK_APP_TOKEN"), "Slack app token xapp-... (or SLACK_APP_TOKEN).")
+		slackTeams     = flag.String("slack-allowed-team-ids", "", "Comma-separated allowed Slack team IDs.")
+		slackChannels  = flag.String("slack-allowed-channel-ids", "", "Comma-separated allowed Slack channel IDs.")
+		slackTaskTO    = flag.Duration("slack-task-timeout", 0, "Slack per-message timeout (0 means global timeout).")
+		slackMaxConc   = flag.Int("slack-max-concurrency", 3, "Slack max in-flight tasks.")
+		slackTrigger   = flag.String("slack-group-trigger-mode", "smart", "Slack group trigger mode: strict|smart|talkative.")
+		slackConf      = flag.Float64("slack-addressing-confidence-threshold", 0.6, "Slack addressing confidence threshold.")
+		slackInterject = flag.Float64("slack-addressing-interject-threshold", 0.6, "Slack addressing interject threshold.")
 	)
 	flag.Parse()
 
@@ -136,10 +160,53 @@ func main() {
 
 	rt, err := integration.New(cfg)
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		exitErr(err)
 	}
 
+	switch strings.ToLower(strings.TrimSpace(*mode)) {
+	case "task":
+		runTaskMode(rt, *task, *model)
+	case "telegram":
+		allowed, err := parseInt64List(*telegramAllowed)
+		if err != nil {
+			exitErr(fmt.Errorf("parse --telegram-allowed-chat-ids: %w", err))
+		}
+		runner, err := rt.NewTelegramBot(integration.TelegramOptions{
+			BotToken:                      strings.TrimSpace(*telegramBotToken),
+			AllowedChatIDs:                allowed,
+			PollTimeout:                   *telegramPoll,
+			TaskTimeout:                   *telegramTaskTO,
+			MaxConcurrency:                *telegramMaxConc,
+			GroupTriggerMode:              strings.TrimSpace(*telegramTrigger),
+			AddressingConfidenceThreshold: *telegramConf,
+			AddressingInterjectThreshold:  *telegramInter,
+		})
+		if err != nil {
+			exitErr(err)
+		}
+		runBotMode(runner)
+	case "slack":
+		runner, err := rt.NewSlackBot(integration.SlackOptions{
+			BotToken:                      strings.TrimSpace(*slackBotToken),
+			AppToken:                      strings.TrimSpace(*slackAppToken),
+			AllowedTeamIDs:                parseStringList(*slackTeams),
+			AllowedChannelIDs:             parseStringList(*slackChannels),
+			TaskTimeout:                   *slackTaskTO,
+			MaxConcurrency:                *slackMaxConc,
+			GroupTriggerMode:              strings.TrimSpace(*slackTrigger),
+			AddressingConfidenceThreshold: *slackConf,
+			AddressingInterjectThreshold:  *slackInterject,
+		})
+		if err != nil {
+			exitErr(err)
+		}
+		runBotMode(runner)
+	default:
+		exitErr(fmt.Errorf("invalid --mode %q (expected: task|telegram|slack)", *mode))
+	}
+}
+
+func runTaskMode(rt *integration.Runtime, task string, model string) {
 	reg := rt.NewRegistry()
 	reg.Register(&ListDirTool{Root: "."})
 	reg.Register(&GetWeatherTool{})
@@ -147,24 +214,79 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	prepared, err := rt.NewRunEngineWithRegistry(ctx, *task, reg)
+	prepared, err := rt.NewRunEngineWithRegistry(ctx, task, reg)
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		exitErr(err)
 	}
 	defer func() { _ = prepared.Cleanup() }()
 
-	runModel := strings.TrimSpace(*model)
+	runModel := strings.TrimSpace(model)
 	if runModel == "" {
 		runModel = strings.TrimSpace(prepared.Model)
 	}
-	final, _, err := prepared.Engine.Run(ctx, *task, agent.RunOptions{Model: runModel})
+	final, _, err := prepared.Engine.Run(ctx, task, agent.RunOptions{Model: runModel})
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		exitErr(err)
 	}
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(final)
+}
+
+func runBotMode(runner integration.BotRunner) {
+	defer func() { _ = runner.Close() }()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := runner.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		exitErr(err)
+	}
+}
+
+func parseInt64List(raw string) ([]int64, error) {
+	items := parseStringList(raw)
+	if len(items) == 0 {
+		return nil, nil
+	}
+	out := make([]int64, 0, len(items))
+	for _, item := range items {
+		id, err := strconv.ParseInt(item, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid int64 %q", item)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func parseStringList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		v := strings.TrimSpace(part)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func exitErr(err error) {
+	if err == nil {
+		os.Exit(1)
+	}
+	_, _ = fmt.Fprintln(os.Stderr, err.Error())
+	os.Exit(1)
 }
