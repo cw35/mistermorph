@@ -81,8 +81,6 @@ func New(cfg Config) *Client {
 		CloudflareAccountID: strings.TrimSpace(cfg.CloudflareAccountID),
 		CloudflareAPIToken:  strings.TrimSpace(cfg.CloudflareAPIToken),
 		CloudflareAPIBase:   strings.TrimSpace(cfg.CloudflareAPIBase),
-		SusanooAPIBase:      strings.TrimSpace(susanooBase),
-		SusanooAPIKey:       strings.TrimSpace(susanooKey),
 		GeminiAPIKey:        strings.TrimSpace(geminiKey),
 		GeminiAPIBase:       strings.TrimSpace(geminiBase),
 

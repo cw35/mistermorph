@@ -51,6 +51,18 @@ If all match, runtime skips this message before `groupTriggerDecision(...)`.
 
 This prefilter is exactly where topic/thread reply-shape edge cases can affect triggering in supergroups.
 
+Examples:
+
+- Will be skipped by prefilter:
+  - Message is a reply to another human message.
+  - Body has no `@bot_username`.
+  - Example: replying to Alice with "ok got it" (no bot mention).
+
+- Will NOT be skipped by this prefilter:
+  - Message is not a reply (`ReplyTo == nil`), even if body mentions someone else.
+  - Example: `@ballcatcat I do not have access to many EC2 instances in cp; please grant me a few.`
+  - This case continues into `groupTriggerDecision(...)`, and in `smart`/`talkative` mode may still trigger by LLM judgment.
+
 ## 3) Trigger Stage (Pre-Run)
 
 ### 3.1 Modes
