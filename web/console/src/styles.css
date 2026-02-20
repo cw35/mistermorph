@@ -162,6 +162,12 @@ a {
   padding: 9px 9px;
 }
 
+.sidebar .touchable.nav-btn,
+.mobile-drawer-nav .touchable.nav-btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
 .mobile-drawer-nav {
   display: grid;
   gap: 4px;
@@ -226,6 +232,12 @@ a {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-1);
+}
+
+.q-input,
+.q-textarea,
+.q-dropdown-menu {
+  width: 100%;
 }
 
 .stat-list {

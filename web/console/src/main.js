@@ -1,9 +1,8 @@
 import { createApp, computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { createRouter, createWebHistory, useRoute, useRouter } from "vue-router";
-import { QuailUI } from "quail-ui";
+import { QuailUI, applyTheme } from "quail-ui";
 import "quail-ui/dist/index.css";
 import "./styles.css";
-import "./override.css";
 
 const AUTH_STORAGE_KEY = "mistermorph_console_auth_v1";
 const BASE_PATH = "/console";
@@ -729,4 +728,5 @@ hydrateAuth();
 const app = createApp(App);
 app.use(router);
 app.use(QuailUI);
+applyTheme("morph", false);
 app.mount("#app");
