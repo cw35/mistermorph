@@ -48,6 +48,10 @@ type server struct {
 	contactsDir    string
 	contactsActive string
 	contactsOld    string
+	identityPath   string
+	soulPath       string
+	todoWIPPath    string
+	todoDonePath   string
 }
 
 func newServeCmd() *cobra.Command {
@@ -154,6 +158,10 @@ func newServer(cfg serveConfig) (*server, error) {
 		contactsDir:    contactsDir,
 		contactsActive: filepath.Join(contactsDir, "ACTIVE.md"),
 		contactsOld:    filepath.Join(contactsDir, "INACTIVE.md"),
+		identityPath:   filepath.Join(cfg.stateDir, "IDENTITY.md"),
+		soulPath:       filepath.Join(cfg.stateDir, "SOUL.md"),
+		todoWIPPath:    filepath.Join(cfg.stateDir, statepaths.TODOWIPFilename),
+		todoDonePath:   filepath.Join(cfg.stateDir, statepaths.TODODONEFilename),
 	}, nil
 }
 
@@ -169,8 +177,12 @@ func (s *server) run() error {
 	mux.HandleFunc(apiPrefix+"/dashboard/overview", s.withAuth(s.handleDashboardOverview))
 	mux.HandleFunc(apiPrefix+"/tasks", s.withAuth(s.handleTasks))
 	mux.HandleFunc(apiPrefix+"/tasks/", s.withAuth(s.handleTaskDetail))
+	mux.HandleFunc(apiPrefix+"/todo/files", s.withAuth(s.handleTODOFiles))
+	mux.HandleFunc(apiPrefix+"/todo/files/", s.withAuth(s.handleTODOFileDetail))
 	mux.HandleFunc(apiPrefix+"/contacts/files", s.withAuth(s.handleContactsFiles))
 	mux.HandleFunc(apiPrefix+"/contacts/files/", s.withAuth(s.handleContactsFileDetail))
+	mux.HandleFunc(apiPrefix+"/persona/files", s.withAuth(s.handlePersonaFiles))
+	mux.HandleFunc(apiPrefix+"/persona/files/", s.withAuth(s.handlePersonaFileDetail))
 	mux.HandleFunc(apiPrefix+"/system/config", s.withAuth(s.handleSystemConfig))
 	mux.HandleFunc(apiPrefix+"/system/diagnostics", s.withAuth(s.handleSystemDiagnostics))
 
@@ -412,6 +424,73 @@ func (s *server) handleContactsFiles(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *server) handleTODOFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	items := []map[string]any{
+		describeContactFile(statepaths.TODOWIPFilename, s.todoWIPPath),
+		describeContactFile(statepaths.TODODONEFilename, s.todoDonePath),
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+	})
+}
+
+func (s *server) handleTODOFileDetail(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/todo/files/"))
+	filePath, ok := s.resolveTODOFile(name)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid file name")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		content, exists, err := fsstore.ReadText(filePath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !exists {
+			writeError(w, http.StatusNotFound, "file not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":    name,
+			"content": content,
+		})
+		return
+
+	case http.MethodPut:
+		var req struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if err := fsstore.EnsureDir(filepath.Dir(filePath), 0o700); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := fsstore.WriteTextAtomic(filePath, req.Content, fsstore.FileOptions{}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":   true,
+			"name": name,
+		})
+		return
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
 func (s *server) handleContactsFileDetail(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/contacts/files/"))
 	filePath, ok := s.resolveContactsFile(name)
@@ -465,12 +544,101 @@ func (s *server) handleContactsFileDetail(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (s *server) handlePersonaFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	items := []map[string]any{
+		describeContactFile("IDENTITY.md", s.identityPath),
+		describeContactFile("SOUL.md", s.soulPath),
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+	})
+}
+
+func (s *server) handlePersonaFileDetail(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/persona/files/"))
+	filePath, ok := s.resolvePersonaFile(name)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid file name")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		content, exists, err := fsstore.ReadText(filePath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !exists {
+			writeError(w, http.StatusNotFound, "file not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":    name,
+			"content": content,
+		})
+		return
+
+	case http.MethodPut:
+		var req struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if err := fsstore.EnsureDir(filepath.Dir(filePath), 0o700); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := fsstore.WriteTextAtomic(filePath, req.Content, fsstore.FileOptions{}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":   true,
+			"name": name,
+		})
+		return
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+}
+
 func (s *server) resolveContactsFile(name string) (string, bool) {
 	switch strings.TrimSpace(strings.ToUpper(name)) {
 	case "ACTIVE.MD":
 		return s.contactsActive, true
 	case "INACTIVE.MD":
 		return s.contactsOld, true
+	default:
+		return "", false
+	}
+}
+
+func (s *server) resolveTODOFile(name string) (string, bool) {
+	switch strings.TrimSpace(strings.ToUpper(name)) {
+	case strings.ToUpper(statepaths.TODOWIPFilename):
+		return s.todoWIPPath, true
+	case strings.ToUpper(statepaths.TODODONEFilename):
+		return s.todoDonePath, true
+	default:
+		return "", false
+	}
+}
+
+func (s *server) resolvePersonaFile(name string) (string, bool) {
+	switch strings.TrimSpace(strings.ToUpper(name)) {
+	case "IDENTITY.MD":
+		return s.identityPath, true
+	case "SOUL.MD":
+		return s.soulPath, true
 	default:
 		return "", false
 	}

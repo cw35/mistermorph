@@ -474,6 +474,210 @@ const ContactsFilesView = {
   `,
 };
 
+const TODOFilesView = {
+  setup() {
+    const loading = ref(false);
+    const saving = ref(false);
+    const err = ref("");
+    const ok = ref("");
+    const fileItems = ref([
+      { title: "TODO.md", name: "TODO.md" },
+      { title: "TODO.DONE.md", name: "TODO.DONE.md" },
+    ]);
+    const selectedFile = ref(fileItems.value[0]);
+    const content = ref("");
+
+    async function loadFiles() {
+      const data = await apiFetch("/todo/files");
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (items.length === 0) {
+        return;
+      }
+      fileItems.value = items.map((it) => ({
+        title: it.name || "",
+        name: it.name || "",
+      }));
+      if (!fileItems.value.find((x) => x.name === selectedFile.value?.name)) {
+        selectedFile.value = fileItems.value[0];
+      }
+    }
+
+    async function loadContent(name) {
+      loading.value = true;
+      err.value = "";
+      ok.value = "";
+      try {
+        const data = await apiFetch(`/todo/files/${encodeURIComponent(name)}`);
+        content.value = data.content || "";
+      } catch (e) {
+        if (e && e.status === 404) {
+          content.value = "";
+          ok.value = "文件不存在，可直接编辑后保存创建";
+          return;
+        }
+        err.value = e.message || "读取失败";
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function save() {
+      saving.value = true;
+      err.value = "";
+      ok.value = "";
+      try {
+        await apiFetch(`/todo/files/${encodeURIComponent(selectedFile.value.name)}`, {
+          method: "PUT",
+          body: { content: content.value },
+        });
+        ok.value = "保存成功";
+      } catch (e) {
+        err.value = e.message || "保存失败";
+      } finally {
+        saving.value = false;
+      }
+    }
+
+    async function onFileChange(item) {
+      if (!item || typeof item !== "object" || !item.name) {
+        return;
+      }
+      selectedFile.value = item;
+      await loadContent(item.name);
+    }
+
+    async function init() {
+      await loadFiles();
+      await loadContent(selectedFile.value.name);
+    }
+
+    onMounted(init);
+    return { loading, saving, err, ok, fileItems, selectedFile, content, onFileChange, save };
+  },
+  template: `
+    <section>
+      <h2 class="title">待办</h2>
+      <div class="toolbar wrap">
+        <div class="tool-item">
+          <QDropdownMenu
+            :items="fileItems"
+            :initialItem="selectedFile"
+            placeholder="选择文件"
+            @change="onFileChange"
+          />
+        </div>
+        <QButton class="primary" :loading="saving" @click="save">保存</QButton>
+      </div>
+      <QProgress v-if="loading" :infinite="true" />
+      <QFence v-if="err" type="danger" icon="QIconCloseCircle" :text="err" />
+      <QFence v-if="ok" type="success" icon="QIconCheckCircle" :text="ok" />
+      <QTextarea v-model="content" :rows="22" />
+    </section>
+  `,
+};
+
+const PersonaFilesView = {
+  setup() {
+    const loading = ref(false);
+    const saving = ref(false);
+    const err = ref("");
+    const ok = ref("");
+    const fileItems = ref([
+      { title: "IDENTITY.md", name: "IDENTITY.md" },
+      { title: "SOUL.md", name: "SOUL.md" },
+    ]);
+    const selectedFile = ref(fileItems.value[0]);
+    const content = ref("");
+
+    async function loadFiles() {
+      const data = await apiFetch("/persona/files");
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (items.length === 0) {
+        return;
+      }
+      fileItems.value = items.map((it) => ({
+        title: it.name || "",
+        name: it.name || "",
+      }));
+      if (!fileItems.value.find((x) => x.name === selectedFile.value?.name)) {
+        selectedFile.value = fileItems.value[0];
+      }
+    }
+
+    async function loadContent(name) {
+      loading.value = true;
+      err.value = "";
+      ok.value = "";
+      try {
+        const data = await apiFetch(`/persona/files/${encodeURIComponent(name)}`);
+        content.value = data.content || "";
+      } catch (e) {
+        if (e && e.status === 404) {
+          content.value = "";
+          ok.value = "文件不存在，可直接编辑后保存创建";
+          return;
+        }
+        err.value = e.message || "读取失败";
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function save() {
+      saving.value = true;
+      err.value = "";
+      ok.value = "";
+      try {
+        await apiFetch(`/persona/files/${encodeURIComponent(selectedFile.value.name)}`, {
+          method: "PUT",
+          body: { content: content.value },
+        });
+        ok.value = "保存成功";
+      } catch (e) {
+        err.value = e.message || "保存失败";
+      } finally {
+        saving.value = false;
+      }
+    }
+
+    async function onFileChange(item) {
+      if (!item || typeof item !== "object" || !item.name) {
+        return;
+      }
+      selectedFile.value = item;
+      await loadContent(item.name);
+    }
+
+    async function init() {
+      await loadFiles();
+      await loadContent(selectedFile.value.name);
+    }
+
+    onMounted(init);
+    return { loading, saving, err, ok, fileItems, selectedFile, content, onFileChange, save };
+  },
+  template: `
+    <section>
+      <h2 class="title">人格</h2>
+      <div class="toolbar wrap">
+        <div class="tool-item">
+          <QDropdownMenu
+            :items="fileItems"
+            :initialItem="selectedFile"
+            placeholder="选择文件"
+            @change="onFileChange"
+          />
+        </div>
+        <QButton class="primary" :loading="saving" @click="save">保存</QButton>
+      </div>
+      <QProgress v-if="loading" :infinite="true" />
+      <QFence v-if="err" type="danger" icon="QIconCloseCircle" :text="err" />
+      <QFence v-if="ok" type="success" icon="QIconCheckCircle" :text="ok" />
+      <QTextarea v-model="content" :rows="22" />
+    </section>
+  `,
+};
+
 const SettingsView = {
   setup() {
     const loading = ref(false);
@@ -531,7 +735,9 @@ const routes = [
   { path: "/dashboard", component: DashboardView },
   { path: "/tasks", component: TasksView },
   { path: "/tasks/:id", component: TaskDetailView },
+  { path: "/todo-files", component: TODOFilesView },
   { path: "/contacts-files", component: ContactsFilesView },
+  { path: "/persona-files", component: PersonaFilesView },
   { path: "/settings", component: SettingsView },
   { path: "/", redirect: "/dashboard" },
 ];
@@ -544,7 +750,9 @@ const router = createRouter({
 const navItems = [
   { id: "/dashboard", title: "概览" },
   { id: "/tasks", title: "任务" },
+  { id: "/todo-files", title: "待办" },
   { id: "/contacts-files", title: "联系人" },
+  { id: "/persona-files", title: "人格" },
   { id: "/settings", title: "配置" },
 ];
 
