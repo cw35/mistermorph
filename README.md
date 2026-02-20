@@ -63,6 +63,22 @@ mistermorph install <dir>
 
 The `install` command installs required files and built-in skills under `~/.morph/skills/` (or a specified directory via `<dir>`).
 
+When `config.yaml` does not already exist in the install target, `install` first tries to find a readable config in this order:
+
+1. `--config` path
+2. `<dir>/config.yaml`
+3. `~/.morph/config.yaml`
+
+If none is found, `install` runs an interactive setup wizard (TTY only) before writing `config.yaml`:
+
+1. select LLM provider (`openai|gemini|cloudflare`)
+2. fill provider-specific required fields (`api_key` for `openai/gemini`; `account_id` + `api_token` for `cloudflare`)
+3. set model
+4. set Telegram `bot_token` + `group_trigger_mode`
+5. optionally set Slack `bot_token` + `app_token` + `group_trigger_mode`
+
+Use `mistermorph install --yes` to skip interactive prompts.
+
 ### Step 3: Setup an API key
 
 You can run without a `config.yaml` by using environment variables:
@@ -399,6 +415,7 @@ These arguments will dump the final system/user/tool prompts and the full LLM re
 
 **install**
 - `install [dir]`
+- `--yes`
 
 ### Environment variables
 

@@ -40,6 +40,17 @@ func newInstallCmd() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "warn: config already exists, skipping: %s\n", cfgPath)
 				writeConfig = false
 			}
+			var cfgSetup *installConfigSetup
+			if writeConfig {
+				if source, ok := findReadableInstallConfig(cmd, dir); ok {
+					fmt.Printf("[i] found config.yaml, skip interactive setup: %s\n", source)
+				} else {
+					cfgSetup, err = maybeCollectInstallConfigSetup(cmd, yes)
+					if err != nil {
+						return err
+					}
+				}
+			}
 
 			hbPath := filepath.Join(dir, "HEARTBEAT.md")
 			writeHeartbeat := true
@@ -112,7 +123,7 @@ func newInstallCmd() *cobra.Command {
 						if err != nil {
 							return "", err
 						}
-						return patchInitConfig(body, dir), nil
+						return patchInitConfigWithSetup(body, dir, cfgSetup), nil
 					},
 				},
 				{
@@ -329,12 +340,17 @@ func loadSoulTemplate() (string, error) {
 }
 
 func patchInitConfig(cfg string, dir string) string {
+	return patchInitConfigWithSetup(cfg, dir, nil)
+}
+
+func patchInitConfigWithSetup(cfg string, dir string, setup *installConfigSetup) string {
 	if strings.TrimSpace(cfg) == "" {
 		return cfg
 	}
 	dir = filepath.Clean(dir)
 	dir = filepath.ToSlash(dir)
 	cfg = strings.ReplaceAll(cfg, `file_state_dir: "~/.morph"`, fmt.Sprintf(`file_state_dir: "%s"`, dir))
+	cfg = applyInstallConfigSetupOverrides(cfg, setup)
 	return cfg
 }
 

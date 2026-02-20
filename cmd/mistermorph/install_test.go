@@ -27,7 +27,7 @@ func TestInstallWritesIdentityAndSoulUnderStateDir(t *testing.T) {
 	})
 
 	cmd := newInstallCmd()
-	cmd.SetArgs([]string{stateDir})
+	cmd.SetArgs([]string{"--yes", stateDir})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("install command failed: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestInstallUsesConfiguredStateDirWhenArgMissing(t *testing.T) {
 	})
 
 	cmd := newInstallCmd()
-	cmd.SetArgs([]string{})
+	cmd.SetArgs([]string{"--yes"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("install command failed: %v", err)
 	}
