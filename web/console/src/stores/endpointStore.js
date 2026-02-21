@@ -7,12 +7,36 @@ const endpointState = reactive({
   selectedRef: "",
 });
 
+function isConnectedEndpoint(item) {
+  return Boolean(item && item.endpoint_ref && item.connected);
+}
+
+function firstConnectedEndpointRef(items) {
+  const connected = items.find((item) => isConnectedEndpoint(item));
+  return connected ? connected.endpoint_ref : "";
+}
+
 function saveSelectedEndpointRef() {
   localStorage.setItem(ENDPOINT_STORAGE_KEY, endpointState.selectedRef);
 }
 
 function setSelectedEndpointRef(ref) {
-  endpointState.selectedRef = typeof ref === "string" ? ref.trim() : "";
+  const next = typeof ref === "string" ? ref.trim() : "";
+  if (!next) {
+    endpointState.selectedRef = "";
+    saveSelectedEndpointRef();
+    return;
+  }
+
+  const items = Array.isArray(endpointState.items) ? endpointState.items : [];
+  if (items.length === 0) {
+    endpointState.selectedRef = next;
+    saveSelectedEndpointRef();
+    return;
+  }
+
+  const canSelect = items.some((item) => item.endpoint_ref === next && isConnectedEndpoint(item));
+  endpointState.selectedRef = canSelect ? next : firstConnectedEndpointRef(items);
   saveSelectedEndpointRef();
 }
 
@@ -23,15 +47,16 @@ function hydrateEndpointSelection() {
 
 function ensureEndpointSelection() {
   const items = Array.isArray(endpointState.items) ? endpointState.items : [];
-  if (items.length === 0) {
+  const connectedItems = items.filter((item) => isConnectedEndpoint(item));
+  if (connectedItems.length === 0) {
     setSelectedEndpointRef("");
     return;
   }
   const current = endpointState.selectedRef.trim();
-  if (current && items.find((item) => item.endpoint_ref === current)) {
+  if (current && connectedItems.find((item) => item.endpoint_ref === current)) {
     return;
   }
-  setSelectedEndpointRef(items[0].endpoint_ref);
+  setSelectedEndpointRef(connectedItems[0].endpoint_ref);
 }
 
 export {

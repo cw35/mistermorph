@@ -28,11 +28,13 @@ function useAppShell() {
   const mobileNavOpen = ref(false);
   const mobileMode = ref(window.innerWidth <= 980);
   const endpointItems = computed(() =>
-    endpointState.items.map((item) => ({
-      title: item.name || item.endpoint_ref,
-      subtitle: item.url || "",
-      value: item.endpoint_ref,
-    }))
+    endpointState.items
+      .filter((item) => item && item.connected === true)
+      .map((item) => ({
+        title: item.name || item.endpoint_ref,
+        subtitle: item.url || "",
+        value: item.endpoint_ref,
+      }))
   );
   const selectedEndpointItem = computed(() => {
     return endpointItems.value.find((item) => item.value === endpointState.selectedRef) || null;
@@ -97,7 +99,10 @@ function useAppShell() {
 
   function onEndpointChange(item) {
     if (item && typeof item === "object" && typeof item.value === "string") {
-      setSelectedEndpointRef(item.value);
+      const canSelect = endpointState.items.some(
+        (endpoint) => endpoint.endpoint_ref === item.value && endpoint.connected === true
+      );
+      setSelectedEndpointRef(canSelect ? item.value : "");
       return;
     }
     setSelectedEndpointRef("");

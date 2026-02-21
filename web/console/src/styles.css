@@ -40,8 +40,16 @@ html {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 12% 15%, rgba(96, 96, 96, 0.08) 0%, transparent 44%),
-    radial-gradient(circle at 85% 0%, rgba(126, 126, 126, 0.08) 0%, transparent 38%),
+    radial-gradient(
+      circle at 12% 15%,
+      rgba(96, 96, 96, 0.08) 0%,
+      transparent 44%
+    ),
+    radial-gradient(
+      circle at 85% 0%,
+      rgba(126, 126, 126, 0.08) 0%,
+      transparent 38%
+    ),
     linear-gradient(155deg, var(--bg-0) 0%, var(--bg-1) 45%, var(--bg-2) 100%);
   background-attachment: fixed;
   color: var(--text-0);
@@ -123,6 +131,7 @@ a {
 
 .mobile-nav-trigger {
   min-width: 36px;
+  transform: translateX(-8px);
   height: 32px;
   padding: 0 8px !important;
 }
@@ -396,6 +405,7 @@ a {
 .stat-value {
   color: var(--text-1);
   font-size: 13px;
+  word-wrap: anywhere;
 }
 
 .channel-runtime-list {
@@ -439,6 +449,11 @@ a {
 
 .endpoint-overview-item.clickable {
   cursor: pointer;
+}
+
+.endpoint-overview-item.is-disabled {
+  cursor: default;
+  opacity: 0.62;
 }
 
 .endpoint-overview-item.clickable:focus-visible {
@@ -631,7 +646,11 @@ a {
   height: 8px;
   pointer-events: none;
   z-index: 0;
-  background-image: repeating-linear-gradient(90deg, var(--tone-shadow) 0 1px, transparent 1px 2px);
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--tone-shadow) 0 1px,
+    transparent 1px 2px
+  );
   opacity: 0.66;
 }
 

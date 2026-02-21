@@ -20,7 +20,12 @@ const OverviewView = {
     );
 
     function openEndpoint(item) {
-      if (!item || typeof item.endpoint_ref !== "string" || !item.endpoint_ref) {
+      if (
+        !item ||
+        typeof item.endpoint_ref !== "string" ||
+        !item.endpoint_ref ||
+        item.connected !== true
+      ) {
         return;
       }
       setSelectedEndpointRef(item.endpoint_ref);
@@ -64,12 +69,13 @@ const OverviewView = {
             <div
               v-for="item in endpointRows"
               :key="item.endpoint_ref"
-              class="endpoint-overview-item frame clickable"
-              tabindex="0"
-              role="button"
-              @click="openEndpoint(item)"
-              @keydown.enter.prevent="openEndpoint(item)"
-              @keydown.space.prevent="openEndpoint(item)"
+              :class="item.connected ? 'endpoint-overview-item frame clickable' : 'endpoint-overview-item frame is-disabled'"
+              :tabindex="item.connected ? 0 : -1"
+              :role="item.connected ? 'button' : undefined"
+              :aria-disabled="item.connected ? undefined : 'true'"
+              @click="item.connected && openEndpoint(item)"
+              @keydown.enter.prevent="item.connected && openEndpoint(item)"
+              @keydown.space.prevent="item.connected && openEndpoint(item)"
             >
               <div class="endpoint-overview-head my-2">
                 <span class="channel-runtime-dot">

@@ -25,8 +25,8 @@ const AppTopbar = {
   template: `
     <header class="topbar">
       <div class="topbar-brand">
-        <QButton v-if="mobileMode && !inOverview" class="plain mobile-nav-trigger" @click="$emit('open-mobile-nav')">
-          <QIconMenu />
+        <QButton v-if="mobileMode && !inOverview" class="plain mobile-nav-trigger icon" @click="$emit('open-mobile-nav')">
+          <QIconMenu class="icon"/>
         </QButton>
         <div class="brand">
           <h1 class="brand-title">Mistermorph Console</h1>
