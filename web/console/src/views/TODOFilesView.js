@@ -1,6 +1,6 @@
 import { onMounted, ref } from "vue";
 
-import { apiFetch, translate } from "../core/context";
+import { runtimeApiFetch, translate } from "../core/context";
 
 const TODOFilesView = {
   setup() {
@@ -17,7 +17,7 @@ const TODOFilesView = {
     const content = ref("");
 
     async function loadFiles() {
-      const data = await apiFetch("/todo/files");
+      const data = await runtimeApiFetch("/todo/files");
       const items = Array.isArray(data.items) ? data.items : [];
       if (items.length === 0) {
         return;
@@ -36,7 +36,7 @@ const TODOFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        const data = await apiFetch(`/todo/files/${encodeURIComponent(name)}`);
+        const data = await runtimeApiFetch(`/todo/files/${encodeURIComponent(name)}`);
         content.value = data.content || "";
       } catch (e) {
         if (e && e.status === 404) {
@@ -55,7 +55,7 @@ const TODOFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        await apiFetch(`/todo/files/${encodeURIComponent(selectedFile.value.name)}`, {
+        await runtimeApiFetch(`/todo/files/${encodeURIComponent(selectedFile.value.name)}`, {
           method: "PUT",
           body: { content: content.value },
         });

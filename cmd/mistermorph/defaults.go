@@ -49,10 +49,8 @@ func initViperDefaults() {
 	viper.SetDefault("contacts.proactive.failure_cooldown", 72*time.Hour)
 
 	// Daemon server
-	viper.SetDefault("server.bind", "127.0.0.1")
-	viper.SetDefault("server.port", 8787)
+	viper.SetDefault("server.listen", "127.0.0.1:8787")
 	viper.SetDefault("server.max_queue", 100)
-	viper.SetDefault("server.url", "http://127.0.0.1:8787")
 	viper.SetDefault("server.with_maep", false)
 
 	// Console server

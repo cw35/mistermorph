@@ -241,17 +241,13 @@ skills:
 
 # Daemon mode (local HTTP server).
 server:
-  # Bind address for `mistermorph serve`.
-  bind: "127.0.0.1"
-  # Port for `mistermorph serve`.
-  port: 8787
+  # Listen address for `mistermorph serve` (host:port).
+  listen: "127.0.0.1:8787"
   # Bearer token required for submit/get endpoints.
   # Prefer env var: MISTER_MORPH_SERVER_AUTH_TOKEN
   auth_token: ""
   # Max queued tasks (in-memory).
   max_queue: 100
-  # Base URL used by `mistermorph submit` (client).
-  url: "http://127.0.0.1:8787"
   # If true, `mistermorph serve` also starts an embedded MAEP listener.
   # Can be overridden by CLI flag --with-maep.
   with_maep: false

@@ -36,9 +36,14 @@ func NewSubmitCmd() *cobra.Command {
 				return fmt.Errorf("missing --task (or stdin)")
 			}
 
-			serverURL := strings.TrimRight(strings.TrimSpace(configutil.FlagOrViperString(cmd, "server-url", "server.url")), "/")
+			serverURL, _ := cmd.Flags().GetString("server-url")
+			serverURL = strings.TrimRight(strings.TrimSpace(serverURL), "/")
 			if serverURL == "" {
-				serverURL = "http://127.0.0.1:8787"
+				serverListen := strings.TrimSpace(viper.GetString("server.listen"))
+				if serverListen == "" {
+					serverListen = "127.0.0.1:8787"
+				}
+				serverURL = "http://" + serverListen
 			}
 			auth, _ := cmd.Flags().GetString("auth-token")
 			auth = strings.TrimSpace(auth)
@@ -139,7 +144,7 @@ func NewSubmitCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("task", "", "Task to submit (if empty, reads from stdin).")
-	cmd.Flags().String("server-url", "http://127.0.0.1:8787", "Daemon base URL.")
+	cmd.Flags().String("server-url", "", "Daemon base URL (default: http://<server.listen>).")
 	cmd.Flags().String("auth-token", "", "Bearer token for daemon auth.")
 	cmd.Flags().String("model", "", "Model name override (optional).")
 	cmd.Flags().String("submit-timeout", "", "Per-task timeout override (e.g. 2m, 30s).")

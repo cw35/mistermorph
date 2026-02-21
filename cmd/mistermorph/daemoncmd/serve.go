@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -43,13 +42,9 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 		Use:   "serve",
 		Short: "Run as a local daemon that accepts tasks over HTTP",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bind := strings.TrimSpace(configutil.FlagOrViperString(cmd, "server-bind", "server.bind"))
-			if bind == "" {
-				bind = "127.0.0.1"
-			}
-			port := configutil.FlagOrViperInt(cmd, "server-port", "server.port")
-			if port <= 0 {
-				port = 8787
+			listen := strings.TrimSpace(configutil.FlagOrViperString(cmd, "server-listen", "server.listen"))
+			if listen == "" {
+				listen = "127.0.0.1:8787"
 			}
 			auth := configutil.FlagOrViperString(cmd, "server-auth-token", "server.auth_token")
 			if strings.TrimSpace(auth) == "" {
@@ -279,9 +274,25 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 
 			mux := http.NewServeMux()
 			daemonruntime.RegisterRoutes(mux, daemonruntime.RoutesOptions{
-				Mode:          "serve",
-				AuthToken:     auth,
-				TaskReader:    store,
+				Mode:       "serve",
+				AuthToken:  auth,
+				TaskReader: store,
+				Overview: func(ctx context.Context) (map[string]any, error) {
+					return map[string]any{
+						"llm": map[string]any{
+							"provider": provider,
+							"model":    model,
+						},
+						"channel": map[string]any{
+							"configured":          false,
+							"telegram_configured": false,
+							"slack_configured":    false,
+							"running":             "none",
+							"telegram_running":    false,
+							"slack_running":       false,
+						},
+					}, nil
+				},
 				HealthEnabled: true,
 				Submit: func(ctx context.Context, req daemonruntime.SubmitTaskRequest) (daemonruntime.SubmitTaskResponse, error) {
 					timeout := viper.GetDuration("timeout")
@@ -415,7 +426,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 				}
 			})
 
-			addr := bind + ":" + strconv.Itoa(port)
+			addr := listen
 			srv := &http.Server{
 				Addr:              addr,
 				Handler:           mux,
@@ -426,8 +437,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("server-bind", "127.0.0.1", "Bind address (default: 127.0.0.1).")
-	cmd.Flags().Int("server-port", 8787, "HTTP port to listen on.")
+	cmd.Flags().String("server-listen", "127.0.0.1:8787", "HTTP listen address (host:port).")
 	cmd.Flags().String("server-auth-token", "", "Bearer token required for all non-/health endpoints.")
 	cmd.Flags().Int("server-max-queue", 100, "Max queued tasks in memory.")
 	cmd.Flags().Bool("with-maep", false, "Start MAEP listener together with daemon serve.")

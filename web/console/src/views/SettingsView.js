@@ -9,6 +9,7 @@ import {
   clearAuth,
   formatRemainingUntil,
   localeState,
+  runtimeApiFetch,
   translate,
 } from "../core/context";
 
@@ -29,7 +30,10 @@ const SettingsView = {
       loading.value = true;
       err.value = "";
       try {
-        const [cfg, diag] = await Promise.all([apiFetch("/system/config"), apiFetch("/system/diagnostics")]);
+        const [cfg, diag] = await Promise.all([
+          runtimeApiFetch("/system/config"),
+          runtimeApiFetch("/system/diagnostics"),
+        ]);
         configJSON.value = JSON.stringify(cfg, null, 2);
         checks.value = Array.isArray(diag.checks) ? diag.checks : [];
       } catch (e) {

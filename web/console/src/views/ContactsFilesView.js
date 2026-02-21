@@ -1,6 +1,6 @@
 import { onMounted, ref } from "vue";
 
-import { apiFetch, translate } from "../core/context";
+import { runtimeApiFetch, translate } from "../core/context";
 
 const ContactsFilesView = {
   setup() {
@@ -17,7 +17,7 @@ const ContactsFilesView = {
     const content = ref("");
 
     async function loadFiles() {
-      const data = await apiFetch("/contacts/files");
+      const data = await runtimeApiFetch("/contacts/files");
       const items = Array.isArray(data.items) ? data.items : [];
       if (items.length === 0) {
         return;
@@ -36,7 +36,7 @@ const ContactsFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        const data = await apiFetch(`/contacts/files/${encodeURIComponent(name)}`);
+        const data = await runtimeApiFetch(`/contacts/files/${encodeURIComponent(name)}`);
         content.value = data.content || "";
       } catch (e) {
         err.value = e.message || t("msg_read_failed");
@@ -50,7 +50,7 @@ const ContactsFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        await apiFetch(`/contacts/files/${encodeURIComponent(selectedFile.value.name)}`, {
+        await runtimeApiFetch(`/contacts/files/${encodeURIComponent(selectedFile.value.name)}`, {
           method: "PUT",
           body: { content: content.value },
         });

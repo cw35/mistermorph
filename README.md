@@ -176,7 +176,7 @@ Start the daemon:
 
 ```bash
 export MISTER_MORPH_SERVER_AUTH_TOKEN="change-me"
-mistermorph serve --server-port 8787 --log-level info
+mistermorph serve --server-listen 127.0.0.1:8787 --log-level info
 ```
 
 Submit a task:
@@ -378,8 +378,7 @@ These arguments will dump the final system/user/tool prompts and the full LLM re
 - `--inspect-request`
 
 **serve**
-- `--server-bind`
-- `--server-port`
+- `--server-listen`
 - `--server-auth-token`
 - `--server-max-queue`
 

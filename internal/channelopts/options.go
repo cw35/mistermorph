@@ -32,8 +32,7 @@ type TelegramConfig struct {
 	GlobalTaskTimeout                    time.Duration
 	MaxConcurrency                       int
 	FileCacheDir                         string
-	ServerBind                           string
-	ServerPort                           int
+	ServerListen                         string
 	ServerAuthToken                      string
 	ServerMaxQueue                       int
 	BusMaxInFlight                       int
@@ -87,8 +86,7 @@ func TelegramConfigFromReader(r ConfigReader) TelegramConfig {
 		GlobalTaskTimeout:                    r.GetDuration("timeout"),
 		MaxConcurrency:                       r.GetInt("telegram.max_concurrency"),
 		FileCacheDir:                         strings.TrimSpace(r.GetString("file_cache_dir")),
-		ServerBind:                           strings.TrimSpace(r.GetString("server.bind")),
-		ServerPort:                           r.GetInt("server.port"),
+		ServerListen:                         strings.TrimSpace(r.GetString("server.listen")),
 		ServerAuthToken:                      strings.TrimSpace(r.GetString("server.auth_token")),
 		ServerMaxQueue:                       r.GetInt("server.max_queue"),
 		BusMaxInFlight:                       r.GetInt("bus.max_inflight"),
@@ -160,7 +158,7 @@ func BuildTelegramRunOptions(cfg TelegramConfig, in TelegramInput) (telegramrunt
 	if fileCacheDir == "" {
 		fileCacheDir = strings.TrimSpace(cfg.FileCacheDir)
 	}
-	serverListen := buildServerListen(cfg.ServerBind, cfg.ServerPort)
+	serverListen := normalizeServerListen(cfg.ServerListen)
 
 	return telegramruntime.RunOptions{
 		BotToken:                      strings.TrimSpace(in.BotToken),
@@ -239,8 +237,7 @@ type SlackConfig struct {
 	TaskTimeout                          time.Duration
 	GlobalTaskTimeout                    time.Duration
 	MaxConcurrency                       int
-	ServerBind                           string
-	ServerPort                           int
+	ServerListen                         string
 	ServerAuthToken                      string
 	ServerMaxQueue                       int
 	BaseURL                              string
@@ -281,8 +278,7 @@ func SlackConfigFromReader(r ConfigReader) SlackConfig {
 		TaskTimeout:                          r.GetDuration("slack.task_timeout"),
 		GlobalTaskTimeout:                    r.GetDuration("timeout"),
 		MaxConcurrency:                       r.GetInt("slack.max_concurrency"),
-		ServerBind:                           strings.TrimSpace(r.GetString("server.bind")),
-		ServerPort:                           r.GetInt("server.port"),
+		ServerListen:                         strings.TrimSpace(r.GetString("server.listen")),
 		ServerAuthToken:                      strings.TrimSpace(r.GetString("server.auth_token")),
 		ServerMaxQueue:                       r.GetInt("server.max_queue"),
 		BaseURL:                              strings.TrimSpace(r.GetString("slack.base_url")),
@@ -332,7 +328,7 @@ func BuildSlackRunOptions(cfg SlackConfig, in SlackInput) slackruntime.RunOption
 	if maxConcurrency <= 0 {
 		maxConcurrency = cfg.MaxConcurrency
 	}
-	serverListen := buildServerListen(cfg.ServerBind, cfg.ServerPort)
+	serverListen := normalizeServerListen(cfg.ServerListen)
 	baseURL := strings.TrimSpace(in.BaseURL)
 	if baseURL == "" {
 		baseURL = strings.TrimSpace(cfg.BaseURL)
@@ -364,13 +360,10 @@ func BuildSlackRunOptions(cfg SlackConfig, in SlackInput) slackruntime.RunOption
 	}
 }
 
-func buildServerListen(bind string, port int) string {
-	bind = strings.TrimSpace(bind)
-	if bind == "" {
-		bind = "127.0.0.1"
+func normalizeServerListen(listen string) string {
+	listen = strings.TrimSpace(listen)
+	if listen == "" {
+		return "127.0.0.1:8787"
 	}
-	if port <= 0 {
-		port = 8787
-	}
-	return fmt.Sprintf("%s:%d", bind, port)
+	return listen
 }

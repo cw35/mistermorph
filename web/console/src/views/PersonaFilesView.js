@@ -1,6 +1,6 @@
 import { onMounted, ref } from "vue";
 
-import { apiFetch, translate } from "../core/context";
+import { runtimeApiFetch, translate } from "../core/context";
 
 const PersonaFilesView = {
   setup() {
@@ -17,7 +17,7 @@ const PersonaFilesView = {
     const content = ref("");
 
     async function loadFiles() {
-      const data = await apiFetch("/persona/files");
+      const data = await runtimeApiFetch("/persona/files");
       const items = Array.isArray(data.items) ? data.items : [];
       if (items.length === 0) {
         return;
@@ -36,7 +36,7 @@ const PersonaFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        const data = await apiFetch(`/persona/files/${encodeURIComponent(name)}`);
+        const data = await runtimeApiFetch(`/persona/files/${encodeURIComponent(name)}`);
         content.value = data.content || "";
       } catch (e) {
         if (e && e.status === 404) {
@@ -55,7 +55,7 @@ const PersonaFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        await apiFetch(`/persona/files/${encodeURIComponent(selectedFile.value.name)}`, {
+        await runtimeApiFetch(`/persona/files/${encodeURIComponent(selectedFile.value.name)}`, {
           method: "PUT",
           body: { content: content.value },
         });

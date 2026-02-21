@@ -136,7 +136,7 @@ mistermorph telegram --log-level info
 
 ```bash
 export MISTER_MORPH_SERVER_AUTH_TOKEN="change-me"
-mistermorph serve --server-port 8787 --log-level info
+mistermorph serve --server-listen 127.0.0.1:8787 --log-level info
 ```
 
 タスクを送信:
@@ -273,8 +273,7 @@ mistermorph run --inspect-prompt --inspect-request --task "..."
 - `--inspect-request`
 
 **serve**
-- `--server-bind`
-- `--server-port`
+- `--server-listen`
 - `--server-auth-token`
 - `--server-max-queue`
 

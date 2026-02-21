@@ -112,8 +112,8 @@ sudo journalctl -u mister-morph-console -f
 `http://127.0.0.1:9080/console`
 
 Notes:
-- Keep `mister-morph` daemon service running; Console reads tasks from `server.url`.
-- Ensure `MISTER_MORPH_SERVER_AUTH_TOKEN` is the same value used by daemon and console processes.
+- Keep `mister-morph` daemon service running; Console reads tasks from `console.endpoints[].url`.
+- Ensure endpoint token env vars referenced by `console.endpoints[].auth_token_env_ref` are set for the console process.
 
 ## Run mode
 
