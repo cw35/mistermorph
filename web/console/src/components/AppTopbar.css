@@ -82,3 +82,11 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
+
+@media (max-width: 767px) {
+  /* Keep mobile dropdown dialog fixed to viewport instead of topbar box. */
+  .topbar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
