@@ -33,6 +33,22 @@ const AuditView = {
         .map((line, idx) => parseAuditLine(line, idx))
         .reverse();
     });
+    const auditGroups = computed(() => {
+      const groups = [];
+      const byRunID = new Map();
+      for (const item of auditItems.value) {
+        const runID = item.parsed ? item.runID : "-";
+        const groupKey = `run:${runID}`;
+        let group = byRunID.get(groupKey);
+        if (!group) {
+          group = { key: groupKey, runID, items: [] };
+          byRunID.set(groupKey, group);
+          groups.push(group);
+        }
+        group.items.push(item);
+      }
+      return groups;
+    });
 
     function normalizeAuditText(value, fallback = "-") {
       if (typeof value === "string") {
@@ -284,7 +300,7 @@ const AuditView = {
       err,
       fileItems,
       selectedFileItem,
-      auditItems,
+      auditGroups,
       meta,
       canGoNewer,
       refreshLatest,
@@ -318,33 +334,38 @@ const AuditView = {
         <code>{{ t("audit_range") }}: {{ meta.from }} - {{ meta.to }}</code>
       </div>
       <div class="audit-list">
-        <div v-for="item in auditItems" :key="item.key" class="audit-row">
-          <template v-if="item.parsed">
-            <div class="audit-item-head">
-              <code class="audit-item-id">{{ item.eventID }}</code>
-              <code class="audit-item-time">{{ t("audit_time") }}: {{ item.tsText }}</code>
-              <QBadge :type="item.decisionType" size="sm" variant="filled">{{ item.decisionLabel }}</QBadge>
-              <QBadge :type="item.riskType" size="sm" variant="filled">{{ item.riskLabel }}</QBadge>
-            </div>
-            <div class="audit-item-meta">
-              <code>{{ t("audit_action") }}: {{ item.actionType }}</code>
-              <code>{{ t("audit_tool") }}: {{ item.toolName }}</code>
-              <code>{{ t("audit_run") }}: {{ item.runID }}</code>
-              <code>{{ t("audit_step") }}: {{ item.stepText }}</code>
-              <code v-if="item.approvalStatus !== '-'">{{ t("audit_approval") }}: {{ item.approvalStatus }}</code>
-              <code v-if="item.actor !== '-'">{{ t("audit_actor") }}: {{ item.actor }}</code>
-            </div>
-            <code v-if="item.summary !== '-'" class="audit-summary">{{ t("audit_summary") }}: {{ item.summary }}</code>
-            <code v-if="item.reasonsText !== '-'" class="audit-summary">{{ t("audit_reasons") }}: {{ item.reasonsText }}</code>
-          </template>
-          <template v-else>
-            <div class="audit-item-head">
-              <QBadge type="default" size="sm" variant="filled">{{ t("audit_raw") }}</QBadge>
-            </div>
-            <code class="audit-line">{{ item.raw }}</code>
-          </template>
+        <div v-for="group in auditGroups" :key="group.key" class="audit-group">
+          <div class="audit-group-head">
+            <code>{{ t("audit_run") }}: {{ group.runID }}</code>
+            <code>{{ t("audit_group_count") }}: {{ group.items.length }}</code>
+          </div>
+          <div v-for="item in group.items" :key="item.key" class="audit-row">
+            <template v-if="item.parsed">
+              <div class="audit-item-head">
+                <code class="audit-item-id">{{ item.eventID }}</code>
+                <code class="audit-item-time">{{ t("audit_time") }}: {{ item.tsText }}</code>
+                <QBadge :type="item.decisionType" size="sm" variant="filled">{{ item.decisionLabel }}</QBadge>
+                <QBadge :type="item.riskType" size="sm" variant="filled">{{ item.riskLabel }}</QBadge>
+              </div>
+              <div class="audit-item-meta">
+                <code>{{ t("audit_action") }}: {{ item.actionType }}</code>
+                <code>{{ t("audit_tool") }}: {{ item.toolName }}</code>
+                <code>{{ t("audit_step") }}: {{ item.stepText }}</code>
+                <code v-if="item.approvalStatus !== '-'">{{ t("audit_approval") }}: {{ item.approvalStatus }}</code>
+                <code v-if="item.actor !== '-'">{{ t("audit_actor") }}: {{ item.actor }}</code>
+              </div>
+              <code v-if="item.summary !== '-'" class="audit-summary">{{ t("audit_summary") }}: {{ item.summary }}</code>
+              <code v-if="item.reasonsText !== '-'" class="audit-summary">{{ t("audit_reasons") }}: {{ item.reasonsText }}</code>
+            </template>
+            <template v-else>
+              <div class="audit-item-head">
+                <QBadge type="default" size="sm" variant="filled">{{ t("audit_raw") }}</QBadge>
+              </div>
+              <code class="audit-line">{{ item.raw }}</code>
+            </template>
+          </div>
         </div>
-        <p v-if="!loading && auditItems.length === 0" class="muted">{{ meta.exists ? t("audit_empty") : t("audit_no_file") }}</p>
+        <p v-if="!loading && auditGroups.length === 0" class="muted">{{ meta.exists ? t("audit_empty") : t("audit_no_file") }}</p>
       </div>
     </section>
   `,

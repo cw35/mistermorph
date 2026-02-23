@@ -22,14 +22,15 @@
                            | config snapshot + deps  |
                            +------------+------------+
                                         |
-                +-----------------------+-----------------------+
-                |                                               |
-      +---------v----------+                         +----------v---------+
-      | One-shot runtime   |                         | Channel runtime    |
-      | run / serve        |                         | telegram / slack   |
-      +---------+----------+                         +----------+---------+
-                |                                               |
-                +-----------------------+-----------------------+
+      +-----------------+---------------+-----------------------+
+      |                 |                                       |
+ +----v-----+   +-------v--------+                     +--------v--------+
+ | One-shot |   | Channel runtime|                     | Heartbeat       |
+ | runtime  |   | telegram/slack |                     | scheduler       |
+ | run/serve|   | event workers  |                     | periodic checks |
+ +----+-----+   +-------+--------+                     +--------+--------+
+      |                 |                                       |
+      +-----------------+-------------------+-------------------+
                                         |
                                +--------v--------+
                                |   agent.Engine  |
@@ -42,8 +43,7 @@
                           +-----v-----+   +-----v------------------+
                           | providers |   | builtin/tools/adapters |
                           +-----------+   +------------------------+
-
-Cross-cutting: guard, skills/prompt blocks, inspect dump, bus idempotency, file_state_dir
+Cross-cutting: guard, skills/prompt blocks, inspect dump, bus idempotency, file_state_dir, HEARTBEAT.md
 ```
 
 ## 2. Main Execution Flow
@@ -97,6 +97,7 @@ The following areas already have formal docs, so this file only links them:
 - Tools system: [`./tools.md`](./tools.md)
 - Security / Guard: [`./security.md`](./security.md)
 - Skills system: [`./skills.md`](./skills.md)
+- Heartbeat feature notes: [`./feat/feat_20260204_heartbeat.md`](./feat/feat_20260204_heartbeat.md)
 - Telegram runtime behavior: [`./telegram.md`](./telegram.md)
 - Slack Socket Mode: [`./slack.md`](./slack.md)
 - Bus design and implementation: [`./bus.md`](./bus.md), [`./bus_impl.md`](./bus_impl.md)
@@ -133,10 +134,31 @@ Notes:
 - Runtime-level memory integration is currently wired for Telegram only; Slack memory integration is not yet wired.
 - Storage model lives in `memory/*`, runtime integration is in `internal/channelruntime/telegram/runtime_task.go`.
 
+### 5.3 Heartbeat Runtime Path
+
+```text
+heartbeat ticker (runtime scheduler)
+  -> heartbeatutil.Tick(state, buildTask, enqueueTask)
+  -> BuildHeartbeatTask(HEARTBEAT.md)
+  -> enqueue heartbeat job (meta.trigger=heartbeat)
+  -> agent.Engine.Run (normal tools/skills enabled)
+  -> summary output (runtime-defined sink, e.g. logs/chat)
+```
+
+Notes:
+
+- Heartbeat shares the same agent execution core; it differs mainly by scheduler path and metadata envelope.
+- Scheduler-side skip reasons include `already_running`, `worker_busy`, `worker_queue_full`, and `empty_task`.
+- Consecutive failures are tracked by `heartbeatutil.State`; alert escalation is emitted after threshold.
+- Code:
+  - shared helpers: `internal/heartbeatutil/heartbeat.go`, `internal/heartbeatutil/scheduler.go`
+  - runtime integrations: `cmd/mistermorph/daemoncmd/serve.go`, `internal/channelruntime/telegram/runtime.go`
+
 ## 6. State Directory and Naming Baseline
 
 ```text
 file_state_dir (default ~/.morph)
+├── HEARTBEAT.md
 ├── contacts/
 │   ├── ACTIVE.md
 │   ├── INACTIVE.md
@@ -153,6 +175,7 @@ file_state_dir (default ~/.morph)
 
 Additional notes:
 
+- `HEARTBEAT.md` is the default heartbeat checklist input (`statepaths.HeartbeatChecklistPath()`).
 - Memory short-term filenames come from sanitized `session_id` values (letters, digits, `-`, `_`).
 - Contacts bus dedupe keys:
   - inbox: `(channel, platform_message_id)`

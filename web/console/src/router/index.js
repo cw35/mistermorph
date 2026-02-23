@@ -3,15 +3,13 @@ import { createRouter, createWebHistory } from "vue-router";
 import { BASE_PATH, apiFetch, authState, authValid, clearAuth, saveAuth } from "../core/context";
 import {
   AuditView,
-  ContactsFilesView,
   DashboardView,
   LoginView,
   OverviewView,
-  PersonaFilesView,
   SettingsView,
+  StateFilesView,
   TasksView,
   TaskDetailView,
-  TODOFilesView,
 } from "../views";
 
 const routes = [
@@ -21,9 +19,7 @@ const routes = [
   { path: "/tasks", component: TasksView },
   { path: "/tasks/:id", component: TaskDetailView },
   { path: "/audit", component: AuditView },
-  { path: "/todo-files", component: TODOFilesView },
-  { path: "/contacts-files", component: ContactsFilesView },
-  { path: "/persona-files", component: PersonaFilesView },
+  { path: "/files", component: StateFilesView },
   { path: "/settings", component: SettingsView },
   { path: "/", redirect: "/overview" },
 ];
@@ -37,9 +33,7 @@ const NAV_ITEMS_META = [
   { id: "/dashboard", titleKey: "nav_runtime", icon: "QIconSpeedoMeter" },
   { id: "/tasks", titleKey: "nav_tasks", icon: "QIconInbox" },
   { id: "/audit", titleKey: "nav_audit", icon: "QIconFingerprint" },
-  { id: "/todo-files", titleKey: "nav_todo", icon: "QIconBookOpen" },
-  { id: "/contacts-files", titleKey: "nav_contacts", icon: "QIconUsers" },
-  { id: "/persona-files", titleKey: "nav_persona", icon: "QIconUserCircle" },
+  { id: "/files", titleKey: "nav_files", icon: "QIconBookOpen" },
   { id: "/settings", titleKey: "nav_settings", icon: "QIconSettings" },
 ];
 

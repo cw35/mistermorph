@@ -28,16 +28,13 @@ Stack:
   - auto-refresh every 60 seconds
 - Tasks:
   - list + detail (read-only)
-- TODO files:
-  - edit `TODO.md` and `TODO.DONE.md`
-- Contacts files:
-  - edit `ACTIVE.md` and `INACTIVE.md`
-- Persona files:
-  - edit `IDENTITY.md` and `SOUL.md`
+- Files:
+  - unified editor for `TODO.md`, `TODO.DONE.md`, `ACTIVE.md`, `INACTIVE.md`, `IDENTITY.md`, `SOUL.md`, `HEARTBEAT.md`
 - Audit:
   - browse Guard audit files
   - windowed reads for large JSONL logs (`max_bytes` + `before`)
   - newest entries shown first in the UI
+  - entries grouped by `run_id` for easier review
 - Settings:
   - config snapshot + diagnostics
   - language selector
@@ -70,20 +67,10 @@ Runtime query parameter:
   - `GET /tasks`
   - `GET /tasks/{id}`
 
-TODO files:
-- `GET /todo/files`
-- `GET /todo/files/{name}` (`TODO.md|TODO.DONE.md`)
-- `PUT /todo/files/{name}`
-
-Contacts files:
-- `GET /contacts/files`
-- `GET /contacts/files/{name}` (`ACTIVE.md|INACTIVE.md`)
-- `PUT /contacts/files/{name}`
-
-Persona files:
-- `GET /persona/files`
-- `GET /persona/files/{name}` (`IDENTITY.md|SOUL.md`)
-- `PUT /persona/files/{name}`
+Files:
+- `GET /state/files`
+- `GET /state/files/{name}` (`TODO.md|TODO.DONE.md|ACTIVE.md|INACTIVE.md|IDENTITY.md|SOUL.md|HEARTBEAT.md`)
+- `PUT /state/files/{name}`
 
 Audit:
 - `GET /audit/files`

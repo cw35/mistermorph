@@ -183,6 +183,7 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 			diagnoseFileReadable("todo_done", paths.todoDone),
 			diagnoseFileReadable("persona_identity", paths.identityPath),
 			diagnoseFileReadable("persona_soul", paths.soulPath),
+			diagnoseFileReadable("heartbeat_checklist", paths.heartbeatPath),
 			diagnoseFileReadable("audit_jsonl", paths.auditPath),
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -191,6 +192,36 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 			"version":    buildVersion(),
 			"checks":     checks,
 		})
+	})
+
+	mux.HandleFunc("/state/files", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !checkAuth(r, authToken) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		paths := resolveRuntimeStatePaths()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": describeStateFiles(paths, ""),
+		})
+	})
+	mux.HandleFunc("/state/files/", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(r, authToken) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		paths := resolveRuntimeStatePaths()
+		name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/state/files/"))
+		spec, ok := resolveStateFileSpec(paths, "", name)
+		if !ok {
+			http.Error(w, "invalid file name", http.StatusBadRequest)
+			return
+		}
+		handleTextFileDetail(w, r, spec.Name, spec.Path)
 	})
 
 	mux.HandleFunc("/todo/files", func(w http.ResponseWriter, r *http.Request) {
@@ -205,10 +236,7 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 		paths := resolveRuntimeStatePaths()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"items": []map[string]any{
-				describeFile("TODO.md", paths.todoWIP),
-				describeFile("TODO.DONE.md", paths.todoDone),
-			},
+			"items": describeStateFiles(paths, "todo"),
 		})
 	})
 	mux.HandleFunc("/todo/files/", func(w http.ResponseWriter, r *http.Request) {
@@ -218,17 +246,12 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 		}
 		paths := resolveRuntimeStatePaths()
 		name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/todo/files/"))
-		var filePath string
-		switch strings.ToUpper(name) {
-		case "TODO.MD":
-			filePath = paths.todoWIP
-		case "TODO.DONE.MD":
-			filePath = paths.todoDone
-		default:
+		spec, ok := resolveStateFileSpec(paths, "todo", name)
+		if !ok {
 			http.Error(w, "invalid file name", http.StatusBadRequest)
 			return
 		}
-		handleTextFileDetail(w, r, name, filePath)
+		handleTextFileDetail(w, r, spec.Name, spec.Path)
 	})
 
 	mux.HandleFunc("/contacts/files", func(w http.ResponseWriter, r *http.Request) {
@@ -243,10 +266,7 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 		paths := resolveRuntimeStatePaths()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"items": []map[string]any{
-				describeFile("ACTIVE.md", paths.contactsActive),
-				describeFile("INACTIVE.md", paths.contactsInactive),
-			},
+			"items": describeStateFiles(paths, "contacts"),
 		})
 	})
 	mux.HandleFunc("/contacts/files/", func(w http.ResponseWriter, r *http.Request) {
@@ -256,17 +276,12 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 		}
 		paths := resolveRuntimeStatePaths()
 		name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/contacts/files/"))
-		var filePath string
-		switch strings.ToUpper(name) {
-		case "ACTIVE.MD":
-			filePath = paths.contactsActive
-		case "INACTIVE.MD":
-			filePath = paths.contactsInactive
-		default:
+		spec, ok := resolveStateFileSpec(paths, "contacts", name)
+		if !ok {
 			http.Error(w, "invalid file name", http.StatusBadRequest)
 			return
 		}
-		handleTextFileDetail(w, r, name, filePath)
+		handleTextFileDetail(w, r, spec.Name, spec.Path)
 	})
 
 	mux.HandleFunc("/persona/files", func(w http.ResponseWriter, r *http.Request) {
@@ -281,10 +296,7 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 		paths := resolveRuntimeStatePaths()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"items": []map[string]any{
-				describeFile("IDENTITY.md", paths.identityPath),
-				describeFile("SOUL.md", paths.soulPath),
-			},
+			"items": describeStateFiles(paths, "persona"),
 		})
 	})
 	mux.HandleFunc("/persona/files/", func(w http.ResponseWriter, r *http.Request) {
@@ -294,17 +306,12 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 		}
 		paths := resolveRuntimeStatePaths()
 		name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/persona/files/"))
-		var filePath string
-		switch strings.ToUpper(name) {
-		case "IDENTITY.MD":
-			filePath = paths.identityPath
-		case "SOUL.MD":
-			filePath = paths.soulPath
-		default:
+		spec, ok := resolveStateFileSpec(paths, "persona", name)
+		if !ok {
 			http.Error(w, "invalid file name", http.StatusBadRequest)
 			return
 		}
-		handleTextFileDetail(w, r, name, filePath)
+		handleTextFileDetail(w, r, spec.Name, spec.Path)
 	})
 
 	mux.HandleFunc("/audit/files", func(w http.ResponseWriter, r *http.Request) {
@@ -608,6 +615,7 @@ type runtimeStatePaths struct {
 	contactsInactive string
 	identityPath     string
 	soulPath         string
+	heartbeatPath    string
 	todoWIP          string
 	todoDone         string
 	auditPath        string
@@ -625,6 +633,7 @@ func resolveRuntimeStatePaths() runtimeStatePaths {
 		contactsInactive: filepath.Join(contactsDir, "INACTIVE.md"),
 		identityPath:     filepath.Join(stateDir, "IDENTITY.md"),
 		soulPath:         filepath.Join(stateDir, "SOUL.md"),
+		heartbeatPath:    statepaths.HeartbeatChecklistPath(),
 		todoWIP:          statepaths.TODOWIPPath(),
 		todoDone:         statepaths.TODODONEPath(),
 		auditPath:        resolveGuardAuditPath(stateDir),
@@ -647,6 +656,57 @@ func describeFile(name, p string) map[string]any {
 		"path":   p,
 		"exists": err == nil,
 	}
+}
+
+type stateFileSpec struct {
+	Name  string
+	Group string
+	Path  string
+}
+
+func runtimeStateFileSpecs(paths runtimeStatePaths) []stateFileSpec {
+	return []stateFileSpec{
+		{Name: "TODO.md", Group: "todo", Path: paths.todoWIP},
+		{Name: "TODO.DONE.md", Group: "todo", Path: paths.todoDone},
+		{Name: "ACTIVE.md", Group: "contacts", Path: paths.contactsActive},
+		{Name: "INACTIVE.md", Group: "contacts", Path: paths.contactsInactive},
+		{Name: "IDENTITY.md", Group: "persona", Path: paths.identityPath},
+		{Name: "SOUL.md", Group: "persona", Path: paths.soulPath},
+		{Name: "HEARTBEAT.md", Group: "heartbeat", Path: paths.heartbeatPath},
+	}
+}
+
+func describeStateFiles(paths runtimeStatePaths, group string) []map[string]any {
+	group = strings.ToLower(strings.TrimSpace(group))
+	specs := runtimeStateFileSpecs(paths)
+	items := make([]map[string]any, 0, len(specs))
+	for _, spec := range specs {
+		if group != "" && spec.Group != group {
+			continue
+		}
+		item := describeFile(spec.Name, spec.Path)
+		item["group"] = spec.Group
+		items = append(items, item)
+	}
+	return items
+}
+
+func resolveStateFileSpec(paths runtimeStatePaths, group string, name string) (stateFileSpec, bool) {
+	group = strings.ToLower(strings.TrimSpace(group))
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return stateFileSpec{}, false
+	}
+	specs := runtimeStateFileSpecs(paths)
+	for _, spec := range specs {
+		if group != "" && spec.Group != group {
+			continue
+		}
+		if strings.EqualFold(spec.Name, name) {
+			return spec, true
+		}
+	}
+	return stateFileSpec{}, false
 }
 
 func handleTextFileDetail(w http.ResponseWriter, r *http.Request, name, filePath string) {

@@ -2,31 +2,70 @@ import { onMounted, ref } from "vue";
 
 import { runtimeApiFetch, translate } from "../core/context";
 
-const TODOFilesView = {
+const DEFAULT_FILES = [
+  { name: "TODO.md", group: "todo" },
+  { name: "TODO.DONE.md", group: "todo" },
+  { name: "ACTIVE.md", group: "contacts" },
+  { name: "INACTIVE.md", group: "contacts" },
+  { name: "IDENTITY.md", group: "persona" },
+  { name: "SOUL.md", group: "persona" },
+  { name: "HEARTBEAT.md", group: "heartbeat" },
+];
+
+function normalizeGroup(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function groupTitle(t, group) {
+  switch (normalizeGroup(group)) {
+    case "todo":
+      return t("files_group_todo");
+    case "contacts":
+      return t("files_group_contacts");
+    case "persona":
+      return t("files_group_persona");
+    case "heartbeat":
+      return t("files_group_heartbeat");
+    default:
+      return t("files_group_other");
+  }
+}
+
+function toFileItem(t, item) {
+  const name = String(item?.name || "").trim();
+  const group = normalizeGroup(item?.group);
+  return {
+    title: `${groupTitle(t, group)} / ${name}`,
+    name,
+    group,
+  };
+}
+
+const StateFilesView = {
   setup() {
     const t = translate;
     const loading = ref(false);
     const saving = ref(false);
     const err = ref("");
     const ok = ref("");
-    const fileItems = ref([
-      { title: "TODO.md", name: "TODO.md" },
-      { title: "TODO.DONE.md", name: "TODO.DONE.md" },
-    ]);
+
+    const fileItems = ref(DEFAULT_FILES.map((item) => toFileItem(t, item)));
     const selectedFile = ref(fileItems.value[0]);
     const content = ref("");
 
     async function loadFiles() {
-      const data = await runtimeApiFetch("/todo/files");
+      const data = await runtimeApiFetch("/state/files");
       const items = Array.isArray(data.items) ? data.items : [];
       if (items.length === 0) {
         return;
       }
-      fileItems.value = items.map((it) => ({
-        title: it.name || "",
-        name: it.name || "",
-      }));
-      if (!fileItems.value.find((x) => x.name === selectedFile.value?.name)) {
+      fileItems.value = items
+        .map((item) => toFileItem(t, item))
+        .filter((item) => item.name !== "");
+      if (fileItems.value.length === 0) {
+        return;
+      }
+      if (!fileItems.value.find((item) => item.name === selectedFile.value?.name)) {
         selectedFile.value = fileItems.value[0];
       }
     }
@@ -36,7 +75,7 @@ const TODOFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        const data = await runtimeApiFetch(`/todo/files/${encodeURIComponent(name)}`);
+        const data = await runtimeApiFetch(`/state/files/${encodeURIComponent(name)}`);
         content.value = data.content || "";
       } catch (e) {
         if (e && e.status === 404) {
@@ -55,7 +94,7 @@ const TODOFilesView = {
       err.value = "";
       ok.value = "";
       try {
-        await runtimeApiFetch(`/todo/files/${encodeURIComponent(selectedFile.value.name)}`, {
+        await runtimeApiFetch(`/state/files/${encodeURIComponent(selectedFile.value.name)}`, {
           method: "PUT",
           body: { content: content.value },
         });
@@ -85,7 +124,7 @@ const TODOFilesView = {
   },
   template: `
     <section>
-      <h2 class="title">{{ t("todo_title") }}</h2>
+      <h2 class="title">{{ t("files_title") }}</h2>
       <div class="toolbar wrap">
         <div class="tool-item">
           <QDropdownMenu
@@ -105,5 +144,4 @@ const TODOFilesView = {
   `,
 };
 
-
-export default TODOFilesView;
+export default StateFilesView;
