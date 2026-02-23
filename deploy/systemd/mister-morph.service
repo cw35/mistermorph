@@ -57,7 +57,7 @@ PrivateDevices=yes
 DevicePolicy=closed
 
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=false
 ProtectControlGroups=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
