@@ -104,7 +104,7 @@
 
     const inlineTokenize = (raw) => {
       const tokenRe =
-        /(--[a-z-]+|"(?:[^"\\]|\\.)*"|\b(?:read_file|contacts_send|web_search|bash|url_fetch|maep|agent)\b|\b\d+(?:\.\d+)?s\b|->)/gi;
+        /(--[a-z-]+|"(?:[^"\\]|\\.)*"|\b(?:read_file|contacts_send|web_search|bash|url_fetch|agent)\b|\b\d+(?:\.\d+)?s\b|->)/gi;
       let out = "";
       let last = 0;
 
@@ -150,7 +150,7 @@
         let tagClass = "tok-tag";
         if (/guard/i.test(tag)) {
           tagClass = "tok-tag-guard";
-        } else if (/(maep|agent)/i.test(tag)) {
+        } else if (/agent/i.test(tag)) {
           tagClass = "tok-tag-link";
         } else if (/result/i.test(tag)) {
           tagClass = "tok-tag-result";

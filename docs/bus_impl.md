@@ -11,13 +11,12 @@ status: implemented
 In scope:
 - `internal/bus` runtime, validation, and error model
 - `internal/bus/adapters/*` inbound and delivery adapters
-- Bus wiring in `cmd/mistermorph/telegramcmd` and `cmd/mistermorph/maepcmd`
+- Bus wiring in `cmd/mistermorph/telegramcmd` and `cmd/mistermorph/slackcmd`
 - Bus inbox/outbox state in `contacts/*`
 - Outbound bus path in `internal/contactsruntime/sender.go`
 
 Out of scope:
 - Multi-channel architecture roadmap and product-level planning (see `docs/bus.md`)
-- MAEP protocol specification details (see `docs/maep.md`)
 
 ## 2) Bus Runtime (`internal/bus`)
 
@@ -65,7 +64,6 @@ Implemented error codes:
 - Generic constructor: `BuildConversationKey(channel, id)`.
 - Implemented specialized constructors:
   - `BuildTelegramChatConversationKey`
-  - `BuildMAEPPeerConversationKey`
   - `BuildSlackChannelConversationKey`
   - `BuildDiscordChannelConversationKey`
 - `tg:@<username>` is not a Telegram delivery conversation key (delivery requires numeric `tg:<chat_id>`).
@@ -84,9 +82,9 @@ Implemented error codes:
 - Delivery (`telegram/delivery.go`): consumes `outbound/telegram` and sends text via resolved target.
 - Idempotency key strategy: `idempotency.MessageEnvelopeKey(message_id)`.
 
-### 3.3 MAEP Adapters
-- Inbound (`maep/inbound.go`): maps `maep.DataPushEvent` to `BusMessage` (`inbound/maep`) and reuses `InboundFlow`.
-- Delivery (`maep/delivery.go`): consumes `outbound/maep` and calls `Node.PushData`.
+### 3.3 Slack Adapters
+- Inbound (`slack/inbound.go`): maps Slack Socket Mode events to `BusMessage`.
+- Delivery (`slack/delivery.go`): consumes `outbound/slack` and sends message text to target channel/thread.
 
 ### 3.4 Demo Adapter
 `adapters/demo` remains as a template validation path built on `InboundFlow`.
@@ -98,17 +96,16 @@ Implemented error codes:
 - Subscribes `AllTopics()` and dispatches by `direction + channel`.
 - Inbound paths:
   - Telegram polling -> Telegram inbound adapter -> bus -> handler -> worker queue
-  - `--with-maep`: MAEP `OnDataPush` -> MAEP inbound adapter -> bus
 - Outbound paths:
   - `outbound/telegram` -> Telegram delivery adapter
-  - `outbound/maep` -> MAEP delivery adapter
 - Business outputs (task output, task failure, file-download failure, plan updates) are on bus outbound.
 - Operational/admin responses (`/help`, `/mem`, bootstrap guidance, etc.) may still use direct send.
 
-### 4.2 `mistermorph maep serve`
-- Starts inproc bus and subscribes `AllTopics()`.
-- MAEP `OnDataPush` is normalized through MAEP inbound adapter -> bus.
-- Handler projects bus message back to event shape for CLI output and optional contacts sync.
+### 4.2 `mistermorph slack`
+- Starts inproc bus using `bus.max_inflight`.
+- Subscribes `AllTopics()` and dispatches by `direction + channel`.
+- Inbound path: Slack Socket Mode events -> Slack inbound adapter -> bus -> handler -> worker queue.
+- Outbound path: `outbound/slack` -> Slack delivery adapter.
 
 ### 4.3 `internal/contactsruntime/sender.go`
 - `RoutingSender` starts inproc bus and both delivery adapters internally.
@@ -158,15 +155,15 @@ Fail-fast invariants:
 ## 7) Completion Status
 Implemented:
 - Bus runtime semantics (ordering, backpressure, topology freeze, typed errors)
-- Telegram and MAEP inbound adapters
-- Telegram and MAEP delivery adapters
-- Bus wiring in Telegram and MAEP command paths
+- Telegram and Slack inbound adapters
+- Telegram and Slack delivery adapters
+- Bus wiring in Telegram and Slack command paths
 - Outbound publish path in `contactsruntime` sender
 - Contacts outbox state machine and idempotent send flow
 - Typed error code propagation in caller-side logs (`bus_error_code`)
-- Cross-channel regression path: Telegram inbound -> MAEP outbound
+- Cross-channel regression path: Telegram inbound -> Slack outbound
 
 Not implemented yet:
-- Slack/Discord adapter integration into main runtime path
+- Discord adapter integration into main runtime path
 - External bus backend (for example Redis Streams)
 - Retry / DLQ workers

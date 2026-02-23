@@ -99,7 +99,7 @@ func TestStoreAddRejectsInvalidReferenceID(t *testing.T) {
 	}
 }
 
-func TestStoreAddRejectsMAEPReferenceID(t *testing.T) {
+func TestStoreAddRejectsUnsupportedReferenceID(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"))
 	store.Semantics = stubSemantics{}
@@ -107,9 +107,9 @@ func TestStoreAddRejectsMAEPReferenceID(t *testing.T) {
 		return time.Date(2026, 2, 9, 10, 0, 0, 0, time.UTC)
 	}
 
-	_, err := store.Add(context.Background(), "提醒 [Momo](maep:12D3KooWPeer) 明天回复")
+	_, err := store.Add(context.Background(), "提醒 [Momo](peer:12D3KooWPeer) 明天回复")
 	if err == nil {
-		t.Fatalf("expected Add() to fail for maep reference id")
+		t.Fatalf("expected Add() to fail for unsupported reference id")
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "invalid reference id") {
 		t.Fatalf("unexpected error: %v", err)

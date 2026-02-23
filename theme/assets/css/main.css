@@ -1503,7 +1503,6 @@ textarea {
 }
 
 .security-flow-card,
-.maep-network-card,
 .bus-map-card {
   position: relative;
   overflow: hidden;
@@ -1516,7 +1515,6 @@ textarea {
 }
 
 .security-flow-card::before,
-.maep-network-card::before,
 .bus-map-card::before {
   content: "";
   position: absolute;
@@ -1528,7 +1526,6 @@ textarea {
 }
 
 .security-flow-card::after,
-.maep-network-card::after,
 .bus-map-card::after {
   display: none;
 }
@@ -1632,237 +1629,6 @@ textarea {
 .security-chain-link:nth-of-type(2)::before,
 .security-chain-link:nth-of-type(2)::after {
   animation-delay: -2.3s;
-}
-
-.docs-layout-maep {
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-}
-
-.maep-exchange-map {
-  margin-top: 0.72rem;
-  display: grid;
-  grid-template-columns: minmax(0, 10.2rem) minmax(0, 1fr);
-  gap: 0.66rem;
-  align-items: start;
-}
-
-.maep-hub-node {
-  min-height: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(12, 12, 12, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.86rem 0.6rem;
-}
-
-.maep-hub-title {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-0);
-  text-align: center;
-  line-height: 1.4;
-}
-
-.maep-peer-stack {
-  display: grid;
-  gap: 0.52rem;
-}
-
-.maep-peer-row {
-  display: grid;
-  grid-template-columns: 1.42rem minmax(0, 1fr);
-  align-items: center;
-  column-gap: 0.38rem;
-}
-
-.maep-peer-wire {
-  position: relative;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.maep-peer-wire::before,
-.maep-peer-wire::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 1px;
-  height: 0.36rem;
-  background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-50%);
-}
-
-.maep-peer-wire::before {
-  left: 0;
-}
-
-.maep-peer-wire::after {
-  right: 0;
-}
-
-.maep-peer-packet {
-  position: absolute;
-  top: 50%;
-  width: 0.34rem;
-  height: 0.34rem;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-}
-
-.maep-peer-packet.packet-out {
-  left: 0%;
-  background: #ff9a5c;
-  animation: maep-packet-out 2.8s linear infinite;
-}
-
-.maep-peer-packet.packet-in {
-  left: 100%;
-  background: rgba(210, 210, 210, 0.95);
-  animation: maep-packet-in 2.8s linear infinite;
-}
-
-.maep-peer-row:nth-child(2n) .maep-peer-packet.packet-out {
-  animation-delay: -0.7s;
-}
-
-.maep-peer-row:nth-child(2n) .maep-peer-packet.packet-in {
-  animation-delay: -1.3s;
-}
-
-.maep-peer-bubble {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(14, 14, 14, 0.56);
-  padding: 0.54rem 0.62rem;
-}
-
-.maep-peer-row:nth-child(1) .maep-peer-bubble {
-  border-color: rgba(255, 154, 92, 0.44);
-}
-
-.maep-peer-row:nth-child(2) .maep-peer-bubble {
-  border-color: rgba(180, 180, 180, 0.36);
-}
-
-.maep-peer-row:nth-child(3) .maep-peer-bubble {
-  border-color: rgba(146, 146, 146, 0.34);
-}
-
-.maep-peer-title {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.04rem 0.26rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  font-family: var(--font-mono);
-  font-size: 0.61rem;
-  letter-spacing: 0.08em;
-  color: var(--text-0);
-}
-
-.maep-peer-bubble p {
-  margin: 0.32rem 0 0;
-  font-size: 0.82rem;
-  line-height: 1.42;
-  color: var(--text-1);
-}
-
-.maep-protocol-list {
-  margin: 0.5rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.44rem;
-}
-
-.maep-protocol-list li {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.3rem;
-  padding: 0.18rem 0;
-  border: none;
-  background: transparent;
-  min-height: 2.1rem;
-}
-
-.maep-protocol-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.03rem 0.26rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  font-family: var(--font-mono);
-  font-size: 0.61rem;
-  letter-spacing: 0.08em;
-  color: var(--text-1);
-  white-space: nowrap;
-}
-
-.maep-protocol-list p {
-  margin: 0;
-  font-size: 0.84rem;
-  line-height: 1.42;
-  color: var(--text-1);
-}
-
-.maep-rules-layout {
-  margin-top: 0.72rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.72rem;
-}
-
-.maep-rules-group {
-  min-width: 0;
-}
-
-.maep-rules-label {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 0.61rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-2);
-}
-
-.maep-rules-group .track-points {
-  margin-top: 0.48rem;
-}
-
-.maep-constraints-list {
-  margin-top: 0.5rem;
-  display: grid;
-  gap: 0.44rem;
-  counter-reset: constraint;
-}
-
-.maep-constraints-list li {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  padding: 0.22rem 0 0.22rem 1.74rem;
-  font-size: 0.84rem;
-  line-height: 1.42;
-  min-height: 2.1rem;
-}
-
-.maep-constraints-list li + li {
-  margin-top: 0;
-}
-
-.maep-constraints-list li::before {
-  counter-increment: constraint;
-  content: "[ C" counter(constraint, decimal-leading-zero) " ]";
-  position: absolute;
-  left: 0.44rem;
-  top: 0.24rem;
-  font-family: var(--font-mono);
-  font-size: 0.58rem;
-  letter-spacing: 0.08em;
-  color: var(--text-2);
 }
 
 .docs-layout-bus {
@@ -2425,7 +2191,6 @@ textarea {
 }
 
 :root[data-theme="light"] .security-flow-card,
-:root[data-theme="light"] .maep-network-card,
 :root[data-theme="light"] .bus-map-card {
   border-style: dashed !important;
   border-color: rgba(0, 0, 0, 0.28) !important;
@@ -2435,26 +2200,19 @@ textarea {
 }
 
 :root[data-theme="light"] .security-flow-card::before,
-:root[data-theme="light"] .maep-network-card::before,
 :root[data-theme="light"] .bus-map-card::before {
   border-color: rgba(0, 0, 0, 0.16);
 }
 
 :root[data-theme="light"] .security-chain-node,
 :root[data-theme="light"] .security-chain-link,
-:root[data-theme="light"] .maep-hub-node,
-:root[data-theme="light"] .maep-peer-bubble,
-:root[data-theme="light"] .maep-peer-title,
-:root[data-theme="light"] .maep-protocol-tag,
 :root[data-theme="light"] .bus-protocol-chip,
 :root[data-theme="light"] .bus-core-bar,
 :root[data-theme="light"] .bus-guarantee-mark {
   border-color: rgba(0, 0, 0, 0.2);
 }
 
-:root[data-theme="light"] .security-chain-node,
-:root[data-theme="light"] .maep-hub-node,
-:root[data-theme="light"] .maep-peer-bubble {
+:root[data-theme="light"] .security-chain-node {
   background: rgba(255, 255, 255, 0.62);
 }
 
@@ -2481,9 +2239,6 @@ textarea {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.24);
 }
 
-:root[data-theme="light"] .maep-peer-wire,
-:root[data-theme="light"] .maep-peer-wire::before,
-:root[data-theme="light"] .maep-peer-wire::after,
 :root[data-theme="light"] .bus-protocol-chip::after {
   background: rgba(0, 0, 0, 0.26);
   border-color: rgba(0, 0, 0, 0.26);
@@ -2498,10 +2253,6 @@ textarea {
 
 :root[data-theme="light"] .bus-core-bar {
   background: rgba(0, 0, 0, 0.03);
-}
-
-:root[data-theme="light"] .maep-peer-packet.packet-in {
-  background: rgba(102, 102, 102, 0.9);
 }
 
 :root[data-theme="light"] .site-footer {
@@ -2619,40 +2370,6 @@ textarea {
   }
 }
 
-@keyframes maep-packet-out {
-  0% {
-    left: 0%;
-    opacity: 0;
-  }
-  14% {
-    opacity: 1;
-  }
-  86% {
-    opacity: 1;
-  }
-  100% {
-    left: 100%;
-    opacity: 0;
-  }
-}
-
-@keyframes maep-packet-in {
-  0% {
-    left: 100%;
-    opacity: 0;
-  }
-  14% {
-    opacity: 1;
-  }
-  86% {
-    opacity: 1;
-  }
-  100% {
-    left: 0%;
-    opacity: 0;
-  }
-}
-
 @keyframes bus-core-sweep {
   0% {
     left: -34%;
@@ -2755,14 +2472,8 @@ textarea {
   }
 
   .docs-layout-security,
-  .docs-layout-maep,
   .docs-layout-bus {
     grid-template-columns: 1fr;
-  }
-
-  .maep-rules-layout {
-    grid-template-columns: 1fr;
-    gap: 0.58rem;
   }
 
   .bus-protocol-cloud {
@@ -2802,24 +2513,6 @@ textarea {
 
   .security-chain-track::before {
     display: none;
-  }
-
-  .maep-exchange-map {
-    grid-template-columns: 1fr;
-    gap: 0.56rem;
-  }
-
-  .maep-peer-row {
-    grid-template-columns: 1fr;
-    row-gap: 0.26rem;
-  }
-
-  .maep-peer-wire {
-    display: none;
-  }
-
-  .maep-protocol-list li {
-    gap: 0.24rem;
   }
 
   .bus-protocol-cloud {

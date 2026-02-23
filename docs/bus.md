@@ -75,7 +75,6 @@ Registered topic allowlist:
 ### 2.5 Conversation Key Rules
 Implemented constructors:
 - Telegram chat: `tg:<chat_id>`
-- MAEP peer: `maep:<peer_id>`
 - Slack channel: `slack:<team_id>:<channel_id>`
 - Discord channel: `discord:<channel_id>`
 
@@ -96,9 +95,6 @@ Implemented channel adapters:
 - Telegram:
   - inbound: `internal/bus/adapters/telegram/inbound.go`
   - delivery: `internal/bus/adapters/telegram/delivery.go`
-- MAEP:
-  - inbound: `internal/bus/adapters/maep/inbound.go`
-  - delivery: `internal/bus/adapters/maep/delivery.go`
 - Slack:
   - inbound: `internal/bus/adapters/slack/inbound.go`
   - delivery: `internal/bus/adapters/slack/delivery.go`
@@ -109,7 +105,6 @@ Implemented channel adapters:
 - starts inproc bus
 - subscribes `AllTopics()` with one dispatcher by `direction + channel`
 - Telegram poll inbound path: Telegram inbound adapter -> bus -> handler -> worker queue
-- MAEP inbound path under `--with-maep`: `OnDataPush -> MAEP inbound adapter -> bus -> handler`
 - business outbound messages (task output, task failures, file-download failures, plan updates) are sent through bus outbound
 - operational/admin messages (for example `/help`, `/mem`, initialization/system notices) may still use direct send
 
@@ -119,14 +114,9 @@ Implemented channel adapters:
 - inbound path: Slack Socket Mode event -> Slack inbound adapter -> bus -> handler -> per-conversation worker
 - task output and error replies are published as outbound bus messages, then delivered by Slack delivery adapter
 
-`mistermorph maep serve`:
-- starts inproc bus
-- `OnDataPush -> MAEP inbound adapter -> bus -> handler`
-- handler prints events and optionally syncs contacts
-
 `internal/contactsruntime/sender.go`:
 - `NewRoutingSender` starts inproc bus and delivery adapters internally
-- `Send(...)` routes to Telegram / Slack / MAEP, then publishes outbound `BusMessage`
+- `Send(...)` routes to Telegram / Slack, then publishes outbound `BusMessage`
 - `publishAndAwait(...)` uses a pending map for synchronous delivery result waiting
 - fail-fast: missing `idempotency_key` is an immediate error
 
@@ -172,8 +162,7 @@ Ordering/routing boundary:
 
 ```text
 Telegram poll/getUpdates ----\
-Slack Socket Mode ------------+--> inbound adapters (telegram/slack/maep)
-MAEP OnDataPush -------------/             |
+Slack Socket Mode ------------+--> inbound adapters (telegram/slack)
                                            v
                                 +----------------------+
                                 | inproc bus runtime   |
@@ -188,11 +177,11 @@ MAEP OnDataPush -------------/             |
                     |                                             |
                     v                                             v
               run task / agent                            delivery adapters
-                    |                           (telegram / slack / maep)
+                    |                           (telegram / slack)
                     +-------------------------+-------------------+
                                               |
                                               v
-                                  Telegram / Slack / MAEP send
+                                  Telegram / Slack send
 ```
 
 ### 3.2 Shared Inbound Path (`InboundFlow`)
@@ -221,7 +210,7 @@ business output / proactive sender
 ## 4) Design Evaluation (Current State)
 
 ### 4.1 Why this is reasonable now
-- Minimal viable path is complete: Telegram / Slack / MAEP inbound/outbound paths are unified through bus.
+- Minimal viable path is complete: Telegram / Slack inbound/outbound paths are unified through bus.
 - Ordering is explicit and enforceable per `conversation_key`.
 - Backpressure is bounded and observable via typed error (`QUEUE_FULL`).
 - Idempotency is explicit via inbox/outbox keyed records.
@@ -236,22 +225,20 @@ business output / proactive sender
 ## 5) Delivery Status
 
 ### 5.1 Completed
-- Telegram/MAEP inbound adapters
-- Telegram/MAEP delivery adapters
+- Telegram inbound/delivery adapters
 - Slack inbound/delivery adapters
 - outbound bus migration in `contactsruntime sender`
 - Slack runtime bus path (`mistermorph slack`) with inbound publish and outbound delivery
 - main-path test coverage expansion
 - migration of Telegram business direct-send paths to bus outbound (admin paths excluded)
 - typed error code propagation in call-site logging
-- cross-channel regression: Telegram inbound -> MAEP outbound
 
 ### 5.2 Verified test set
 Verified locally on `2026-02-17`:
 - `go test ./internal/bus/...`
 - `go test ./internal/bus/adapters/...`
 - `go test ./internal/contactsruntime/... ./contacts/...`
-- `go test ./cmd/mistermorph/telegramcmd ./cmd/mistermorph/maepcmd ./cmd/mistermorph/slackcmd`
+- `go test ./cmd/mistermorph/telegramcmd ./cmd/mistermorph/slackcmd`
 - `go test ./...`
 
 ## 6) Backlog (Separated from Current State)

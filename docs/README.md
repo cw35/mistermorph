@@ -7,8 +7,6 @@
 - [Tools](./tools.md)
 - [Security](./security.md)
 - [Skills](./skills.md)
-- [MAEP](./maep.md)
-- [MAEP Implementation](./maep_impl.md)
 - [Telegram Runtime](./telegram.md)
 - [Slack (Socket Mode)](./slack.md)
 - [Bus](./bus.md)

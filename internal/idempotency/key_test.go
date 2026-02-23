@@ -13,8 +13,8 @@ func TestManualContactKey_Format(t *testing.T) {
 }
 
 func TestProactiveShareKey_Deterministic(t *testing.T) {
-	got := ProactiveShareKey("maep:Peer-A", "cand-1", 42, "group")
-	want := "proactive:maep_peer_a:cand_1:42:group"
+	got := ProactiveShareKey("slack:T111:U222", "cand-1", 42, "group")
+	want := "proactive:slack_t111_u222:cand_1:42:group"
 	if got != want {
 		t.Fatalf("ProactiveShareKey() = %q, want %q", got, want)
 	}

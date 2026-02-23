@@ -134,7 +134,7 @@ Constraints:
 - Requires an LLM client and model; returns an error if not bound.
 - `add` uses a "param extraction + LLM insertion" flow: `people` comes from tool params, then the LLM inserts `name (ref_id)` based on `content`, raw user input, and runtime context.
 - `chat_id` currently accepts only `tg:<chat-id>` (signed int64, non-zero).
-- `add` only accepts reference IDs in this set: `tg:<int64>`, `tg:@<username>`, `maep:<peer_id>`, `slack:<channel_id>`, `discord:<channel_id>`.
+- `add` only accepts reference IDs in this set: `tg:<int64>`, `tg:@<username>`, `slack:<channel_id>`, `discord:<channel_id>`.
 - Reference IDs in `add` must exist in contact snapshot `reachable_ids`.
 - If some people in `add` cannot be mapped to reference IDs, the tool does not fail; it falls back to writing raw `content` and appends `reference_unresolved_write_raw` in `warnings`.
 - `complete` relies only on LLM semantic matching (no programmatic fallback); ambiguous matches return an error directly.
@@ -164,7 +164,7 @@ Note: in current implementation, `missing_reference_id` is usually raised during
 
 ## `contacts_send`
 
-Purpose: send a single message to one contact (auto-routed via MAEP/Telegram).
+Purpose: send a single message to one contact (auto-routed via Telegram/Slack).
 
 Contact profile maintenance:
 

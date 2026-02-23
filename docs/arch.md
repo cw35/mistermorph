@@ -97,7 +97,6 @@ The following areas already have formal docs, so this file only links them:
 - Tools system: [`./tools.md`](./tools.md)
 - Security / Guard: [`./security.md`](./security.md)
 - Skills system: [`./skills.md`](./skills.md)
-- MAEP protocol and implementation: [`./maep.md`](./maep.md), [`./maep_impl.md`](./maep_impl.md)
 - Telegram runtime behavior: [`./telegram.md`](./telegram.md)
 - Slack Socket Mode: [`./slack.md`](./slack.md)
 - Bus design and implementation: [`./bus.md`](./bus.md), [`./bus_impl.md`](./bus_impl.md)
@@ -143,14 +142,6 @@ file_state_dir (default ~/.morph)
 │   ├── INACTIVE.md
 │   ├── bus_inbox.json
 │   └── bus_outbox.json
-├── maep/
-│   ├── identity.json
-│   ├── contacts.json
-│   ├── inbox_messages.jsonl
-│   ├── outbox_messages.jsonl
-│   ├── audit_events.jsonl
-│   ├── dedupe_records.json
-│   └── protocol_history.json
 ├── memory/
 │   ├── index.md
 │   └── YYYY-MM-DD/<sanitized-session-id>.md
