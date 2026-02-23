@@ -18,12 +18,13 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 	}
 
 	active := Contact{
-		ContactID:        "maep:12D3KooWactive",
-		Kind:             KindAgent,
-		Channel:          ChannelMAEP,
-		ContactNickname:  "Active Agent",
-		MAEPNodeID:       "maep:12D3KooWactive",
-		MAEPDialAddress:  "/ip4/127.0.0.1/tcp/4021/p2p/12D3KooWactive",
+		ContactID:        "slack:T111:U222",
+		Kind:             KindHuman,
+		Channel:          ChannelSlack,
+		ContactNickname:  "Active Slack",
+		SlackTeamID:      "T111",
+		SlackUserID:      "U222",
+		SlackDMChannelID: "D333",
 		TopicPreferences: []string{"ops", "alerts"},
 	}
 	inactive := Contact{
@@ -53,8 +54,8 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 	if len(activeList) != 1 || activeList[0].ContactID != active.ContactID {
 		t.Fatalf("active contacts mismatch: got=%v", activeList)
 	}
-	if activeList[0].MAEPDialAddress == "" {
-		t.Fatalf("active contact maep_dial_address should be set")
+	if activeList[0].SlackDMChannelID == "" {
+		t.Fatalf("active contact slack_dm_channel_id should be set")
 	}
 
 	inactiveList, err := store.ListContacts(ctx, StatusInactive)
@@ -178,13 +179,13 @@ updated_at: "1970-01-01T00:00:00Z"
 
 # Inactive Contacts
 
-## Morph Node
+## Bob Slack
 
-` + "```yaml\n" + `contact_id: "maep:12D3KooWPeerX"
-kind: "agent"
-channel: "maep"
-maep_node_id: "maep:12D3KooWPeerX"
-maep_dial_address: "/ip4/127.0.0.1/tcp/4021/p2p/12D3KooWPeerX"
+` + "```yaml\n" + `contact_id: "slack:T111:D222"
+kind: "human"
+channel: "slack"
+slack_team_id: "T111"
+slack_dm_channel_id: "D222"
 ` + "```\n"
 	if err := os.WriteFile(filepath.Join(root, "ACTIVE.md"), []byte(activeBody), 0o600); err != nil {
 		t.Fatalf("WriteFile(ACTIVE.md) error = %v", err)
@@ -214,11 +215,11 @@ maep_dial_address: "/ip4/127.0.0.1/tcp/4021/p2p/12D3KooWPeerX"
 	if len(inactive) != 1 {
 		t.Fatalf("inactive contacts mismatch: got=%d want=1", len(inactive))
 	}
-	if inactive[0].MAEPNodeID != "maep:12D3KooWPeerX" || inactive[0].Kind != KindAgent {
+	if inactive[0].ContactID != "slack:T111:D222" || inactive[0].Kind != KindHuman {
 		t.Fatalf("inactive contact mismatch: %#v", inactive[0])
 	}
-	if inactive[0].MAEPDialAddress == "" {
-		t.Fatalf("inactive contact maep_dial_address should be set")
+	if inactive[0].SlackDMChannelID != "D222" {
+		t.Fatalf("inactive contact slack_dm_channel_id mismatch: got=%q want=D222", inactive[0].SlackDMChannelID)
 	}
 }
 

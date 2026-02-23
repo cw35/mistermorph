@@ -23,7 +23,6 @@ const (
 const (
 	ChannelTelegram = channels.Telegram
 	ChannelSlack    = channels.Slack
-	ChannelMAEP     = channels.MAEP
 	ShareTopic      = "chat.message"
 )
 
@@ -39,8 +38,6 @@ type Contact struct {
 	SlackUserID       string     `json:"slack_user_id,omitempty"`
 	SlackDMChannelID  string     `json:"slack_dm_channel_id,omitempty"`
 	SlackChannelIDs   []string   `json:"slack_channel_ids,omitempty"`
-	MAEPNodeID        string     `json:"maep_node_id,omitempty"`
-	MAEPDialAddress   string     `json:"maep_dial_address,omitempty"`
 	PersonaBrief      string     `json:"persona_brief,omitempty"`
 	TopicPreferences  []string   `json:"topic_preferences,omitempty"`
 	CooldownUntil     *time.Time `json:"cooldown_until,omitempty"`

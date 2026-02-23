@@ -134,12 +134,6 @@ func (s *Service) UpsertContact(ctx context.Context, contact Contact, now time.T
 		if len(contact.TGGroupChatIDs) == 0 && len(existing.TGGroupChatIDs) > 0 {
 			contact.TGGroupChatIDs = append([]int64(nil), existing.TGGroupChatIDs...)
 		}
-		if strings.TrimSpace(contact.MAEPNodeID) == "" && strings.TrimSpace(existing.MAEPNodeID) != "" {
-			contact.MAEPNodeID = strings.TrimSpace(existing.MAEPNodeID)
-		}
-		if strings.TrimSpace(contact.MAEPDialAddress) == "" && strings.TrimSpace(existing.MAEPDialAddress) != "" {
-			contact.MAEPDialAddress = strings.TrimSpace(existing.MAEPDialAddress)
-		}
 		if len(contact.TopicPreferences) == 0 && len(existing.TopicPreferences) > 0 {
 			contact.TopicPreferences = append([]string(nil), existing.TopicPreferences...)
 		}
