@@ -124,9 +124,6 @@ func choosePreferredID(item contacts.Contact, reachable []string) string {
 	if item.TGPrivateChatID > 0 {
 		candidates = append(candidates, "tg:"+strconv.FormatInt(item.TGPrivateChatID, 10))
 	}
-	if nodeID := strings.TrimSpace(item.MAEPNodeID); nodeID != "" {
-		candidates = append(candidates, nodeID)
-	}
 	for _, candidate := range candidates {
 		if candidate == "" {
 			continue
@@ -168,7 +165,6 @@ func contactReachableIDs(item contacts.Contact) []string {
 			appendID(fmt.Sprintf("tg:%d", groupID))
 		}
 	}
-	appendID(item.MAEPNodeID)
 	return dedupeSortedStrings(ids)
 }
 

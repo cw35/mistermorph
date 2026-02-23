@@ -99,10 +99,9 @@ func TestFileStoreBusRecordsRoundTrip(t *testing.T) {
 
 	lastAttemptAt := now.Add(1 * time.Minute)
 	if err := store.PutBusOutboxRecord(ctx, BusOutboxRecord{
-		Channel:        ChannelMAEP,
+		Channel:        ChannelTelegram,
 		IdempotencyKey: "manual:k1",
-		ContactID:      "maep:a",
-		PeerID:         "12D3KooWA",
+		ContactID:      "tg:1001",
 		ItemID:         "item-1",
 		ContentType:    "text/plain",
 		PayloadBase64:  "aGVsbG8",
@@ -114,7 +113,7 @@ func TestFileStoreBusRecordsRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PutBusOutboxRecord() error = %v", err)
 	}
-	outbox, ok, err := store.GetBusOutboxRecord(ctx, ChannelMAEP, "manual:k1")
+	outbox, ok, err := store.GetBusOutboxRecord(ctx, ChannelTelegram, "manual:k1")
 	if err != nil {
 		t.Fatalf("GetBusOutboxRecord() error = %v", err)
 	}
@@ -135,12 +134,12 @@ func TestFileStoreBusOutboxRejectsUnknownField(t *testing.T) {
 	}
 	if err := os.WriteFile(
 		filepath.Join(root, "bus_outbox.json"),
-		[]byte("{\"version\":1,\"records\":[{\"channel\":\"maep\",\"idempotency_key\":\"k\",\"status\":\"sent\",\"attempts\":1,\"created_at\":\"2026-02-08T12:00:00Z\",\"updated_at\":\"2026-02-08T12:00:00Z\",\"sent_at\":\"2026-02-08T12:00:00Z\",\"unknown\":\"x\"}]}\n"),
+		[]byte("{\"version\":1,\"records\":[{\"channel\":\"telegram\",\"idempotency_key\":\"k\",\"status\":\"sent\",\"attempts\":1,\"created_at\":\"2026-02-08T12:00:00Z\",\"updated_at\":\"2026-02-08T12:00:00Z\",\"sent_at\":\"2026-02-08T12:00:00Z\",\"unknown\":\"x\"}]}\n"),
 		0o600,
 	); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if _, _, err := store.GetBusOutboxRecord(ctx, ChannelMAEP, "k"); err == nil {
+	if _, _, err := store.GetBusOutboxRecord(ctx, ChannelTelegram, "k"); err == nil {
 		t.Fatalf("GetBusOutboxRecord() expected decode error for unknown field")
 	}
 }

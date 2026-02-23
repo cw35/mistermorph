@@ -50,7 +50,7 @@ func TestStoreAddAndComplete(t *testing.T) {
 	now := time.Date(2026, 2, 9, 10, 0, 0, 0, time.UTC)
 	store.Now = func() time.Time { return now }
 
-	addRes, err := store.Add(context.Background(), "帮 [John](tg:1001) 发消息给 [Momo](maep:12D3KooWPeer)")
+	addRes, err := store.Add(context.Background(), "帮 [John](tg:1001) 发消息给 [Momo](slack:T111:D222)")
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -62,7 +62,7 @@ func TestStoreAddAndComplete(t *testing.T) {
 	}
 
 	now = now.Add(30 * time.Minute)
-	completeRes, err := store.Complete(context.Background(), "发消息给 [Momo](maep:12D3KooWPeer)")
+	completeRes, err := store.Complete(context.Background(), "发消息给 [Momo](slack:T111:D222)")
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
 	}
@@ -93,6 +93,23 @@ func TestStoreAddRejectsInvalidReferenceID(t *testing.T) {
 	_, err := store.Add(context.Background(), "提醒 [John](unknown id) 明天回复")
 	if err == nil {
 		t.Fatalf("expected Add() to fail for invalid reference id")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "invalid reference id") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestStoreAddRejectsMAEPReferenceID(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"))
+	store.Semantics = stubSemantics{}
+	store.Now = func() time.Time {
+		return time.Date(2026, 2, 9, 10, 0, 0, 0, time.UTC)
+	}
+
+	_, err := store.Add(context.Background(), "提醒 [Momo](maep:12D3KooWPeer) 明天回复")
+	if err == nil {
+		t.Fatalf("expected Add() to fail for maep reference id")
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "invalid reference id") {
 		t.Fatalf("unexpected error: %v", err)

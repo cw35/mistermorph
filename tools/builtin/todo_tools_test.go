@@ -42,14 +42,14 @@ func TestTodoUpdateTool(t *testing.T) {
 
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 对齐消息内容"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 和 [Momo](slack:T001:D002) 对齐消息内容"}`,
 			`{"status":"matched","index":0}`,
 		},
 	}
 	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
 	out, err := update.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"content": "提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 对齐消息内容",
+		"content": "提醒 [John](tg:1001) 和 [Momo](slack:T001:D002) 对齐消息内容",
 		"people":  []any{"John", "Momo"},
 	})
 	if err != nil {
@@ -236,7 +236,7 @@ func TestTodoUpdateCompleteAmbiguousFromLLM(t *testing.T) {
 	client := &stubTodoToolLLMClient{
 		replies: []string{
 			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 准备一版草稿"}`,
-			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 确认草稿"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 和 [Momo](slack:T001:D002) 确认草稿"}`,
 			`{"keep_indices":[0,1]}`,
 			`{"status":"ambiguous","candidate_indices":[0,1]}`,
 		},
@@ -253,7 +253,7 @@ func TestTodoUpdateCompleteAmbiguousFromLLM(t *testing.T) {
 	}
 	_, err = update.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"content": "提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 确认草稿",
+		"content": "提醒 [John](tg:1001) 和 [Momo](slack:T001:D002) 确认草稿",
 		"people":  []any{"John", "Momo"},
 	})
 	if err != nil {
@@ -426,11 +426,12 @@ func seedTodoContacts(t *testing.T, contactsDir string) {
 		t.Fatalf("seed john contact error = %v", err)
 	}
 	_, err = svc.UpsertContact(context.Background(), contacts.Contact{
-		ContactID:       "maep:12D3KooWPeer",
-		ContactNickname: "Momo",
-		Kind:            contacts.KindAgent,
-		Channel:         contacts.ChannelMAEP,
-		MAEPNodeID:      "maep:12D3KooWPeer",
+		ContactID:        "slack:T001:D002",
+		ContactNickname:  "Momo",
+		Kind:             contacts.KindHuman,
+		Channel:          contacts.ChannelSlack,
+		SlackTeamID:      "T001",
+		SlackDMChannelID: "D002",
 	}, now)
 	if err != nil {
 		t.Fatalf("seed momo contact error = %v", err)

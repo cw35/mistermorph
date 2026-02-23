@@ -111,10 +111,9 @@ func TestNextOutboxRecord_RejectFailedWithoutError(t *testing.T) {
 
 func testOutboxBase() BusOutboxRecord {
 	return BusOutboxRecord{
-		Channel:        ChannelMAEP,
+		Channel:        ChannelTelegram,
 		IdempotencyKey: "manual:k1",
-		ContactID:      "maep:c1",
-		PeerID:         "12D3KooW...",
+		ContactID:      "tg:1001",
 		ItemID:         "item-1",
 		ContentType:    "text/plain",
 		PayloadBase64:  "aGVsbG8",

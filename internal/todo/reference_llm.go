@@ -124,7 +124,7 @@ func (r *LLMReferenceResolver) ResolveAddContent(ctx context.Context, content st
 		"Attach IDs as `[Name](id)` where id is from allowed_ids, example input:",
 		"Notice $SPEAKER to tell Alice invites Bob to the meeting of Lucy.",
 		"and rewritten content (assume the $SPEAKER is 'Lyric'): ",
-		"Notice [Lyric](tg:98765) to tell [Alice](tg:12345) invites [Bob](maep:a1b2c3d4e5) to the meeting of [Lucy](tg:@lucy).",
+		"Notice [Lyric](tg:98765) to tell [Alice](tg:12345) invites [Bob](slack:T123:D456) to the meeting of [Lucy](tg:@lucy).",
 		"If any person in `people` cannot be uniquely resolved to one allowed id, keep it in the rewritten content in the same form",
 		"Never invent IDs that are not listed in allowed_ids.",
 		"Preserve original language and intent. Keep the sentence natural.",

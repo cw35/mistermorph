@@ -27,11 +27,12 @@ func TestLoadContactSnapshot(t *testing.T) {
 	}
 
 	_, err = svc.UpsertContact(context.Background(), contacts.Contact{
-		ContactID:       "maep:12D3KooWAlicePeer",
-		ContactNickname: "Alice",
-		Kind:            contacts.KindAgent,
-		Channel:         contacts.ChannelMAEP,
-		MAEPNodeID:      "maep:12D3KooWAlicePeer",
+		ContactID:        "slack:T001:D002",
+		ContactNickname:  "Alice",
+		Kind:             contacts.KindHuman,
+		Channel:          contacts.ChannelSlack,
+		SlackTeamID:      "T001",
+		SlackDMChannelID: "D002",
 	}, now)
 	if err != nil {
 		t.Fatalf("UpsertContact(alice) error = %v", err)
@@ -56,7 +57,7 @@ func TestLoadContactSnapshot(t *testing.T) {
 	if !foundJohn {
 		t.Fatalf("expected John snapshot item")
 	}
-	for _, id := range []string{"tg:1001", "maep:12D3KooWAlicePeer"} {
+	for _, id := range []string{"tg:1001", "slack:T001:D002"} {
 		if !snap.HasReachableID(id) {
 			t.Fatalf("expected reachable id %q", id)
 		}
@@ -65,17 +66,17 @@ func TestLoadContactSnapshot(t *testing.T) {
 
 func TestValidateReachableReferences(t *testing.T) {
 	snap := ContactSnapshot{
-		ReachableIDs: []string{"maep:12D3KooWJohn", "tg:1001"},
+		ReachableIDs: []string{"slack:T001:D002", "tg:1001"},
 	}
 
 	if err := ValidateReachableReferences("提醒 [John](tg:1001) 明天确认", snap); err != nil {
 		t.Fatalf("ValidateReachableReferences(snapshot tg id) error = %v", err)
 	}
-	if err := ValidateReachableReferences("提醒 [John](maep:12D3KooWJohn) 明天确认", snap); err != nil {
+	if err := ValidateReachableReferences("提醒 [John](slack:T001:D002) 明天确认", snap); err != nil {
 		t.Fatalf("ValidateReachableReferences(snapshot id) error = %v", err)
 	}
 	err := ValidateReachableReferences("提醒 [John](maep:unknown) 明天确认", snap)
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not reachable") {
-		t.Fatalf("expected not reachable error, got %v", err)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "invalid reference id") {
+		t.Fatalf("expected invalid reference id error, got %v", err)
 	}
 }
