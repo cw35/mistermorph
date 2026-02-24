@@ -3,6 +3,8 @@ package telegram
 import (
 	"strings"
 	"time"
+
+	"github.com/quailyquaily/mistermorph/agent"
 )
 
 type runtimeLoopOptions struct {
@@ -21,9 +23,7 @@ type runtimeLoopOptions struct {
 	Hooks                         Hooks
 	BusMaxInFlight                int
 	RequestTimeout                time.Duration
-	AgentMaxSteps                 int
-	AgentParseRetries             int
-	AgentMaxTokenBudget           int
+	AgentLimits                   agent.Limits
 	FileCacheMaxAge               time.Duration
 	FileCacheMaxFiles             int
 	FileCacheMaxTotalBytes        int64
@@ -55,9 +55,7 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		Hooks:                         opts.Hooks,
 		BusMaxInFlight:                opts.BusMaxInFlight,
 		RequestTimeout:                opts.RequestTimeout,
-		AgentMaxSteps:                 opts.AgentMaxSteps,
-		AgentParseRetries:             opts.AgentParseRetries,
-		AgentMaxTokenBudget:           opts.AgentMaxTokenBudget,
+		AgentLimits:                   opts.AgentLimits,
 		FileCacheMaxAge:               opts.FileCacheMaxAge,
 		FileCacheMaxFiles:             opts.FileCacheMaxFiles,
 		FileCacheMaxTotalBytes:        opts.FileCacheMaxTotalBytes,
@@ -100,12 +98,7 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	if opts.RequestTimeout <= 0 {
 		opts.RequestTimeout = 90 * time.Second
 	}
-	if opts.AgentMaxSteps <= 0 {
-		opts.AgentMaxSteps = 15
-	}
-	if opts.AgentParseRetries <= 0 {
-		opts.AgentParseRetries = 2
-	}
+	opts.AgentLimits = opts.AgentLimits.NormalizeForRuntime()
 	if opts.FileCacheMaxAge <= 0 {
 		opts.FileCacheMaxAge = 7 * 24 * time.Hour
 	}

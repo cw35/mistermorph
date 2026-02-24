@@ -87,9 +87,10 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			requireSkillProfiles := viper.GetBool("secrets.require_skill_profiles")
 
 			baseCfg := agent.Config{
-				MaxSteps:       viper.GetInt("max_steps"),
-				ParseRetries:   viper.GetInt("parse_retries"),
-				MaxTokenBudget: viper.GetInt("max_token_budget"),
+				MaxSteps:        viper.GetInt("max_steps"),
+				ParseRetries:    viper.GetInt("parse_retries"),
+				MaxTokenBudget:  viper.GetInt("max_token_budget"),
+				ToolRepeatLimit: viper.GetInt("tool_repeat_limit"),
 			}
 
 			var sharedGuard *guard.Guard

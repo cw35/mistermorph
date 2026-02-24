@@ -191,9 +191,10 @@ func New(deps Dependencies) *cobra.Command {
 				client,
 				reg,
 				agent.Config{
-					MaxSteps:       configutil.FlagOrViperInt(cmd, "max-steps", "max_steps"),
-					ParseRetries:   configutil.FlagOrViperInt(cmd, "parse-retries", "parse_retries"),
-					MaxTokenBudget: configutil.FlagOrViperInt(cmd, "max-token-budget", "max_token_budget"),
+					MaxSteps:        configutil.FlagOrViperInt(cmd, "max-steps", "max_steps"),
+					ParseRetries:    configutil.FlagOrViperInt(cmd, "parse-retries", "parse_retries"),
+					MaxTokenBudget:  configutil.FlagOrViperInt(cmd, "max-token-budget", "max_token_budget"),
+					ToolRepeatLimit: configutil.FlagOrViperInt(cmd, "tool-repeat-limit", "tool_repeat_limit"),
 				},
 				promptSpec,
 				opts...,
@@ -242,6 +243,7 @@ func New(deps Dependencies) *cobra.Command {
 	cmd.Flags().Int("max-steps", 15, "Max tool-call steps.")
 	cmd.Flags().Int("parse-retries", 2, "Max JSON parse retries.")
 	cmd.Flags().Int("max-token-budget", 0, "Max cumulative token budget (0 disables).")
+	cmd.Flags().Int("tool-repeat-limit", 3, "Force final when the same successful tool call repeats this many times.")
 
 	cmd.Flags().Duration("timeout", 10*time.Minute, "Overall timeout.")
 

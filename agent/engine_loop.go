@@ -36,8 +36,6 @@ type engineLoopState struct {
 	lastToolRepeat int
 }
 
-const toolRepeatLimit = 3
-
 func newRunID() string { return fmt.Sprintf("%x", rand.Uint64()) }
 
 func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Context, error) {
@@ -383,7 +381,7 @@ func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Con
 						st.lastToolSig = sig
 						st.lastToolRepeat = 1
 					}
-					if st.lastToolRepeat >= toolRepeatLimit {
+					if st.lastToolRepeat >= e.config.ToolRepeatLimit {
 						log.Warn("tool_repeat_limit_reached", "step", step, "tool", tc.Name, "repeat", st.lastToolRepeat)
 						st.messages = append(st.messages, llm.Message{
 							Role:    "user",

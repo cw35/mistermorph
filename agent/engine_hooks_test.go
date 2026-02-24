@@ -163,6 +163,35 @@ func TestWithFallbackFinal_NilIgnored(t *testing.T) {
 	}
 }
 
+func TestEngineConfig_DefaultToolRepeatLimit(t *testing.T) {
+	client := newMockClient(finalResponse("ok"))
+	e := New(client, baseRegistry(), Config{}, DefaultPromptSpec())
+	if e.config.ToolRepeatLimit != 3 {
+		t.Fatalf("tool repeat limit = %d, want 3", e.config.ToolRepeatLimit)
+	}
+}
+
+func TestToolRepeatLimit_Configurable(t *testing.T) {
+	reg := baseRegistry()
+	reg.Register(&mockTool{name: "search", result: "ok"})
+	client := newMockClient(
+		toolCallResponse("search"),
+		finalResponse("forced"),
+	)
+	e := New(client, reg, Config{MaxSteps: 5, ToolRepeatLimit: 1}, DefaultPromptSpec())
+
+	f, _, err := e.Run(context.Background(), "test", RunOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f == nil || f.Output != "forced" {
+		t.Fatalf("unexpected final output: %#v", f)
+	}
+	if calls := client.allCalls(); len(calls) != 2 {
+		t.Fatalf("chat calls = %d, want 2", len(calls))
+	}
+}
+
 // ============================================================
 // Tests for Run() integration points
 // ============================================================

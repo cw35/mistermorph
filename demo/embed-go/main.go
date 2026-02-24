@@ -116,12 +116,14 @@ func (t *GetWeatherTool) Execute(ctx context.Context, params map[string]any) (st
 
 func main() {
 	var (
-		mode           = flag.String("mode", "task", "Run mode: task|telegram|slack.")
-		task           = flag.String("task", "List files and summarize the project.", "Task to run in --mode task.")
-		model          = flag.String("model", "gpt-5.2", "Model name.")
-		apiKey         = flag.String("api-key", os.Getenv("OPENAI_API_KEY"), "API key (defaults to OPENAI_API_KEY).")
-		inspectPrompt  = flag.Bool("inspect-prompt", false, "Dump prompts to ./dump.")
-		inspectRequest = flag.Bool("inspect-request", false, "Dump request/response payloads to ./dump.")
+		mode            = flag.String("mode", "task", "Run mode: task|telegram|slack.")
+		task            = flag.String("task", "List files and summarize the project.", "Task to run in --mode task.")
+		model           = flag.String("model", "gpt-5.2", "Model name.")
+		apiKey          = flag.String("api-key", os.Getenv("OPENAI_API_KEY"), "API key (defaults to OPENAI_API_KEY).")
+		maxSteps        = flag.Int("max-steps", 15, "Agent max tool-call steps.")
+		toolRepeatLimit = flag.Int("tool-repeat-limit", 3, "Force final when the same successful tool call repeats this many times.")
+		inspectPrompt   = flag.Bool("inspect-prompt", false, "Dump prompts to ./dump.")
+		inspectRequest  = flag.Bool("inspect-request", false, "Dump request/response payloads to ./dump.")
 
 		telegramBotToken = flag.String("telegram-bot-token", os.Getenv("TG_BOT_TOKEN"), "Telegram bot token (or TG_BOT_TOKEN).")
 
@@ -138,6 +140,8 @@ func main() {
 	cfg.Set("llm.api_key", strings.TrimSpace(*apiKey))
 	cfg.Set("llm.model", strings.TrimSpace(*model))
 	cfg.Set("tools.todo_update.enabled", true)
+	cfg.Set("max_steps", *maxSteps)
+	cfg.Set("tool_repeat_limit", *toolRepeatLimit)
 
 	rt := integration.New(cfg)
 

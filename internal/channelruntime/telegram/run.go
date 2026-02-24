@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/quailyquaily/mistermorph/agent"
 )
 
 type RunOptions struct {
@@ -21,9 +23,7 @@ type RunOptions struct {
 	ServerMaxQueue                int
 	BusMaxInFlight                int
 	RequestTimeout                time.Duration
-	AgentMaxSteps                 int
-	AgentParseRetries             int
-	AgentMaxTokenBudget           int
+	AgentLimits                   agent.Limits
 	FileCacheMaxAge               time.Duration
 	FileCacheMaxFiles             int
 	FileCacheMaxTotalBytes        int64

@@ -3,6 +3,8 @@ package slack
 import (
 	"strings"
 	"time"
+
+	"github.com/quailyquaily/mistermorph/agent"
 )
 
 type runtimeLoopOptions struct {
@@ -22,9 +24,7 @@ type runtimeLoopOptions struct {
 	BaseURL                       string
 	BusMaxInFlight                int
 	RequestTimeout                time.Duration
-	AgentMaxSteps                 int
-	AgentParseRetries             int
-	AgentMaxTokenBudget           int
+	AgentLimits                   agent.Limits
 	SecretsRequireSkillProfiles   bool
 	InspectPrompt                 bool
 	InspectRequest                bool
@@ -48,9 +48,7 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		Hooks:                         opts.Hooks,
 		BusMaxInFlight:                opts.BusMaxInFlight,
 		RequestTimeout:                opts.RequestTimeout,
-		AgentMaxSteps:                 opts.AgentMaxSteps,
-		AgentParseRetries:             opts.AgentParseRetries,
-		AgentMaxTokenBudget:           opts.AgentMaxTokenBudget,
+		AgentLimits:                   opts.AgentLimits,
 		SecretsRequireSkillProfiles:   opts.SecretsRequireSkillProfiles,
 		InspectPrompt:                 opts.InspectPrompt,
 		InspectRequest:                opts.InspectRequest,
@@ -83,12 +81,7 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	if opts.RequestTimeout <= 0 {
 		opts.RequestTimeout = 90 * time.Second
 	}
-	if opts.AgentMaxSteps <= 0 {
-		opts.AgentMaxSteps = 15
-	}
-	if opts.AgentParseRetries <= 0 {
-		opts.AgentParseRetries = 2
-	}
+	opts.AgentLimits = opts.AgentLimits.NormalizeForRuntime()
 	if opts.GroupTriggerMode == "" {
 		opts.GroupTriggerMode = "smart"
 	}

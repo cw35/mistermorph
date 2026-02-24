@@ -17,6 +17,8 @@ export OPENAI_API_KEY="..."
 GOCACHE=/tmp/gocache GOPATH=/tmp/gopath GOMODCACHE=/tmp/gomodcache \
   go run . \
   --mode task \
+  --max-steps 20 \
+  --tool-repeat-limit 5 \
   --task "List files in the current directory and summarize what this project is."
 ```
 
@@ -48,5 +50,6 @@ GOCACHE=/tmp/gocache GOPATH=/tmp/gopath GOMODCACHE=/tmp/gomodcache \
 
 - This demo uses OpenAI-compatible provider, so network access is required to actually run.
 - `--inspect-prompt` and `--inspect-request` are supported in all modes.
+- `--max-steps` and `--tool-repeat-limit` are supported in all modes.
 - In `task` mode, the demo also registers example project tools (`list_dir`, `get_weather`) on top of selected built-ins.
 - `telegram` and `slack` modes run until interrupted (`Ctrl+C`).

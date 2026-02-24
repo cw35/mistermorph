@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/channelopts"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
@@ -59,18 +60,21 @@ func loadRuntimeSnapshotFromReader(v *viper.Viper) runtimeSnapshot {
 	provider := strings.TrimSpace(llmValues.Provider)
 
 	return runtimeSnapshot{
-		Logger:                      logger,
-		LoggerInitErr:               loggerErr,
-		LogOptions:                  logOpts,
-		LLMValues:                   llmValues,
-		LLMProvider:                 provider,
-		LLMEndpoint:                 llmutil.EndpointForProviderWithValues(provider, llmValues),
-		LLMAPIKey:                   llmutil.APIKeyForProviderWithValues(provider, llmValues),
-		LLMModel:                    llmutil.ModelForProviderWithValues(provider, llmValues),
-		LLMRequestTimeout:           v.GetDuration("llm.request_timeout"),
-		AgentMaxSteps:               v.GetInt("max_steps"),
-		AgentParseRetries:           v.GetInt("parse_retries"),
-		AgentMaxTokenBudget:         v.GetInt("max_token_budget"),
+		Logger:            logger,
+		LoggerInitErr:     loggerErr,
+		LogOptions:        logOpts,
+		LLMValues:         llmValues,
+		LLMProvider:       provider,
+		LLMEndpoint:       llmutil.EndpointForProviderWithValues(provider, llmValues),
+		LLMAPIKey:         llmutil.APIKeyForProviderWithValues(provider, llmValues),
+		LLMModel:          llmutil.ModelForProviderWithValues(provider, llmValues),
+		LLMRequestTimeout: v.GetDuration("llm.request_timeout"),
+		AgentLimits: agent.Limits{
+			MaxSteps:        v.GetInt("max_steps"),
+			ParseRetries:    v.GetInt("parse_retries"),
+			MaxTokenBudget:  v.GetInt("max_token_budget"),
+			ToolRepeatLimit: v.GetInt("tool_repeat_limit"),
+		},
 		SecretsRequireSkillProfiles: v.GetBool("secrets.require_skill_profiles"),
 		SkillsConfig:                cloneSkillsConfig(skillsutil.SkillsConfigFromReader(v)),
 		Registry: registrySnapshot{

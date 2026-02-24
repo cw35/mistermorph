@@ -174,11 +174,7 @@ func (rt *Runtime) NewRunEngineWithRegistry(ctx context.Context, task string, ba
 	engine := agent.New(
 		client,
 		reg,
-		agent.Config{
-			MaxSteps:       snap.AgentMaxSteps,
-			ParseRetries:   snap.AgentParseRetries,
-			MaxTokenBudget: snap.AgentMaxTokenBudget,
-		},
+		snap.AgentLimits.ToConfig(),
 		promptSpec,
 		opts...,
 	)

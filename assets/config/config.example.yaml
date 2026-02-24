@@ -333,6 +333,8 @@ max_steps: 15
 parse_retries: 2
 # - max_token_budget: stop the loop once cumulative tokens exceed this (0 disables).
 max_token_budget: 0
+# - tool_repeat_limit: force final when the same successful tool call repeats this many times.
+tool_repeat_limit: 3
 # Overall run timeout.
 timeout: "10m"
 # If true, prints extra debug info to stderr (tool steps, selected skills, etc).

@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/contacts"
 	"github.com/quailyquaily/mistermorph/guard"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
@@ -213,11 +212,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 	toolsutil.BindTodoUpdateToolLLM(reg, client, model)
 	logOpts := logOptionsFromDeps(d)
 
-	cfg := agent.Config{
-		MaxSteps:       opts.AgentMaxSteps,
-		ParseRetries:   opts.AgentParseRetries,
-		MaxTokenBudget: opts.AgentMaxTokenBudget,
-	}
+	cfg := opts.AgentLimits.ToConfig()
 	taskRuntimeOpts := runtimeTaskOptions{
 		MemoryEnabled:               opts.MemoryEnabled,
 		MemoryShortTermDays:         opts.MemoryShortTermDays,

@@ -3,6 +3,8 @@ package channelopts
 import (
 	"testing"
 	"time"
+
+	"github.com/quailyquaily/mistermorph/agent"
 )
 
 func TestParseTelegramAllowedChatIDs(t *testing.T) {
@@ -32,6 +34,7 @@ func TestBuildTelegramRunOptionsTaskTimeoutFallback(t *testing.T) {
 			GlobalTaskTimeout:                    2 * time.Minute,
 			PollTimeout:                          30 * time.Second,
 			MaxConcurrency:                       3,
+			AgentLimits:                          agent.Limits{ToolRepeatLimit: 9},
 			DefaultGroupTriggerMode:              "smart",
 			DefaultAddressingConfidenceThreshold: 0.6,
 			DefaultAddressingInterjectThreshold:  0.6,
@@ -50,6 +53,9 @@ func TestBuildTelegramRunOptionsTaskTimeoutFallback(t *testing.T) {
 	if len(opts.AllowedChatIDs) != 1 || opts.AllowedChatIDs[0] != 100 {
 		t.Fatalf("allowed chat ids = %#v, want [100]", opts.AllowedChatIDs)
 	}
+	if opts.AgentLimits.ToolRepeatLimit != 9 {
+		t.Fatalf("agent tool repeat limit = %d, want 9", opts.AgentLimits.ToolRepeatLimit)
+	}
 }
 
 func TestBuildSlackRunOptionsTaskTimeoutFallback(t *testing.T) {
@@ -58,6 +64,7 @@ func TestBuildSlackRunOptionsTaskTimeoutFallback(t *testing.T) {
 			TaskTimeout:                          0,
 			GlobalTaskTimeout:                    3 * time.Minute,
 			MaxConcurrency:                       3,
+			AgentLimits:                          agent.Limits{ToolRepeatLimit: 11},
 			DefaultGroupTriggerMode:              "smart",
 			DefaultAddressingConfidenceThreshold: 0.6,
 			DefaultAddressingInterjectThreshold:  0.6,
@@ -70,5 +77,8 @@ func TestBuildSlackRunOptionsTaskTimeoutFallback(t *testing.T) {
 	)
 	if opts.TaskTimeout != 3*time.Minute {
 		t.Fatalf("task timeout = %v, want 3m", opts.TaskTimeout)
+	}
+	if opts.AgentLimits.ToolRepeatLimit != 11 {
+		t.Fatalf("agent tool repeat limit = %d, want 11", opts.AgentLimits.ToolRepeatLimit)
 	}
 }

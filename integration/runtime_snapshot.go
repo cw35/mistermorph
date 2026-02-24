@@ -22,9 +22,7 @@ type runtimeSnapshot struct {
 	LLMAPIKey                   string
 	LLMModel                    string
 	LLMRequestTimeout           time.Duration
-	AgentMaxSteps               int
-	AgentParseRetries           int
-	AgentMaxTokenBudget         int
+	AgentLimits                 agent.Limits
 	SecretsRequireSkillProfiles bool
 	SkillsConfig                skillsutil.SkillsConfig
 	Registry                    registrySnapshot

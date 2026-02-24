@@ -41,9 +41,7 @@ type RunOptions struct {
 	BaseURL                       string
 	BusMaxInFlight                int
 	RequestTimeout                time.Duration
-	AgentMaxSteps                 int
-	AgentParseRetries             int
-	AgentMaxTokenBudget           int
+	AgentLimits                   agent.Limits
 	SecretsRequireSkillProfiles   bool
 	Hooks                         Hooks
 	InspectPrompt                 bool
@@ -199,11 +197,7 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 	registerPlanTool(d, reg, client, model)
 	toolsutil.BindTodoUpdateToolLLM(reg, client, model)
 
-	cfg := agent.Config{
-		MaxSteps:       opts.AgentMaxSteps,
-		ParseRetries:   opts.AgentParseRetries,
-		MaxTokenBudget: opts.AgentMaxTokenBudget,
-	}
+	cfg := opts.AgentLimits.ToConfig()
 	taskRuntimeOpts := runtimeTaskOptions{
 		SecretsRequireSkillProfiles: opts.SecretsRequireSkillProfiles,
 	}

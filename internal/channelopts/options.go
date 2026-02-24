@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/agent"
 	slackruntime "github.com/quailyquaily/mistermorph/internal/channelruntime/slack"
 	telegramruntime "github.com/quailyquaily/mistermorph/internal/channelruntime/telegram"
 	"github.com/spf13/viper"
@@ -36,9 +37,7 @@ type TelegramConfig struct {
 	ServerMaxQueue                       int
 	BusMaxInFlight                       int
 	RequestTimeout                       time.Duration
-	AgentMaxSteps                        int
-	AgentParseRetries                    int
-	AgentMaxTokenBudget                  int
+	AgentLimits                          agent.Limits
 	FileCacheMaxAge                      time.Duration
 	FileCacheMaxFiles                    int
 	FileCacheMaxTotalBytes               int64
@@ -85,19 +84,22 @@ func TelegramConfigFromReader(r ConfigReader) TelegramConfig {
 		ServerMaxQueue:                       r.GetInt("server.max_queue"),
 		BusMaxInFlight:                       r.GetInt("bus.max_inflight"),
 		RequestTimeout:                       r.GetDuration("llm.request_timeout"),
-		AgentMaxSteps:                        r.GetInt("max_steps"),
-		AgentParseRetries:                    r.GetInt("parse_retries"),
-		AgentMaxTokenBudget:                  r.GetInt("max_token_budget"),
-		FileCacheMaxAge:                      r.GetDuration("file_cache.max_age"),
-		FileCacheMaxFiles:                    r.GetInt("file_cache.max_files"),
-		FileCacheMaxTotalBytes:               r.GetInt64("file_cache.max_total_bytes"),
-		HeartbeatEnabled:                     r.GetBool("heartbeat.enabled"),
-		HeartbeatInterval:                    r.GetDuration("heartbeat.interval"),
-		MemoryEnabled:                        r.GetBool("memory.enabled"),
-		MemoryShortTermDays:                  r.GetInt("memory.short_term_days"),
-		MemoryInjectionEnabled:               r.GetBool("memory.injection.enabled"),
-		MemoryInjectionMaxItems:              r.GetInt("memory.injection.max_items"),
-		SecretsRequireSkillProfiles:          r.GetBool("secrets.require_skill_profiles"),
+		AgentLimits: agent.Limits{
+			MaxSteps:        r.GetInt("max_steps"),
+			ParseRetries:    r.GetInt("parse_retries"),
+			MaxTokenBudget:  r.GetInt("max_token_budget"),
+			ToolRepeatLimit: r.GetInt("tool_repeat_limit"),
+		},
+		FileCacheMaxAge:             r.GetDuration("file_cache.max_age"),
+		FileCacheMaxFiles:           r.GetInt("file_cache.max_files"),
+		FileCacheMaxTotalBytes:      r.GetInt64("file_cache.max_total_bytes"),
+		HeartbeatEnabled:            r.GetBool("heartbeat.enabled"),
+		HeartbeatInterval:           r.GetDuration("heartbeat.interval"),
+		MemoryEnabled:               r.GetBool("memory.enabled"),
+		MemoryShortTermDays:         r.GetInt("memory.short_term_days"),
+		MemoryInjectionEnabled:      r.GetBool("memory.injection.enabled"),
+		MemoryInjectionMaxItems:     r.GetInt("memory.injection.max_items"),
+		SecretsRequireSkillProfiles: r.GetBool("secrets.require_skill_profiles"),
 	}
 }
 
@@ -163,9 +165,7 @@ func BuildTelegramRunOptions(cfg TelegramConfig, in TelegramInput) (telegramrunt
 		ServerMaxQueue:                cfg.ServerMaxQueue,
 		BusMaxInFlight:                cfg.BusMaxInFlight,
 		RequestTimeout:                cfg.RequestTimeout,
-		AgentMaxSteps:                 cfg.AgentMaxSteps,
-		AgentParseRetries:             cfg.AgentParseRetries,
-		AgentMaxTokenBudget:           cfg.AgentMaxTokenBudget,
+		AgentLimits:                   cfg.AgentLimits,
 		FileCacheMaxAge:               cfg.FileCacheMaxAge,
 		FileCacheMaxFiles:             cfg.FileCacheMaxFiles,
 		FileCacheMaxTotalBytes:        cfg.FileCacheMaxTotalBytes,
@@ -227,9 +227,7 @@ type SlackConfig struct {
 	BaseURL                              string
 	BusMaxInFlight                       int
 	RequestTimeout                       time.Duration
-	AgentMaxSteps                        int
-	AgentParseRetries                    int
-	AgentMaxTokenBudget                  int
+	AgentLimits                          agent.Limits
 	SecretsRequireSkillProfiles          bool
 }
 
@@ -268,10 +266,13 @@ func SlackConfigFromReader(r ConfigReader) SlackConfig {
 		BaseURL:                              strings.TrimSpace(r.GetString("slack.base_url")),
 		BusMaxInFlight:                       r.GetInt("bus.max_inflight"),
 		RequestTimeout:                       r.GetDuration("llm.request_timeout"),
-		AgentMaxSteps:                        r.GetInt("max_steps"),
-		AgentParseRetries:                    r.GetInt("parse_retries"),
-		AgentMaxTokenBudget:                  r.GetInt("max_token_budget"),
-		SecretsRequireSkillProfiles:          r.GetBool("secrets.require_skill_profiles"),
+		AgentLimits: agent.Limits{
+			MaxSteps:        r.GetInt("max_steps"),
+			ParseRetries:    r.GetInt("parse_retries"),
+			MaxTokenBudget:  r.GetInt("max_token_budget"),
+			ToolRepeatLimit: r.GetInt("tool_repeat_limit"),
+		},
+		SecretsRequireSkillProfiles: r.GetBool("secrets.require_skill_profiles"),
 	}
 }
 
@@ -334,9 +335,7 @@ func BuildSlackRunOptions(cfg SlackConfig, in SlackInput) slackruntime.RunOption
 		BaseURL:                       baseURL,
 		BusMaxInFlight:                cfg.BusMaxInFlight,
 		RequestTimeout:                cfg.RequestTimeout,
-		AgentMaxSteps:                 cfg.AgentMaxSteps,
-		AgentParseRetries:             cfg.AgentParseRetries,
-		AgentMaxTokenBudget:           cfg.AgentMaxTokenBudget,
+		AgentLimits:                   cfg.AgentLimits,
 		SecretsRequireSkillProfiles:   cfg.SecretsRequireSkillProfiles,
 		Hooks:                         in.Hooks,
 		InspectPrompt:                 in.InspectPrompt,

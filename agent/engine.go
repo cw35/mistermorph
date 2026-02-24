@@ -85,9 +85,10 @@ func WithSkillAuthProfiles(authProfiles []string, enforce bool) Option {
 }
 
 type Config struct {
-	MaxSteps       int
-	MaxTokenBudget int
-	ParseRetries   int
+	MaxSteps        int
+	MaxTokenBudget  int
+	ParseRetries    int
+	ToolRepeatLimit int
 }
 
 type Engine struct {
@@ -117,6 +118,9 @@ func New(client llm.Client, registry *tools.Registry, cfg Config, spec PromptSpe
 	}
 	if cfg.ParseRetries < 0 {
 		cfg.ParseRetries = 0
+	}
+	if cfg.ToolRepeatLimit <= 0 {
+		cfg.ToolRepeatLimit = 3
 	}
 	if spec.Identity == "" {
 		spec = DefaultPromptSpec()
