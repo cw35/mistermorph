@@ -34,7 +34,7 @@ func initViperDefaults() {
 	viper.SetDefault("user_agent", "mistermorph/1.0 (+https://github.com/quailyquaily)")
 
 	// Skills
-	viper.SetDefault("skills.mode", "on")
+	viper.SetDefault("skills.enabled", true)
 	viper.SetDefault("skills.dir_name", "skills")
 
 	// Bus

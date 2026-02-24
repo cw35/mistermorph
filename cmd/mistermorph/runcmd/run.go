@@ -237,8 +237,7 @@ func New(deps Dependencies) *cobra.Command {
 	cmd.Flags().Bool("inspect-request", false, "Dump LLM request/response payloads to ./dump/request_YYYYMMDD_HHmm.md.")
 	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Default: file_state_dir/skills")
 	cmd.Flags().StringArray("skill", nil, "Skill(s) to load by name or id (repeatable).")
-	cmd.Flags().Bool("skills-auto", true, "Auto-load skills referenced in task via $SkillName.")
-	cmd.Flags().String("skills-mode", "on", "Skills mode: off|on. Legacy values explicit/smart map to on.")
+	cmd.Flags().Bool("skills-enabled", true, "Enable loading configured skills.")
 
 	cmd.Flags().Int("max-steps", 15, "Max tool-call steps.")
 	cmd.Flags().Int("parse-retries", 2, "Max JSON parse retries.")

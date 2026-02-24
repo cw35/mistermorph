@@ -26,9 +26,8 @@ type ConfigReader interface {
 type SkillsConfig struct {
 	Roots     []string
 	DirName   string
-	Mode      string
+	Enabled   bool
 	Requested []string
-	Auto      bool
 	Trace     bool
 }
 
@@ -37,19 +36,11 @@ func SkillsConfigFromReader(r ConfigReader) SkillsConfig {
 		r = viper.GetViper()
 	}
 	cfg := SkillsConfig{
-		Roots:   statepaths.DefaultSkillsRoots(),
-		DirName: strings.TrimSpace(r.GetString("skills.dir_name")),
-		Mode:    strings.TrimSpace(r.GetString("skills.mode")),
-		Auto:    skillsAutoFromReader(r),
-		Requested: append(
-			append([]string{}, r.GetStringSlice("skill")...), // legacy
-			r.GetStringSlice("skills")...,                    // legacy
-		),
-		Trace: strings.EqualFold(strings.TrimSpace(r.GetString("logging.level")), "debug"),
-	}
-	cfg.Requested = append(cfg.Requested, getStringSliceFromReader(r, "skills.load")...)
-	if strings.TrimSpace(cfg.Mode) == "" {
-		cfg.Mode = "on"
+		Roots:     statepaths.DefaultSkillsRoots(),
+		DirName:   strings.TrimSpace(r.GetString("skills.dir_name")),
+		Enabled:   skillsEnabledFromReader(r),
+		Requested: append([]string{}, r.GetStringSlice("skills.load")...),
+		Trace:     strings.EqualFold(strings.TrimSpace(r.GetString("logging.level")), "debug"),
 	}
 	cfg.DirName = normalizeSkillsDirName(cfg.DirName)
 	return cfg
@@ -68,15 +59,10 @@ func SkillsConfigFromRunCmd(cmd *cobra.Command) SkillsConfig {
 		cfg.Roots = roots
 	}
 
-	cfg.Mode = strings.TrimSpace(configutil.FlagOrViperString(cmd, "skills-mode", "skills.mode"))
-	cfg.Auto = configutil.FlagOrViperBool(cmd, "skills-auto", "skills.auto")
+	cfg.Enabled = configutil.FlagOrViperBool(cmd, "skills-enabled", "skills.enabled")
 
 	if cmd.Flags().Changed("skill") {
 		cfg.Requested, _ = cmd.Flags().GetStringArray("skill")
-	}
-
-	if strings.TrimSpace(cfg.Mode) == "" {
-		cfg.Mode = "on"
 	}
 
 	return cfg
@@ -99,18 +85,13 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 		}
 	}
 
-	mode := normalizeSkillsMode(cfg.Mode)
-	if mode == "off" {
+	if !cfg.Enabled {
 		return spec, nil, nil, nil
 	}
 
 	loadedSkillIDs := make(map[string]bool)
 
 	requested := append([]string{}, cfg.Requested...)
-
-	if cfg.Auto {
-		requested = append(requested, skills.ReferencedSkillNames(task)...)
-	}
 
 	uniq := make(map[string]bool, len(requested))
 	var finalReq []string
@@ -138,7 +119,7 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 		log.Info("skills_load_all_requested", "count", len(finalReq))
 	}
 
-	// On mode: strict load from configured/requested skills and optional $SkillName mentions.
+	// Enabled mode: load from configured/requested skills.
 	for _, q := range finalReq {
 		s, err := skills.Resolve(discovered, q)
 		if err != nil {
@@ -182,56 +163,25 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 			Requirements: reqs,
 		})
 
-		log.Info("skill_loaded", "mode", mode, "name", name, "id", skillLoaded.ID, "path", skillLoaded.SkillMD)
+		log.Info("skill_loaded", "skills_enabled", cfg.Enabled, "name", name, "id", skillLoaded.ID, "path", skillLoaded.SkillMD)
 	}
 
 	ap := mapKeysSorted(declaredAuthProfiles)
 	if len(ap) > 0 {
 		log.Info("skills_auth_profiles_declared", "count", len(ap), "profiles", ap)
 	}
-	log.Info("skills_loaded", "mode", mode, "count", len(spec.Skills))
+	log.Info("skills_loaded", "skills_enabled", cfg.Enabled, "count", len(spec.Skills))
 	return spec, loadedOrdered, ap, nil
 }
 
-func normalizeSkillsMode(raw string) (mode string) {
-	m := strings.ToLower(strings.TrimSpace(raw))
-	switch m {
-	case "", "on", "explicit", "smart":
-		return "on"
-	case "off", "none":
-		return "off"
-	default:
-		return "on"
-	}
-}
-
-func skillsAutoFromReader(r ConfigReader) bool {
+func skillsEnabledFromReader(r ConfigReader) bool {
 	if r == nil {
 		return true
 	}
-	if r.IsSet("skills.auto") {
-		return r.GetBool("skills.auto")
-	}
-	if r.IsSet("skills_auto") {
-		return r.GetBool("skills_auto")
+	if r.IsSet("skills.enabled") {
+		return r.GetBool("skills.enabled")
 	}
 	return true
-}
-
-func getStringSliceFromReader(r ConfigReader, keys ...string) []string {
-	if r == nil {
-		return nil
-	}
-	for _, key := range keys {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		if r.IsSet(key) {
-			return r.GetStringSlice(key)
-		}
-	}
-	return nil
 }
 
 func truncateString(s string, max int) string {

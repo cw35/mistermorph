@@ -4,7 +4,7 @@ title: Skills
 
 # Skills
 
-`mistermorph` supports “skills”: small, self-contained folders that contain a `SKILL.md` file (required) plus optional scripts/resources. Skills are discovered from a set of root directories and can be loaded into the agent prompt when skills mode is enabled.
+`mistermorph` supports “skills”: small, self-contained folders that contain a `SKILL.md` file (required) plus optional scripts/resources. Skills are discovered from a set of root directories and can be loaded into the agent prompt when skills are enabled.
 
 Important: a skill is **not automatically a tool**. Skills add prompt context; tools are registered separately (e.g. `url_fetch`, `web_search`). If a skill includes scripts that you want the agent to execute, you must enable the `bash` tool (or implement a dedicated tool).
 
@@ -22,20 +22,16 @@ You can add custom roots via `--skills-dir` when listing or running.
 
 - List: `mistermorph skills list`
 
-## How skills are chosen (selection modes)
+## How skills are chosen
 
-Skill loading is controlled by `skills.mode`:
+Skill loading is controlled by `skills.enabled`:
 
-- `off`: never load skills
-- `on`: only load skills requested by config/flags and (optionally) `$SkillName` references
-
-### On mode
+- `false`: never load skills
+- `true`: load skills requested by config/flags
 
 You can request skills via config:
 
 - `skills.load: ["some-skill-id", "some-skill-name"]`
-
-If `skills.auto=true`, the agent also loads skills referenced inside your task text as `$SkillName` (e.g. “Use $google-maps-parse to extract coordinates.”).
 
 ## Installing / updating built-in skills
 
@@ -70,5 +66,5 @@ Notes:
 
 ## Using a skill
 
-- Explicitly in a task: reference it as `$MySkillName` (works when `skills.auto=true`).
+- Use `--skill <name-or-id>` for one run.
 - Or add it to `skills.load` for always-on behavior.

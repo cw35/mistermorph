@@ -57,7 +57,7 @@ func applyViperDefaults(v *viper.Viper) {
 	v.SetDefault("tools.todo_update.enabled", true)
 
 	// Skills.
-	v.SetDefault("skills.mode", "on")
+	v.SetDefault("skills.enabled", true)
 	v.SetDefault("skills.dir_name", "skills")
 
 	// Bus.

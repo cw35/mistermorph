@@ -24,9 +24,8 @@ func TestPromptSpecWithSkills_LoadAllWildcard(t *testing.T) {
 		"gpt-5.2",
 		SkillsConfig{
 			Roots:     []string{root},
-			Mode:      "on",
+			Enabled:   true,
 			Requested: []string{"*"},
-			Auto:      false,
 		},
 	)
 	if err != nil {
@@ -55,9 +54,8 @@ func TestPromptSpecWithSkills_LoadAllWildcardIgnoresUnknownRequests(t *testing.T
 		"gpt-5.2",
 		SkillsConfig{
 			Roots:     []string{root},
-			Mode:      "on",
+			Enabled:   true,
 			Requested: []string{"*", "missing-skill"},
-			Auto:      false,
 		},
 	)
 	if err != nil {
@@ -95,9 +93,8 @@ very long instructions that should not be injected
 		SkillsConfig{
 			Roots:     []string{root},
 			DirName:   "skills",
-			Mode:      "on",
+			Enabled:   true,
 			Requested: []string{"jsonbill"},
-			Auto:      false,
 		},
 	)
 	if err != nil {
@@ -147,9 +144,8 @@ description: d
 		SkillsConfig{
 			Roots:     []string{root},
 			DirName:   "my_skills",
-			Mode:      "on",
+			Enabled:   true,
 			Requested: []string{"alpha"},
-			Auto:      false,
 		},
 	)
 	if err != nil {

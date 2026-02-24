@@ -177,7 +177,7 @@ Agent 可用的核心工具：
 
 `mistermorph` 可以在 `file_state_dir/skills` 下递归发现 skills，并将选中的 `SKILL.md` 内容注入 system prompt。
 
-默认情况下，`run` 使用 `skills.mode=on`，会加载 `skills.load` 和可选的 `$SkillName` 引用（`skills.auto=true`）。
+默认情况下，`run` 使用 `skills.enabled=true`，会加载 `skills.load` 和 `--skill` 指定的技能。
 
 文档： [../skills.md](../skills.md)。
 
@@ -185,7 +185,7 @@ Agent 可用的核心工具：
 # 列出可用 skills
 mistermorph skills list
 # 在 run 命令中使用指定 skill
-mistermorph run --task "..." --skills-mode on --skill skill-name
+mistermorph run --task "..." --skills-enabled --skill skill-name
 # 安装远程 skill
 mistermorph skills install <remote-skill-url>
 ```
@@ -261,8 +261,7 @@ mistermorph run --inspect-prompt --inspect-request --task "..."
 - `--interactive`
 - `--skills-dir`（可重复）
 - `--skill`（可重复）
-- `--skills-auto`
-- `--skills-mode`（`off|on`）
+- `--skills-enabled`
 - `--max-steps`
 - `--parse-retries`
 - `--max-token-budget`

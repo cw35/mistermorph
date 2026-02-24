@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -205,34 +204,6 @@ func Resolve(skills []Skill, query string) (Skill, error) {
 		return best, nil
 	}
 	return Skill{}, fmt.Errorf("skill not found: %s", query)
-}
-
-var dollarSkillRe = regexp.MustCompile(`\$(?P<name>[A-Za-z0-9_.-]+)`)
-
-func ReferencedSkillNames(task string) []string {
-	matches := dollarSkillRe.FindAllStringSubmatch(task, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	uniq := make(map[string]bool, len(matches))
-	var out []string
-	for _, m := range matches {
-		if len(m) < 2 {
-			continue
-		}
-		name := strings.TrimSpace(m[1])
-		if name == "" {
-			continue
-		}
-		key := strings.ToLower(name)
-		if uniq[key] {
-			continue
-		}
-		uniq[key] = true
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func normalizeRoots(roots []string) []string {

@@ -225,13 +225,8 @@ contacts:
 skills:
   # Directory name under file_state_dir for skills.
   dir_name: "skills"
-  # off|on
-  # - off: never load skills
-  # - on: only load skills from skills.load and/or $SkillName references (if skills.auto=true)
-  # Legacy compatibility: explicit/smart are accepted and treated as on.
-  mode: on
-  # If true, also loads skills referenced as $SkillName in the task (useful in on mode).
-  auto: true
+  # If false, skills are not loaded.
+  enabled: true
   # Skills to always load (by skill name or id).
   load: ["*"] # e.g. ["skill-creator", "my-skill-id"]
 
