@@ -117,8 +117,7 @@ mistermorph telegram --log-level info
 
 说明：
 - 使用 `/id` 获取当前 chat id，并把它加入 `allowed_chat_ids` 白名单。
-- 在群聊中可用 `/ask <task>`。
-- 在群聊里，回复机器人消息或提及 `@BotUsername` 也会触发响应。
+- 在群聊里，回复机器人消息或提及 `@BotUsername` 会触发响应。
 - 你可以发送文件；文件会下载到 `file_cache_dir/telegram/`，Agent 可以处理它。Agent 也能通过 `telegram_send_file` 回传缓存文件，还可以通过 `telegram_send_voice` 发送位于 `file_cache_dir` 的本地语音文件。
 - 每个 chat 会保留最近一次加载的 skill（sticky），后续消息不会“忘记” `SKILL.md`；可用 `/reset` 清除。
 - `telegram.group_trigger_mode=smart` 会让每条群消息都进入 addressing LLM 判定；触发需满足 `addressed=true`，且 `confidence >= telegram.addressing_confidence_threshold`、`interject > telegram.addressing_interject_threshold`。

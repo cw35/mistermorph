@@ -132,8 +132,7 @@ mistermorph telegram --log-level info
 
 Notes:
 - Use `/id` to get the current chat id and add it to `allowed_chat_ids` for allowlisting.
-- Use `/ask <task>` in groups.
-- In groups, the bot also responds when you reply to it, or mention `@BotUsername`.
+- In groups, the bot responds when you reply to it, or mention `@BotUsername`.
 - You can send a file; it will be downloaded under `file_cache_dir/telegram/` and the agent can process it. The agent can also send cached files back via `telegram_send_file`, and send voice messages via `telegram_send_voice` from local voice files in `file_cache_dir`.
 - The last loaded skill(s) stay “sticky” per chat (so follow-up messages won’t forget SKILL.md); `/reset` clears this.
 - `telegram.group_trigger_mode=smart` runs addressing LLM on every group message; acceptance requires `addressed=true`, `confidence >= telegram.addressing_confidence_threshold`, and `interject > telegram.addressing_interject_threshold`.

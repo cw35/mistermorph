@@ -276,7 +276,7 @@ telegram:
   # Optional allowlist of chat ids (strings). If empty, allows all.
   allowed_chat_ids: []
   # Group trigger mode:
-  # - strict: only /ask, replies, and @mentions trigger in groups.
+  # - strict: only replies and @mentions trigger in groups.
   # - smart: every group message goes through addressing LLM classification; `addressed=true` is required.
   # - talkative: every group message goes through addressing LLM classification; does not require `addressed=true`.
   group_trigger_mode: "talkative"

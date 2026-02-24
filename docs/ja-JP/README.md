@@ -118,8 +118,7 @@ mistermorph telegram --log-level info
 
 補足:
 - `/id` で現在の chat id を取得し、`allowed_chat_ids` に追加して許可リスト化します。
-- グループでは `/ask <task>` を使えます。
-- グループでは、ボットへの返信または `@BotUsername` メンションでも応答します。
+- グループでは、ボットへの返信または `@BotUsername` メンションで応答します。
 - ファイルを送信すると `file_cache_dir/telegram/` に保存され、Agent が処理できます。`telegram_send_file` でキャッシュ済みファイルを送信でき、`telegram_send_voice` で `file_cache_dir` 配下のローカル音声ファイルも送信できます。
 - 最後に読み込んだスキルはチャット単位で保持されるため、後続メッセージでも `SKILL.md` の文脈が維持されます。`/reset` でクリアできます。
 - `telegram.group_trigger_mode=smart` は、グループ内の各メッセージを addressing LLM で判定します。受理には `addressed=true` かつ `confidence >= telegram.addressing_confidence_threshold`、`interject > telegram.addressing_interject_threshold` が必要です。

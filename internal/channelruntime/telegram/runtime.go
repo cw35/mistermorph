@@ -1066,8 +1066,8 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			switch normalizedCmd {
 			case "/start", "/help":
 				help := "Send a message and I will run it as an agent task.\n" +
-					"Commands: /ask <task>, /echo <msg>, /mem, /humanize, /reset, /id\n\n" +
-					"Group chats: use /ask <task>, reply to me, or mention @" + botUser + ".\n" +
+					"Commands: /echo <msg>, /mem, /humanize, /reset, /id\n\n" +
+					"Group chats: reply to me, or mention @" + botUser + ".\n" +
 					"You can also send a file (document/photo). It will be downloaded under file_cache_dir/telegram/ and the agent can process it.\n" +
 					"Note: if Bot Privacy Mode is enabled, I may not receive normal group messages."
 				_ = api.sendMessageMarkdownV2(context.Background(), chatID, help, true)
@@ -1163,17 +1163,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 				mu.Unlock()
 				_ = api.sendMessageMarkdownV2(context.Background(), chatID, "ok (reset)", true)
 				continue
-			case "/ask":
-				if len(allowed) > 0 && !allowed[chatID] {
-					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-					_ = api.sendMessageMarkdownV2(context.Background(), chatID, "unauthorized", true)
-					continue
-				}
-				if strings.TrimSpace(cmdArgs) == "" {
-					_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: /ask <task>, or mention the bot", true)
-					continue
-				}
-				text = strings.TrimSpace(cmdArgs)
 			case "/echo":
 				if len(allowed) > 0 && !allowed[chatID] {
 					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
@@ -1265,7 +1254,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					)
 					text = strings.TrimSpace(rawText)
 					if strings.TrimSpace(text) == "" && !messageHasDownloadableFile(msg) && msg.ReplyTo == nil {
-						_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: /ask <task> (or send text with a mention/reply)", true)
+						_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: send text with a mention/reply", true)
 						continue
 					}
 				} else {
