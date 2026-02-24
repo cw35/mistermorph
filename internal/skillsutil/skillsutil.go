@@ -111,6 +111,9 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 		uniq[k] = true
 		finalReq = append(finalReq, r)
 	}
+	if len(finalReq) == 0 {
+		loadAll = true
+	}
 	if loadAll {
 		finalReq = finalReq[:0]
 		for _, s := range discovered {
@@ -123,7 +126,8 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 	for _, q := range finalReq {
 		s, err := skills.Resolve(discovered, q)
 		if err != nil {
-			return agent.PromptSpec{}, nil, nil, err
+			log.Warn("skill_ignored", "skills_enabled", cfg.Enabled, "query", q, "reason", err.Error())
+			continue
 		}
 		if loadedSkillIDs[strings.ToLower(s.ID)] {
 			continue

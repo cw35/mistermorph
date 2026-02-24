@@ -178,7 +178,7 @@ Telegram モードでのみ利用できるツール:
 
 `mistermorph` は `file_state_dir/skills` を再帰的に探索し、選択した `SKILL.md` の内容を system prompt に注入できます。
 
-デフォルトでは `run` は `skills.enabled=true` を使い、`skills.load` と `--skill` で指定したスキルを読み込みます。
+デフォルトでは `run` は `skills.enabled=true` を使います。`skills.load=[]` は検出した全スキルを読み込み、未知のスキル名は無視されます。
 
 ドキュメント: [../skills.md](../skills.md)
 

@@ -56,7 +56,7 @@ type registrySnapshot struct {
 	ToolsWebSearchTimeout         time.Duration
 	ToolsWebSearchMaxResults      int
 	ToolsWebSearchBaseURL         string
-	ToolsContactsEnabled          bool
+	ToolsContactsSendEnabled      bool
 	ToolsTodoUpdateEnabled        bool
 	TODOPathWIP                   string
 	TODOPathDone                  string

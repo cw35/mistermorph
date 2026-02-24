@@ -151,8 +151,8 @@ tools:
     enabled: true
     # Max bytes allowed per write_file call.
     max_bytes: 524288
-  contacts:
-    # Enable contacts tool (contacts_send).
+  contacts_send:
+    # Enable contacts_send tool.
     enabled: true
   todo_update:
     # Enable TODO tool (todo_update).
@@ -160,6 +160,8 @@ tools:
   plan_create:
     # Enable planning tool (plan_create) in run/serve/telegram runtimes.
     enabled: true
+    # Default max steps
+    max_steps: 6
   url_fetch:
     # Enable the url_fetch tool (HTTP(S) GET/POST/PUT/DELETE, truncated output).
     enabled: true
@@ -227,8 +229,10 @@ skills:
   dir_name: "skills"
   # If false, skills are not loaded.
   enabled: true
-  # Skills to always load (by skill name or id).
-  load: ["*"] # e.g. ["skill-creator", "my-skill-id"]
+  # Skills to load (by skill name or id).
+  # Empty means load all discovered skills.
+  # Unknown entries are ignored.
+  load: [] # e.g. [] | ["skill-creator", "my-skill-id"]
 
 # Daemon mode (local HTTP server).
 server:
@@ -239,6 +243,7 @@ server:
   auth_token: ""
   # Max queued tasks (in-memory).
   max_queue: 100
+
 # Console mode (`mistermorph console serve`).
 console:
   # Bind address for console API + SPA.
@@ -332,8 +337,6 @@ max_token_budget: 0
 tool_repeat_limit: 3
 # Overall run timeout.
 timeout: "10m"
-# If true, prints extra debug info to stderr (tool steps, selected skills, etc).
-trace: false
 # Base directory for local state (memory/skills/heartbeat).
 file_state_dir: "~/.morph"
 # Prompt profile context injection.
@@ -347,7 +350,3 @@ file_cache:
   max_files: 1000
   # Max total bytes of cached files (0 disables size-based cleanup).
   max_total_bytes: 536870912
-# Plan tool defaults.
-plan:
-  # Default max steps for plan_create (can be overridden by tool params).
-  max_steps: 6

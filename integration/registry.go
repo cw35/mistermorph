@@ -144,7 +144,7 @@ func (rt *Runtime) buildRegistry(cfg registrySnapshot, logger *slog.Logger) *too
 		))
 	}
 
-	if isToolSelected("contacts_send") && cfg.ToolsContactsEnabled {
+	if isToolSelected("contacts_send") && cfg.ToolsContactsSendEnabled {
 		r.Register(builtin.NewContactsSendTool(builtin.ContactsSendToolOptions{
 			Enabled:          true,
 			ContactsDir:      cfg.ContactsDir,

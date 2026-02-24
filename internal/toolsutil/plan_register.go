@@ -20,7 +20,7 @@ func RegisterPlanTool(reg *tools.Registry, client llm.Client, defaultModel strin
 	}
 	names := toolNames(reg)
 	names = append(names, "plan_create")
-	defaultMaxSteps := viper.GetInt("plan.max_steps")
+	defaultMaxSteps := viper.GetInt("tools.plan_create.max_steps")
 	if defaultMaxSteps <= 0 {
 		defaultMaxSteps = 6
 	}

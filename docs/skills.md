@@ -32,6 +32,8 @@ Skill loading is controlled by `skills.enabled`:
 You can request skills via config:
 
 - `skills.load: ["some-skill-id", "some-skill-name"]`
+- `skills.load: []` means load all discovered skills
+- Unknown skill names in `skills.load` are ignored
 
 ## Installing / updating built-in skills
 
@@ -67,4 +69,4 @@ Notes:
 ## Using a skill
 
 - Use `--skill <name-or-id>` for one run.
-- Or add it to `skills.load` for always-on behavior.
+- Or add it to `skills.load` for always-on behavior (`[]` means all).

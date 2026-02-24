@@ -43,7 +43,7 @@ type registryConfig struct {
 	ToolsWebSearchTimeout         time.Duration
 	ToolsWebSearchMaxResults      int
 	ToolsWebSearchBaseURL         string
-	ToolsContactsEnabled          bool
+	ToolsContactsSendEnabled      bool
 	ToolsTodoUpdateEnabled        bool
 	TODOPathWIP                   string
 	TODOPathDone                  string
@@ -75,7 +75,7 @@ func applyRegistryViperDefaults() {
 	viper.SetDefault("tools.web_search.timeout", 20*time.Second)
 	viper.SetDefault("tools.web_search.max_results", 5)
 	viper.SetDefault("tools.web_search.base_url", "https://duckduckgo.com/html/")
-	viper.SetDefault("tools.contacts.enabled", true)
+	viper.SetDefault("tools.contacts_send.enabled", true)
 	viper.SetDefault("tools.todo_update.enabled", true)
 }
 
@@ -119,7 +119,7 @@ func loadRegistryConfigFromViper() registryConfig {
 		ToolsWebSearchTimeout:         viper.GetDuration("tools.web_search.timeout"),
 		ToolsWebSearchMaxResults:      viper.GetInt("tools.web_search.max_results"),
 		ToolsWebSearchBaseURL:         strings.TrimSpace(viper.GetString("tools.web_search.base_url")),
-		ToolsContactsEnabled:          viper.GetBool("tools.contacts.enabled"),
+		ToolsContactsSendEnabled:      viper.GetBool("tools.contacts_send.enabled"),
 		ToolsTodoUpdateEnabled:        viper.GetBool("tools.todo_update.enabled"),
 		TODOPathWIP:                   pathutil.ResolveStateFile(fileStateDir, statepaths.TODOWIPFilename),
 		TODOPathDone:                  pathutil.ResolveStateFile(fileStateDir, statepaths.TODODONEFilename),
@@ -247,7 +247,7 @@ func buildRegistryFromConfig(cfg registryConfig, log *slog.Logger) *tools.Regist
 		))
 	}
 
-	if cfg.ToolsContactsEnabled {
+	if cfg.ToolsContactsSendEnabled {
 		r.Register(builtin.NewContactsSendTool(builtin.ContactsSendToolOptions{
 			Enabled:          true,
 			ContactsDir:      cfg.ContactsDir,

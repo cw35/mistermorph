@@ -13,7 +13,7 @@ This document describes the built-in and runtime-injected tool parameters curren
   - `todo_update`
   - `contacts_send`
 - Conditional registration
-  - `plan_create` (injected in `run` / `telegram` / `daemon serve` via `internal/toolsutil.RegisterPlanTool`; can be disabled with `tools.plan_create.enabled`)
+  - `plan_create` (injected in `run` / `telegram` / `daemon serve` via `internal/toolsutil.RegisterPlanTool`; can be disabled with `tools.plan_create.enabled`; default step cap comes from `tools.plan_create.max_steps`)
   - `telegram_send_voice` (injected only at `mistermorph telegram` runtime)
   - `telegram_send_file` (injected only at `mistermorph telegram` runtime)
   - `telegram_react` (injected only at `mistermorph telegram` runtime)
@@ -185,6 +185,7 @@ Parameters:
 
 Constraints:
 
+- Can be disabled via `tools.contacts_send.enabled`.
 - `contacts_send` always uses topic `chat.message` (caller does not pass `topic`).
 - In Telegram runtime mode: `group/supergroup` sessions do not expose `contacts_send` by default; `private` sessions keep it available.
 - If cross-session forwarding is needed in group chat (for example, explicit "DM someone"), trigger it via explicit task/command, not by routing ordinary group replies to `contacts_send`.
@@ -206,7 +207,7 @@ Parameters:
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `task` | `string` | Yes | None | Task description to plan. |
-| `max_steps` | `integer` | No | Config default (usually 6) | Maximum number of steps. |
+| `max_steps` | `integer` | No | Config default (`tools.plan_create.max_steps`, usually 6) | Maximum number of steps. |
 | `style` | `string` | No | Empty | Plan style hint, for example `terse`. |
 | `model` | `string` | No | Current default model | Override model for plan generation. |
 

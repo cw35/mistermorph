@@ -40,6 +40,35 @@ func TestPromptSpecWithSkills_LoadAllWildcard(t *testing.T) {
 	}
 }
 
+func TestPromptSpecWithSkills_LoadAllWhenRequestedEmpty(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "alpha")
+	writeSkill(t, root, "beta")
+
+	spec, loaded, _, err := PromptSpecWithSkills(
+		context.Background(),
+		nil,
+		agent.DefaultLogOptions(),
+		"task",
+		nil,
+		"gpt-5.2",
+		SkillsConfig{
+			Roots:   []string{root},
+			Enabled: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("PromptSpecWithSkills: %v", err)
+	}
+	if len(spec.Skills) != 2 {
+		t.Fatalf("expected 2 loaded skills, got %d", len(spec.Skills))
+	}
+	sort.Strings(loaded)
+	if len(loaded) != 2 || loaded[0] != "alpha" || loaded[1] != "beta" {
+		t.Fatalf("unexpected loaded skills: %#v", loaded)
+	}
+}
+
 func TestPromptSpecWithSkills_LoadAllWildcardIgnoresUnknownRequests(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, root, "alpha")
@@ -63,6 +92,64 @@ func TestPromptSpecWithSkills_LoadAllWildcardIgnoresUnknownRequests(t *testing.T
 	}
 	sort.Strings(loaded)
 	if len(loaded) != 2 || loaded[0] != "alpha" || loaded[1] != "beta" {
+		t.Fatalf("unexpected loaded skills: %#v", loaded)
+	}
+}
+
+func TestPromptSpecWithSkills_IgnoresUnknownRequests(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "alpha")
+	writeSkill(t, root, "beta")
+
+	spec, loaded, _, err := PromptSpecWithSkills(
+		context.Background(),
+		nil,
+		agent.DefaultLogOptions(),
+		"task",
+		nil,
+		"gpt-5.2",
+		SkillsConfig{
+			Roots:     []string{root},
+			Enabled:   true,
+			Requested: []string{"alpha", "missing-skill"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("PromptSpecWithSkills should ignore unknown skills: %v", err)
+	}
+	if len(spec.Skills) != 1 {
+		t.Fatalf("expected 1 loaded skill, got %d", len(spec.Skills))
+	}
+	if len(loaded) != 1 || loaded[0] != "alpha" {
+		t.Fatalf("unexpected loaded skills: %#v", loaded)
+	}
+}
+
+func TestPromptSpecWithSkills_AllUnknownRequestsLoadNone(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "alpha")
+	writeSkill(t, root, "beta")
+
+	spec, loaded, _, err := PromptSpecWithSkills(
+		context.Background(),
+		nil,
+		agent.DefaultLogOptions(),
+		"task",
+		nil,
+		"gpt-5.2",
+		SkillsConfig{
+			Roots:     []string{root},
+			Enabled:   true,
+			Requested: []string{"missing-one", "missing-two"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("PromptSpecWithSkills should ignore unknown skills: %v", err)
+	}
+	if len(spec.Skills) != 0 {
+		t.Fatalf("expected 0 loaded skills, got %d", len(spec.Skills))
+	}
+	if len(loaded) != 0 {
 		t.Fatalf("unexpected loaded skills: %#v", loaded)
 	}
 }

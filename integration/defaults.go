@@ -25,8 +25,8 @@ func applyViperDefaults(v *viper.Viper) {
 	v.SetDefault("max_token_budget", 0)
 	v.SetDefault("tool_repeat_limit", 3)
 	v.SetDefault("timeout", 10*time.Minute)
-	v.SetDefault("plan.max_steps", 6)
 	v.SetDefault("tools.plan_create.enabled", true)
+	v.SetDefault("tools.plan_create.max_steps", 6)
 
 	// Global.
 	v.SetDefault("file_state_dir", "~/.morph")
@@ -53,7 +53,7 @@ func applyViperDefaults(v *viper.Viper) {
 	v.SetDefault("tools.web_search.timeout", 20*time.Second)
 	v.SetDefault("tools.web_search.max_results", 5)
 	v.SetDefault("tools.web_search.base_url", "https://duckduckgo.com/html/")
-	v.SetDefault("tools.contacts.enabled", true)
+	v.SetDefault("tools.contacts_send.enabled", true)
 	v.SetDefault("tools.todo_update.enabled", true)
 
 	// Skills.

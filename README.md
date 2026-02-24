@@ -285,7 +285,7 @@ Please see [`docs/tools.md`](docs/tools.md) for detailed tool documentation.
 
 `mistermorph` discovers skills under `file_state_dir/skills` (recursively), and injects selected `SKILL.md` content into the system prompt.
 
-By default, `run` uses `skills.enabled=true`, which loads skills requested by `skills.load` and `--skill`.
+By default, `run` uses `skills.enabled=true`; `skills.load=[]` loads all discovered skills, and unknown skill names are ignored.
 
 Docs: [`docs/skills.md`](docs/skills.md).
 
@@ -459,5 +459,5 @@ Key meanings (see `assets/config/config.example.yaml` for the canonical list):
 - Core: `llm.provider` selects the backend. Most providers use `llm.endpoint`/`llm.api_key`/`llm.model`. Azure uses `llm.azure.deployment` for deployment name, while endpoint/key are still read from `llm.endpoint` and `llm.api_key`. Bedrock uses `llm.bedrock.*`. `llm.tools_emulation_mode` controls tool-call emulation for models without native tool calling (`off|fallback|force`).
 - Logging: `logging.level` (`info` shows progress; `debug` adds thoughts), `logging.format` (`text|json`), plus `logging.include_thoughts` and `logging.include_tool_params` (redacted).
 - Loop: `max_steps` limits tool-call rounds; `parse_retries` retries invalid JSON; `max_token_budget` is a cumulative token cap (0 disables); `timeout` is the overall run timeout.
-- Skills: `skills.enabled` controls whether skills are used; `file_state_dir` + `skills.dir_name` define the default skills root; `skills.load` loads specific skills.
+- Skills: `skills.enabled` controls whether skills are used; `file_state_dir` + `skills.dir_name` define the default skills root; `skills.load=[]` loads all discovered skills, otherwise it loads only listed skills (unknown names are ignored).
 - Tools: all tool toggles live under `tools.*` (e.g. `tools.bash.enabled`, `tools.url_fetch.enabled`) with per-tool limits and timeouts.

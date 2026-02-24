@@ -102,7 +102,7 @@ func loadRuntimeSnapshotFromReader(v *viper.Viper) runtimeSnapshot {
 			ToolsWebSearchTimeout:         v.GetDuration("tools.web_search.timeout"),
 			ToolsWebSearchMaxResults:      v.GetInt("tools.web_search.max_results"),
 			ToolsWebSearchBaseURL:         v.GetString("tools.web_search.base_url"),
-			ToolsContactsEnabled:          v.GetBool("tools.contacts.enabled"),
+			ToolsContactsSendEnabled:      v.GetBool("tools.contacts_send.enabled"),
 			ToolsTodoUpdateEnabled:        v.GetBool("tools.todo_update.enabled"),
 			TODOPathWIP:                   pathutil.ResolveStateFile(fileStateDir, statepaths.TODOWIPFilename),
 			TODOPathDone:                  pathutil.ResolveStateFile(fileStateDir, statepaths.TODODONEFilename),

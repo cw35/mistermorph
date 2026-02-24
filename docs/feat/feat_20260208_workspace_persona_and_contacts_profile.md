@@ -164,7 +164,7 @@ status: draft
   - 语义：单联系人 upsert，支持 partial patch（不传字段默认保留旧值）。
 - [ ] 注册到默认工具表
   - 文件：`cmd/mistermorph/registry.go`
-  - 在 `tools.contacts.enabled=true` 时注册。
+  - 在 `tools.contacts_send.enabled=true` 时注册。
 - [ ] 参数 schema 设计
   - 必选建议：`contact_id`（或 `subject_id/node_id/peer_id` 至少一个）。
   - 可选字段：`kind/status/contact_nickname/persona_brief/persona_traits/pronouns/timezone/preference_context/topic_weights/...`。
@@ -310,7 +310,7 @@ status: draft
   - [x] 实现“partial patch”语义（未提供字段保留旧值）。
   - [x] 至少支持 `contact_id|subject_id` 的最小识别策略。
 - [x] 更新 `cmd/mistermorph/registry.go`：
-  - [x] 在 `tools.contacts.enabled=true` 时注册 `contacts_upsert`。
+  - [x] 在 `tools.contacts_send.enabled=true` 时注册 `contacts_upsert`。
 - [x] 更新 `agent/engine_helpers.go`：
   - [x] 为 `contacts_upsert` 增加安全日志摘要（不输出长文本全文）。
 - [x] 更新文档：

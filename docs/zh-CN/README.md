@@ -177,7 +177,7 @@ Agent 可用的核心工具：
 
 `mistermorph` 可以在 `file_state_dir/skills` 下递归发现 skills，并将选中的 `SKILL.md` 内容注入 system prompt。
 
-默认情况下，`run` 使用 `skills.enabled=true`，会加载 `skills.load` 和 `--skill` 指定的技能。
+默认情况下，`run` 使用 `skills.enabled=true`；`skills.load=[]` 表示加载全部已发现技能，未知技能名会被忽略。
 
 文档： [../skills.md](../skills.md)。
 

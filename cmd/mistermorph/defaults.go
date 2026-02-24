@@ -22,8 +22,8 @@ func initViperDefaults() {
 	viper.SetDefault("max_token_budget", 0)
 	viper.SetDefault("tool_repeat_limit", 3)
 	viper.SetDefault("timeout", 10*time.Minute)
-	viper.SetDefault("plan.max_steps", 6)
 	viper.SetDefault("tools.plan_create.enabled", true)
+	viper.SetDefault("tools.plan_create.max_steps", 6)
 
 	// Global
 	viper.SetDefault("file_state_dir", "~/.morph")
