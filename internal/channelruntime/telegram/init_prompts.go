@@ -8,28 +8,28 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/prompttmpl"
 )
 
-//go:embed prompts/init_questions_system.tmpl
+//go:embed prompts/init_questions_system.md
 var initQuestionsSystemPromptTemplateSource string
 
-//go:embed prompts/init_questions_user.tmpl
+//go:embed prompts/init_questions_user.md
 var initQuestionsUserPromptTemplateSource string
 
-//go:embed prompts/init_fill_system.tmpl
+//go:embed prompts/init_fill_system.md
 var initFillSystemPromptTemplateSource string
 
-//go:embed prompts/init_fill_user.tmpl
+//go:embed prompts/init_fill_user.md
 var initFillUserPromptTemplateSource string
 
-//go:embed prompts/init_post_greeting_system.tmpl
+//go:embed prompts/init_post_greeting_system.md
 var initPostGreetingSystemPromptTemplateSource string
 
-//go:embed prompts/init_post_greeting_user.tmpl
+//go:embed prompts/init_post_greeting_user.md
 var initPostGreetingUserPromptTemplateSource string
 
-//go:embed prompts/init_soul_polish_system.tmpl
+//go:embed prompts/init_soul_polish_system.md
 var initSoulPolishSystemPromptTemplateSource string
 
-//go:embed prompts/init_soul_polish_user.tmpl
+//go:embed prompts/init_soul_polish_user.md
 var initSoulPolishUserPromptTemplateSource string
 
 var initPromptTemplateFuncs = template.FuncMap{

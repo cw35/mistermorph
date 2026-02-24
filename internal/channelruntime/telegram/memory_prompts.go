@@ -10,10 +10,10 @@ import (
 	"github.com/quailyquaily/mistermorph/memory"
 )
 
-//go:embed prompts/memory_draft_system.tmpl
+//go:embed prompts/memory_draft_system.md
 var memoryDraftSystemPromptTemplateSource string
 
-//go:embed prompts/memory_draft_user.tmpl
+//go:embed prompts/memory_draft_user.md
 var memoryDraftUserPromptTemplateSource string
 
 var memoryPromptTemplateFuncs = template.FuncMap{

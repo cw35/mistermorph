@@ -176,7 +176,7 @@ CLI 接口（建议）：
 建议改动：
 - `internal/chathistory/types.go` 增加 `ChannelSlack`。
 - `internal/promptprofile/prompt_blocks.go` 新增 `AppendSlackRuntimeBlocks(...)`。
-- `internal/promptprofile/prompts/slack_block.tmpl`（新模板）。
+- `internal/promptprofile/prompts/slack_block.md`（新模板）。
 
 目标：
 - Slack 运行时有独立策略块（线程回复、@mention、channel etiquette）。

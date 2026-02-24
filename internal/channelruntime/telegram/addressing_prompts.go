@@ -14,10 +14,10 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/prompttmpl"
 )
 
-//go:embed prompts/telegram_addressing_system.tmpl
+//go:embed prompts/telegram_addressing_system.md
 var telegramAddressingSystemPromptTemplateSource string
 
-//go:embed prompts/telegram_addressing_user.tmpl
+//go:embed prompts/telegram_addressing_user.md
 var telegramAddressingUserPromptTemplateSource string
 
 var addressingPromptTemplateFuncs = template.FuncMap{

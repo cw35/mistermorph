@@ -22,10 +22,10 @@ const (
 	TelegramRuntimePromptBlockTitle = "Telegram Policies"
 )
 
-//go:embed prompts/block_plan_create.tmpl
+//go:embed prompts/block_plan_create.md
 var planCreateBlockTemplateSource string
 
-//go:embed prompts/telegram_block.tmpl
+//go:embed prompts/telegram_block.md
 var telegramRuntimePromptBlockTemplateSource string
 
 var telegramRuntimePromptBlockTemplate = prompttmpl.MustParse(

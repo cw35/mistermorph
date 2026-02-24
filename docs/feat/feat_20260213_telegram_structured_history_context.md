@@ -168,7 +168,7 @@ Each history item is organized with:
 ### 5.2 Addressing LLM (decide whether bot should reply)
 | role | content |
 |---|---|
-| `system` | `telegram_addressing_system.tmpl` (SOUL/persona + JSON output contract) |
+| `system` | `telegram_addressing_system.md` (SOUL/persona + JSON output contract) |
 | `user` | JSON: `bot_username`, `aliases`, `current_message`, `chat_history_context` (contains `messages[]`) |
 
 Each `chat_history_context.messages[]` item is derived from `ChatHistoryItem`.
@@ -189,7 +189,7 @@ Each `chat_history_context.messages[]` item is derived from `ChatHistoryItem`.
   - Remove effective use of `telegram-history-max-messages` in Telegram path (deprecated)
 - `cmd/mistermorph/telegramcmd/addressing_prompts.go`
   - Extend input shape to include `chat_history_context`
-- `cmd/mistermorph/telegramcmd/prompts/telegram_addressing_user.tmpl`
+- `cmd/mistermorph/telegramcmd/prompts/telegram_addressing_user.md`
   - Add `current_message` and `chat_history_context`
 - `cmd/mistermorph/telegramcmd/reactions.go`
   - Simplify to reaction config + allow-list; remove preflight reaction/intent classification flow

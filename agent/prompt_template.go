@@ -8,7 +8,7 @@ import (
 	"github.com/quailyquaily/mistermorph/tools"
 )
 
-//go:embed prompts/system.tmpl
+//go:embed prompts/system.md
 var systemPromptTemplateSource string
 
 var systemPromptTemplate = prompttmpl.MustParse("agent_system_prompt", systemPromptTemplateSource, nil)

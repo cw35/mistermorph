@@ -8,10 +8,10 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/prompttmpl"
 )
 
-//go:embed prompts/plan_progress_system.tmpl
+//go:embed prompts/plan_progress_system.md
 var planProgressSystemPromptTemplateSource string
 
-//go:embed prompts/plan_progress_user.tmpl
+//go:embed prompts/plan_progress_user.md
 var planProgressUserPromptTemplateSource string
 
 var planProgressPromptTemplateFuncs = template.FuncMap{

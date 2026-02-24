@@ -36,7 +36,7 @@ type modelSceneContextKey struct{}
 
 const defaultModelScene = "unknown"
 
-//go:embed tmpl/prompt.tmpl
+//go:embed tmpl/prompt.md
 var promptInspectorTemplateSource string
 
 var promptInspectorTemplate = template.Must(template.New("prompt_inspector").Parse(promptInspectorTemplateSource))

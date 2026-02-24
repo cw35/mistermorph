@@ -11,11 +11,11 @@ This document tracks where prompts are defined, how they are composed at runtime
   - If local `SCRIPTS.md` (under `file_state_dir`) is non-empty, it is injected as `PromptBlock{Title: "Local Tool Notes"}`.
   - No size truncation is applied by `AppendLocalToolNotesBlock(...)`.
 - Prompt content is composed from static template sections plus runtime-injected blocks:
-  - Static rules in `agent/prompts/system.tmpl` (includes URL guidance)
+  - Static rules in `agent/prompts/system.md` (includes URL guidance)
   - Registry-aware prompt blocks (`agent/prompt_rules.go`, e.g. `plan_create` guidance block only when tool exists)
   - Skills/auth-profile blocks (`internal/skillsutil/skillsutil.go`)
-  - Telegram runtime prompt block (`cmd/mistermorph/telegramcmd/prompts/telegram_block.tmpl`, injected by `cmd/mistermorph/telegramcmd/prompt_blocks.go`)
-  - MAEP reply policy block (`cmd/mistermorph/telegramcmd/prompts/maep_block.tmpl`, injected on MAEP inbound path)
+  - Telegram runtime prompt block (`cmd/mistermorph/telegramcmd/prompts/telegram_block.md`, injected by `cmd/mistermorph/telegramcmd/prompt_blocks.go`)
+  - MAEP reply policy block (`cmd/mistermorph/telegramcmd/prompts/maep_block.md`, injected on MAEP inbound path)
 - `BuildSystemPrompt(...)` also checks registry capabilities for response-format sections (plan format appears only with `plan_create`).
 
 ## Main Agent Prompt
@@ -24,7 +24,7 @@ This document tracks where prompts are defined, how they are composed at runtime
 
 - File: `agent/prompt.go`
 - Template/Renderer:
-  - `agent/prompts/system.tmpl`
+  - `agent/prompts/system.md`
   - `agent/prompt_template.go`
   - `internal/prompttmpl/prompttmpl.go`
 - Definitions:
@@ -48,7 +48,7 @@ This document tracks where prompts are defined, how they are composed at runtime
 
 - File: `agent/prompt_rules.go`
 - Definition:
-  - URL/tool safety guidance is now static in `agent/prompts/system.tmpl`
+  - URL/tool safety guidance is now static in `agent/prompts/system.md`
   - `augmentPromptSpecForRegistry(...)` appends registry-aware blocks (for example `plan_create` guidance block only when the tool is registered)
 
 ### 4) Skills/auth-profile blocks
@@ -61,14 +61,14 @@ This document tracks where prompts are defined, how they are composed at runtime
 
 - File: `cmd/mistermorph/telegramcmd/prompt_blocks.go`
 - Definition:
-  - Injects `Telegram Runtime Rules` from `cmd/mistermorph/telegramcmd/prompts/telegram_block.tmpl`
+  - Injects `Telegram Runtime Rules` from `cmd/mistermorph/telegramcmd/prompts/telegram_block.md`
   - Group-only guidance is template-gated (`{{if .IsGroup}}`) and can be accompanied by `[Group Usernames]` block
 
 ### 5.5) MAEP reply policy prompt mutation
 
 - File: `cmd/mistermorph/telegramcmd/prompt_blocks.go`
 - Definition:
-  - Injects `MAEP Reply Policy` from `cmd/mistermorph/telegramcmd/prompts/maep_block.tmpl` on MAEP inbound runs
+  - Injects `MAEP Reply Policy` from `cmd/mistermorph/telegramcmd/prompts/maep_block.md` on MAEP inbound runs
 
 ### 6) Heartbeat task prompt template
 
@@ -98,30 +98,30 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 | Template | Role | Purpose |
 |---|---|---|
-| `agent/prompts/system.tmpl` | system | Renders the main system prompt (Identity, Blocks, Tools, response format, Rules). |
-| `agent/prompts/block_plan_create.tmpl` | block | Injected as `Plan Create Guidance` block when `plan_create` tool is registered. |
-| `telegramcmd/prompts/telegram_block.tmpl` | block | Injected as `Telegram Runtime Rules` block (includes optional group-only policy). |
-| `telegramcmd/prompts/maep_block.tmpl` | block | Injected as `MAEP Reply Policy` block for MAEP inbound chat replies. |
-| `telegramcmd/prompts/init_questions_system.tmpl` | system | Defines output contract for Telegram persona-bootstrap question generation. |
-| `telegramcmd/prompts/init_questions_user.tmpl` | user | Carries draft identity/soul context, user text, and required target fields for init question generation. |
-| `telegramcmd/prompts/init_fill_system.tmpl` | system | Defines output contract for Telegram persona field filling. |
-| `telegramcmd/prompts/init_fill_user.tmpl` | user | Carries draft identity/soul content, user answers, and Telegram context for persona field filling. |
-| `telegramcmd/prompts/init_post_greeting_system.tmpl` | system | Defines style/constraints for immediate post-init Telegram greeting generation. |
-| `telegramcmd/prompts/init_post_greeting_user.tmpl` | user | Carries finalized identity/soul markdown plus init context for post-init greeting generation. |
-| `telegramcmd/prompts/plan_progress_system.tmpl` | system | Defines style/constraints for Telegram plan-progress rewrite messages. |
-| `telegramcmd/prompts/plan_progress_user.tmpl` | user | Carries plan progress payload (task, completed/next step, progress stats) for rewrite. |
-| `telegramcmd/prompts/memory_draft_system.tmpl` | system | Defines the output contract for single-session memory draft generation. |
-| `telegramcmd/prompts/memory_draft_user.tmpl` | user | Carries session context, `chat_history`, `current_task`, `current_output`, and existing summary items. |
-| `telegramcmd/prompts/memory_merge_system.tmpl` | system | Defines the output contract for same-day short-term memory merge. |
-| `telegramcmd/prompts/memory_merge_user.tmpl` | user | Carries existing/incoming memory content and merge rules. |
-| `telegramcmd/prompts/memory_task_match_system.tmpl` | system | Defines the output contract for task mapping (`update_index/match_index`). |
-| `telegramcmd/prompts/memory_task_match_user.tmpl` | user | Carries existing tasks, updates, and matching rules. |
-| `telegramcmd/prompts/memory_task_dedup_system.tmpl` | system | Defines the output contract for semantic task deduplication. |
-| `telegramcmd/prompts/memory_task_dedup_user.tmpl` | user | Carries tasks and deduplication rules. |
-| `telegramcmd/prompts/maep_feedback_system.tmpl` | system | Defines the output contract for MAEP feedback classification. |
-| `telegramcmd/prompts/maep_feedback_user.tmpl` | user | Carries recent turns, inbound text, allowed actions, and signal bounds for MAEP feedback classification. |
-| `telegramcmd/prompts/telegram_addressing_system.tmpl` | system | Defines the output contract for Telegram addressing classification. |
-| `telegramcmd/prompts/telegram_addressing_user.tmpl` | user | Carries bot username, aliases, and incoming message for addressing classification. |
+| `agent/prompts/system.md` | system | Renders the main system prompt (Identity, Blocks, Tools, response format, Rules). |
+| `agent/prompts/block_plan_create.md` | block | Injected as `Plan Create Guidance` block when `plan_create` tool is registered. |
+| `telegramcmd/prompts/telegram_block.md` | block | Injected as `Telegram Runtime Rules` block (includes optional group-only policy). |
+| `telegramcmd/prompts/maep_block.md` | block | Injected as `MAEP Reply Policy` block for MAEP inbound chat replies. |
+| `telegramcmd/prompts/init_questions_system.md` | system | Defines output contract for Telegram persona-bootstrap question generation. |
+| `telegramcmd/prompts/init_questions_user.md` | user | Carries draft identity/soul context, user text, and required target fields for init question generation. |
+| `telegramcmd/prompts/init_fill_system.md` | system | Defines output contract for Telegram persona field filling. |
+| `telegramcmd/prompts/init_fill_user.md` | user | Carries draft identity/soul content, user answers, and Telegram context for persona field filling. |
+| `telegramcmd/prompts/init_post_greeting_system.md` | system | Defines style/constraints for immediate post-init Telegram greeting generation. |
+| `telegramcmd/prompts/init_post_greeting_user.md` | user | Carries finalized identity/soul markdown plus init context for post-init greeting generation. |
+| `telegramcmd/prompts/plan_progress_system.md` | system | Defines style/constraints for Telegram plan-progress rewrite messages. |
+| `telegramcmd/prompts/plan_progress_user.md` | user | Carries plan progress payload (task, completed/next step, progress stats) for rewrite. |
+| `telegramcmd/prompts/memory_draft_system.md` | system | Defines the output contract for single-session memory draft generation. |
+| `telegramcmd/prompts/memory_draft_user.md` | user | Carries session context, `chat_history`, `current_task`, `current_output`, and existing summary items. |
+| `telegramcmd/prompts/memory_merge_system.md` | system | Defines the output contract for same-day short-term memory merge. |
+| `telegramcmd/prompts/memory_merge_user.md` | user | Carries existing/incoming memory content and merge rules. |
+| `telegramcmd/prompts/memory_task_match_system.md` | system | Defines the output contract for task mapping (`update_index/match_index`). |
+| `telegramcmd/prompts/memory_task_match_user.md` | user | Carries existing tasks, updates, and matching rules. |
+| `telegramcmd/prompts/memory_task_dedup_system.md` | system | Defines the output contract for semantic task deduplication. |
+| `telegramcmd/prompts/memory_task_dedup_user.md` | user | Carries tasks and deduplication rules. |
+| `telegramcmd/prompts/maep_feedback_system.md` | system | Defines the output contract for MAEP feedback classification. |
+| `telegramcmd/prompts/maep_feedback_user.md` | user | Carries recent turns, inbound text, allowed actions, and signal bounds for MAEP feedback classification. |
+| `telegramcmd/prompts/telegram_addressing_system.md` | system | Defines the output contract for Telegram addressing classification. |
+| `telegramcmd/prompts/telegram_addressing_user.md` | user | Carries bot username, aliases, and incoming message for addressing classification. |
 
 ### 1) Plan generation tool
 
@@ -175,8 +175,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `buildInitQuestions(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/init_questions_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/init_questions_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/init_questions_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/init_questions_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
 - Purpose: generate onboarding questions and a natural Telegram question message for persona bootstrap
 - Primary input: draft `IDENTITY.md`, draft `SOUL.md`, user text, required target fields
@@ -187,8 +187,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `buildInitFill(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/init_fill_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/init_fill_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/init_fill_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/init_fill_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
 - Purpose: fill persona fields from onboarding answers
 - Primary input: draft identity/soul markdown, questions, user answer, telegram context
@@ -199,8 +199,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `generatePostInitGreeting(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/init_post_greeting_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/init_post_greeting_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/init_post_greeting_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/init_post_greeting_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/init_prompts.go`
 - Purpose: generate immediate natural greeting after persona bootstrap
 - Primary input: finalized identity/soul markdown + init context
@@ -211,8 +211,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `BuildMemoryDraft(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/memory_draft_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/memory_draft_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_draft_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_draft_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/memory_prompts.go`
 - Purpose: convert one session into structured short-term memory draft
 - Primary input: session context, `chat_history`, current task/output, existing summary items
@@ -223,8 +223,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `SemanticMergeShortTerm(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/memory_merge_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/memory_merge_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_merge_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_merge_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/memory_prompts.go`
 - Purpose: semantically merge same-day short-term memory
 - Primary input: existing content + incoming draft
@@ -235,8 +235,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `semanticMatchTasks(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/memory_task_match_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/memory_task_match_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_task_match_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_task_match_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/memory_prompts.go`
 - Purpose: map incoming task updates onto existing tasks
 - Primary input: existing task list + update task list
@@ -247,8 +247,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `semanticDedupTaskItems(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/memory_task_dedup_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/memory_task_dedup_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_task_dedup_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/memory_task_dedup_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/memory_prompts.go`
 - Purpose: deduplicate semantically equivalent task items
 - Primary input: task list
@@ -259,8 +259,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `generateTelegramPlanProgressMessage(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/plan_progress_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/plan_progress_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/plan_progress_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/plan_progress_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/plan_progress_prompts.go`
 - Purpose: rewrite step progress into short casual Telegram updates
 - Primary input: task text, plan summary/progress stats, completed/next step info
@@ -271,8 +271,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `classifyMAEPFeedback(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/maep_feedback_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/maep_feedback_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/maep_feedback_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/maep_feedback_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/maep_prompts.go`
 - Purpose: classify inbound feedback signals and next conversational action
 - Primary input: recent turns + inbound text
@@ -283,8 +283,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `addressingDecisionViaLLM(...)`
 - Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/telegram_addressing_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/telegram_addressing_user.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/telegram_addressing_system.md`
+  - `cmd/mistermorph/telegramcmd/prompts/telegram_addressing_user.md`
   - Renderer: `cmd/mistermorph/telegramcmd/addressing_prompts.go`
 - Purpose: decide whether a message is actually addressed to the bot
 - Primary input: bot username, aliases, incoming message text
@@ -324,7 +324,7 @@ Guidance is provided through both message placement and explicit rules.
 - This keeps metadata separate from task text while preserving recency.
 
 2. Explicit base prompt rules
-- `agent/prompts/system.tmpl` rules explicitly instruct the model to:
+- `agent/prompts/system.md` rules explicitly instruct the model to:
   - treat `mister_morph_meta` as run context metadata
   - not treat metadata as an action request by itself
   - when `mister_morph_meta.heartbeat` exists, return a concise check/action summary and avoid placeholder outputs
