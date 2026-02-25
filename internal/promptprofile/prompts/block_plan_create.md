@@ -6,3 +6,4 @@ Plan workflow:
 - For complex tasks that likely require multiple tool calls or steps, you SHOULD call `plan_create` before other tools and follow that plan.
 - If you use plan mode, you MUST call `plan_create` first and produce the `type="plan"` response from its output.
 - If `plan_create` fails, continue without a plan and proceed with execution, do NOT return `"type":"plan"`; continue with tool calls or return `"type":"final"` instead.
+- If all plan steps are completed, you MUST stop calling tools and return `type="final"`.
