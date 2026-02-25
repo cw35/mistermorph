@@ -12,15 +12,25 @@ func NormalizePlanSteps(p *Plan) {
 	if p == nil {
 		return
 	}
+
+	normalized := make(PlanSteps, 0, len(p.Steps))
 	for i := range p.Steps {
-		p.Steps[i].Step = strings.TrimSpace(p.Steps[i].Step)
-		st := strings.ToLower(strings.TrimSpace(p.Steps[i].Status))
-		switch st {
-		case PlanStatusPending, PlanStatusInProgress, PlanStatusCompleted:
-			p.Steps[i].Status = st
-		default:
-			p.Steps[i].Status = PlanStatusPending
+		step := strings.TrimSpace(p.Steps[i].Step)
+		if step == "" {
+			continue
 		}
+		st := strings.ToLower(strings.TrimSpace(p.Steps[i].Status))
+		if st != PlanStatusPending && st != PlanStatusInProgress && st != PlanStatusCompleted {
+			st = PlanStatusPending
+		}
+		normalized = append(normalized, PlanStep{
+			Step:   step,
+			Status: st,
+		})
+	}
+	p.Steps = normalized
+	if len(p.Steps) == 0 {
+		return
 	}
 
 	// Ensure exactly one in_progress step if there are incomplete steps.
@@ -47,10 +57,11 @@ func NormalizePlanSteps(p *Plan) {
 }
 
 func AdvancePlanOnSuccess(p *Plan) (completedIndex int, completedStep string, startedIndex int, startedStep string, ok bool) {
+	completedIndex = -1
+	startedIndex = -1
 	if p == nil || len(p.Steps) == 0 {
 		return -1, "", -1, "", false
 	}
-	NormalizePlanSteps(p)
 
 	cur := -1
 	next := -1
@@ -74,14 +85,13 @@ func AdvancePlanOnSuccess(p *Plan) (completedIndex int, completedStep string, st
 		startedStep = p.Steps[next].Step
 		p.Steps[next].Status = PlanStatusInProgress
 	}
-	return completedIndex, completedStep, startedIndex, startedStep, completedIndex != -1
+	return completedIndex, completedStep, startedIndex, startedStep, cur != -1
 }
 
 func CompleteAllPlanSteps(p *Plan) {
 	if p == nil {
 		return
 	}
-	NormalizePlanSteps(p)
 	for i := range p.Steps {
 		p.Steps[i].Status = PlanStatusCompleted
 	}

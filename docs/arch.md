@@ -154,6 +154,57 @@ Notes:
   - shared helpers: `internal/heartbeatutil/heartbeat.go`, `internal/heartbeatutil/scheduler.go`
   - runtime integrations: `cmd/mistermorph/daemoncmd/serve.go`, `internal/channelruntime/telegram/runtime.go`
 
+### 5.4 Plan Creation and Progress Lifecycle
+
+```text
+registry build
+  -> register plan_create (if enabled)
+  -> prompt block hints "use plan_create for multi-step tasks"
+  -> agent loop
+     -> plan source A: model returns type="plan"
+     -> plan source B: model calls plan_create tool
+        -> plan_create sub-LLM call -> JSON plan
+     -> NormalizePlanSteps
+     -> each successful non-plan_create tool call:
+        AdvancePlanOnSuccess (in_progress -> completed, next pending -> in_progress)
+     -> optional plan progress publish (Telegram hook)
+     -> final: CompleteAllPlanSteps
+```
+
+Plan sources and wiring:
+
+- `plan_create` registration happens during runtime assembly when the runtime enables plan tooling (`PlanTool` feature) and calls `RegisterPlanTool(...)`.
+- `RegisterPlanTool(...)` effectively registers `plan_create` only when:
+  - registry is non-nil,
+  - config switch `tools.plan_create.enabled` is true (default true).
+- `tools.plan_create.max_steps` controls default plan step cap (fallback default is 6).
+- Prompt guidance is injected by `AppendPlanCreateGuidanceBlock(...)` only if `plan_create` exists in the registry.
+- In current flow, plan generation is expected to come from `plan_create`; engine also keeps compatibility for direct `type="plan"` responses.
+
+Plan normalization and advancement invariants:
+
+- `agent.NormalizePlanSteps`:
+  - trims step text,
+  - drops empty steps,
+  - normalizes status to `pending|in_progress|completed`,
+  - enforces at most one `in_progress` (promotes first pending when needed).
+- Normalization is applied at plan creation time; advancement assumes the stored plan is already normalized.
+- `agent.AdvancePlanOnSuccess` now returns `ok=false` when no valid `in_progress` step exists (prevents phantom "step 0 completed").
+- On final output, remaining non-completed steps are marked completed (`CompleteAllPlanSteps`).
+
+`plan_create` strictness:
+
+- `Execute(...)` reuses `NormalizePlanSteps(...)` before cap.
+- If normalized steps are empty, `Execute(...)` returns `invalid plan_create response: empty steps`.
+- Otherwise, `max_steps` cap is applied.
+- The tool no longer auto-fills placeholder names for empty steps.
+
+Telegram progress updates:
+
+- Telegram runtime installs `WithPlanStepUpdate(...)` during task-run engine construction.
+- On each completed plan step, it renders a short progress message via `generateTelegramPlanProgressMessage(...)` and publishes outbound with correlation id `telegram:plan:<chat_id>:<message_id>`.
+- Progress send is skipped when plan is missing/empty or `CompletedIndex < 0`.
+
 ## 6. State Directory and Naming Baseline
 
 ```text

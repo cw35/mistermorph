@@ -1,4 +1,4 @@
-This is a small **Telegram** ~Markdown~ _demo_ (can be directly copied and sent).
+This is a `small` **Telegram** ~Markdown~ _demo_ (can be directly copied and sent).
 
 **Report**
 - Status: In Progress 😑

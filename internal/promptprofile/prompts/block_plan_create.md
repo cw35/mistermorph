@@ -5,4 +5,4 @@ Plan workflow:
 - If you return a plan with steps, each step SHOULD include a status: pending|in_progress|completed.
 - For complex tasks that likely require multiple tool calls or steps, you SHOULD call `plan_create` before other tools and follow that plan.
 - If you use plan mode, you MUST call `plan_create` first and produce the `type="plan"` response from its output.
-- If `plan_create` fails, continue without a plan and proceed with execution.
+- If `plan_create` fails, continue without a plan and proceed with execution, do NOT return `"type":"plan"`; continue with tool calls or return `"type":"final"` instead.

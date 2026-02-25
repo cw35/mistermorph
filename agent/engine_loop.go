@@ -147,7 +147,6 @@ func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Con
 		case TypePlan:
 			p := resp.PlanPayload()
 			st.agentCtx.Plan = p
-			NormalizePlanSteps(st.agentCtx.Plan)
 			log.Info("plan", "step", step, "summary_len", len(strings.TrimSpace(p.Summary)), "steps", len(p.Steps))
 			if e.logOpts.IncludeThoughts {
 				thought := truncateString(p.Thought, e.logOpts.MaxThoughtChars)
@@ -292,7 +291,6 @@ func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Con
 				if toolErr == nil && tc.Name == "plan_create" && st.agentCtx.Plan == nil {
 					if plan := parsePlanCreateObservation(observation); plan != nil {
 						st.agentCtx.Plan = plan
-						NormalizePlanSteps(st.agentCtx.Plan)
 						log.Info("plan", "step", step, "summary_len", len(strings.TrimSpace(plan.Summary)), "steps", len(plan.Steps))
 					} else {
 						log.Warn("plan_create_parse_failed", "step", step)

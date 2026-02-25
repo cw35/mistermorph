@@ -175,39 +175,16 @@ Rules:
 
 	out.Plan.Thought = strings.TrimSpace(out.Plan.Thought)
 	out.Plan.Summary = strings.TrimSpace(out.Plan.Summary)
+	normalized := &agent.Plan{Steps: out.Plan.Steps}
+	agent.NormalizePlanSteps(normalized)
+	out.Plan.Steps = normalized.Steps
+	if len(out.Plan.Steps) == 0 {
+		return "", fmt.Errorf("invalid plan_create response: empty steps")
+	}
 	if len(out.Plan.Steps) > maxSteps {
 		out.Plan.Steps = out.Plan.Steps[:maxSteps]
 	}
-	out.Plan.Steps = normalizePlanSteps(out.Plan.Steps)
 
 	b, _ := json.MarshalIndent(out, "", "  ")
 	return string(b), nil
-}
-
-func normalizePlanSteps(steps agent.PlanSteps) agent.PlanSteps {
-	if len(steps) == 0 {
-		return steps
-	}
-	for i := range steps {
-		steps[i].Step = strings.TrimSpace(steps[i].Step)
-		if steps[i].Step == "" {
-			steps[i].Step = fmt.Sprintf("step %d", i+1)
-		}
-		status := strings.ToLower(strings.TrimSpace(steps[i].Status))
-		if status == "" {
-			if i == 0 {
-				steps[i].Status = "in_progress"
-			} else {
-				steps[i].Status = "pending"
-			}
-			continue
-		}
-		switch status {
-		case "pending", "in_progress", "completed":
-			steps[i].Status = status
-		default:
-			steps[i].Status = "pending"
-		}
-	}
-	return steps
 }
