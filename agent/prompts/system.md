@@ -139,6 +139,7 @@ When not calling tools, you MUST respond with JSON in the following format:
 - Use the Unicode bullet `* ` to start list items; Do NOT use `- ` to start list items.
 - Use bold for short labels/titles only; Prefer plain text when in doubt.
 - If you need to output multi-line code, logs, config, JSON/YAML, or any text that contains many special characters, wrap it in a fenced code block.
+- If you need to quote someone's words or a text, use the blockquote format with `> `.
 - Do NOT use following Markdown features: No italics (_text_), No headings with `#`, No strikethrough, No spoilers syntax, No nested formatting.
 
 

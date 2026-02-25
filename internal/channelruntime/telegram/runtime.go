@@ -441,7 +441,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		if sentVersion >= version {
 			return
 		}
-		_ = api.sendMessageMarkdownV1(context.Background(), chatID, msg, true)
+		_ = api.sendMessageHTML(context.Background(), chatID, msg, true)
 		markSystemWarningsSent(chatID, version)
 	}
 
@@ -466,7 +466,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			if sentVersion >= version {
 				continue
 			}
-			_ = api.sendMessageMarkdownV1(context.Background(), chatID, msg, true)
+			_ = api.sendMessageHTML(context.Background(), chatID, msg, true)
 			markSystemWarningsSent(chatID, version)
 		}
 	}
@@ -971,11 +971,11 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			if shouldRunInitFlow(initRequired, normalizedCmd) {
 				if len(allowed) > 0 && !allowed[chatID] {
 					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "unauthorized", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "unauthorized", true)
 					continue
 				}
 				if strings.ToLower(strings.TrimSpace(chatType)) != "private" {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "initialization is pending; please DM me first to finish setup", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "initialization is pending; please DM me first to finish setup", true)
 					continue
 				}
 				mu.Lock()
@@ -987,7 +987,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 						if errors.Is(err, errInitProfilesNotDraft) {
 							initRequired = false
 						} else {
-							_ = api.sendMessageMarkdownV1(context.Background(), chatID, "init failed: "+err.Error(), true)
+							_ = api.sendMessageHTML(context.Background(), chatID, "init failed: "+err.Error(), true)
 							continue
 						}
 					} else {
@@ -1011,13 +1011,13 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 							StartedAt: time.Now().UTC(),
 						}
 						mu.Unlock()
-						_ = api.sendMessageMarkdownV1(context.Background(), chatID, questionMsg, true)
+						_ = api.sendMessageHTML(context.Background(), chatID, questionMsg, true)
 						continue
 					}
 				}
 				if hasInitSession {
 					if strings.TrimSpace(text) == "" {
-						_ = api.sendMessageMarkdownV1(context.Background(), chatID, "please answer the init questions in one message", true)
+						_ = api.sendMessageHTML(context.Background(), chatID, "please answer the init questions in one message", true)
 						continue
 					}
 					draft, err := loadInitProfileDraft()
@@ -1030,7 +1030,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 							}
 							mu.Unlock()
 						} else {
-							_ = api.sendMessageMarkdownV1(context.Background(), chatID, "init failed: "+err.Error(), true)
+							_ = api.sendMessageHTML(context.Background(), chatID, "init failed: "+err.Error(), true)
 							continue
 						}
 					} else {
@@ -1040,7 +1040,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 						cancel()
 						typingStop()
 						if err != nil {
-							_ = api.sendMessageMarkdownV1(context.Background(), chatID, "init failed: "+err.Error(), true)
+							_ = api.sendMessageHTML(context.Background(), chatID, "init failed: "+err.Error(), true)
 							continue
 						}
 						mu.Lock()
@@ -1057,7 +1057,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 						if greetErr != nil {
 							logger.Warn("telegram_init_greeting_error", "error", greetErr.Error())
 						}
-						_ = api.sendMessageMarkdownV1(context.Background(), chatID, greeting, true)
+						_ = api.sendMessageHTML(context.Background(), chatID, greeting, true)
 						continue
 					}
 				}
@@ -1070,27 +1070,27 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					"Group chats: reply to me, or mention @" + botUser + ".\n" +
 					"You can also send a file (document/photo). It will be downloaded under file_cache_dir/telegram/ and the agent can process it.\n" +
 					"Note: if Bot Privacy Mode is enabled, I may not receive normal group messages."
-				_ = api.sendMessageMarkdownV1(context.Background(), chatID, help, true)
+				_ = api.sendMessageHTML(context.Background(), chatID, help, true)
 				continue
 			case "/id":
-				_ = api.sendMessageMarkdownV1(context.Background(), chatID, fmt.Sprintf("chat_id=%d type=%s", chatID, chatType), true)
+				_ = api.sendMessageHTML(context.Background(), chatID, fmt.Sprintf("chat_id=%d type=%s", chatID, chatType), true)
 				continue
 			case "/mem":
 				if len(allowed) > 0 && !allowed[chatID] {
 					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "unauthorized, please contact the bot administrator", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "unauthorized, please contact the bot administrator", true)
 					continue
 				}
 				if strings.ToLower(strings.TrimSpace(chatType)) != "private" {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "please use /mem in the private chat", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "please use /mem in the private chat", true)
 					continue
 				}
 				if fromUserID <= 0 {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "failed to recognize the user (msg.from is nil)", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "failed to recognize the user (msg.from is nil)", true)
 					continue
 				}
 				if !opts.MemoryEnabled {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "memory is not enabled (set memory.enabled=true)", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "memory is not enabled (set memory.enabled=true)", true)
 					continue
 				}
 
@@ -1098,11 +1098,11 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 				id, err := (&memory.Resolver{}).ResolveTelegram(ctx, fromUserID)
 				cancel()
 				if err != nil {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "memory identity error: "+err.Error(), true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "memory identity error: "+err.Error(), true)
 					continue
 				}
 				if !id.Enabled || strings.TrimSpace(id.SubjectID) == "" {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "memory identity disabled", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "memory identity disabled", true)
 					continue
 				}
 
@@ -1110,11 +1110,11 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 				maxItems := opts.MemoryInjectionMaxItems
 				snap, err := mgr.BuildInjection(id.SubjectID, memory.ContextPrivate, maxItems)
 				if err != nil {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "memory load error: "+err.Error(), true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "memory load error: "+err.Error(), true)
 					continue
 				}
 				if strings.TrimSpace(snap) == "" {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "(empty)", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "(empty)", true)
 					continue
 				}
 				if err := api.sendMessageChunked(context.Background(), chatID, snap); err != nil {
@@ -1124,11 +1124,11 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			case "/humanize":
 				if len(allowed) > 0 && !allowed[chatID] {
 					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "unauthorized", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "unauthorized", true)
 					continue
 				}
 				if strings.ToLower(strings.TrimSpace(chatType)) != "private" {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "please use /humanize in the private chat", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "please use /humanize in the private chat", true)
 					continue
 				}
 				typingStop := startTypingTicker(context.Background(), api, chatID, "typing", 4*time.Second)
@@ -1137,19 +1137,19 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 				cancel()
 				typingStop()
 				if err != nil {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "humanize failed: "+err.Error(), true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "humanize failed: "+err.Error(), true)
 					continue
 				}
 				if updated {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "ok (SOUL.md humanized)", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "ok (SOUL.md humanized)", true)
 				} else {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "ok (SOUL.md unchanged)", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "ok (SOUL.md unchanged)", true)
 				}
 				continue
 			case "/reset":
 				if len(allowed) > 0 && !allowed[chatID] {
 					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "unauthorized", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "unauthorized", true)
 					continue
 				}
 				mu.Lock()
@@ -1161,25 +1161,25 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					w.Version++
 				}
 				mu.Unlock()
-				_ = api.sendMessageMarkdownV1(context.Background(), chatID, "ok (reset)", true)
+				_ = api.sendMessageHTML(context.Background(), chatID, "ok (reset)", true)
 				continue
 			case "/echo":
 				if len(allowed) > 0 && !allowed[chatID] {
 					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "unauthorized", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "unauthorized", true)
 					continue
 				}
 				msg := strings.TrimSpace(cmdArgs)
 				if msg == "" {
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "usage: /echo <msg>", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "usage: /echo <msg>", true)
 					continue
 				}
-				_ = api.sendMessageMarkdownV1(context.Background(), chatID, msg, true)
+				_ = api.sendMessageHTML(context.Background(), chatID, msg, true)
 				continue
 			default:
 				if len(allowed) > 0 && !allowed[chatID] {
 					logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
-					_ = api.sendMessageMarkdownV1(context.Background(), chatID, "unauthorized", true)
+					_ = api.sendMessageHTML(context.Background(), chatID, "unauthorized", true)
 					continue
 				}
 				if isGroup {
@@ -1254,7 +1254,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					)
 					text = strings.TrimSpace(rawText)
 					if strings.TrimSpace(text) == "" && !messageHasDownloadableFile(msg) && msg.ReplyTo == nil {
-						_ = api.sendMessageMarkdownV1(context.Background(), chatID, "usage: send text with a mention/reply", true)
+						_ = api.sendMessageHTML(context.Background(), chatID, "usage: send text with a mention/reply", true)
 						continue
 					}
 				} else {

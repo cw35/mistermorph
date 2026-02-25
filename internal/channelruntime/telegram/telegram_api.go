@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -35,6 +36,35 @@ func newTelegramAPI(httpClient *http.Client, baseURL, token string) *telegramAPI
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 	}
+}
+
+// SendMessageHTML sends markdown text via Telegram Bot API using parse_mode=HTML.
+// Markdown input is converted to Telegram-supported HTML tags before sending.
+// If Telegram rejects HTML entity parsing, it automatically retries as plain text.
+func SendMessageHTML(ctx context.Context, httpClient *http.Client, baseURL, token string, chatID int64, text string, disablePreview bool) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("telegram bot token is required")
+	}
+	if chatID == 0 {
+		return fmt.Errorf("telegram chat id is required")
+	}
+	api := newTelegramAPI(httpClient, strings.TrimSpace(baseURL), token)
+	return api.sendMessageHTML(ctx, chatID, text, disablePreview)
+}
+
+// SendMessageMarkdownV1 sends text via Telegram Bot API using parse_mode=Markdown.
+// If Telegram rejects markdown entity parsing, it retries as plain text.
+func SendMessageMarkdownV1(ctx context.Context, httpClient *http.Client, baseURL, token string, chatID int64, text string, disablePreview bool) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("telegram bot token is required")
+	}
+	if chatID == 0 {
+		return fmt.Errorf("telegram chat id is required")
+	}
+	api := newTelegramAPI(httpClient, strings.TrimSpace(baseURL), token)
+	return api.sendMessageMarkdownV1(ctx, chatID, text, disablePreview)
 }
 
 type telegramUpdate struct {
@@ -342,6 +372,10 @@ func (api *telegramAPI) downloadFileTo(ctx context.Context, filePath, dstPath st
 	return n, false, nil
 }
 
+func (api *telegramAPI) sendMessageHTML(ctx context.Context, chatID int64, text string, disablePreview bool) error {
+	return api.sendMessageHTMLReply(ctx, chatID, text, disablePreview, 0)
+}
+
 func (api *telegramAPI) sendMessageMarkdownV1(ctx context.Context, chatID int64, text string, disablePreview bool) error {
 	return api.sendMessageMarkdownV1Reply(ctx, chatID, text, disablePreview, 0)
 }
@@ -352,13 +386,38 @@ func (api *telegramAPI) sendMessageMarkdownV1Reply(ctx context.Context, chatID i
 		text = "(empty)"
 	}
 	err := api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "Markdown", replyToMessageID)
-	if err == nil {
-		return nil
+	if err != nil {
+		if !isTelegramEntityParseError(err) {
+			slog.Warn("failed to send telegram markdown message", "text", text, "error", err)
+			return err
+		}
+		slog.Warn("failed to parse telegram markdown entities; send plain-text fallback", "text", text, "error", err)
+		return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "", replyToMessageID)
 	}
-	if !isTelegramMarkdownParseError(err) {
-		return err
+	return nil
+}
+
+func (api *telegramAPI) sendMessageHTMLReply(ctx context.Context, chatID int64, text string, disablePreview bool, replyToMessageID int64) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = "(empty)"
 	}
-	return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "", replyToMessageID)
+	converted, convErr := renderTelegramHTMLFromMarkdown(text)
+	if convErr != nil {
+		slog.Warn("failed to render telegram html", "text", text, "error", convErr)
+		return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "", replyToMessageID)
+	}
+
+	err := api.sendMessageWithParseModeReply(ctx, chatID, converted, disablePreview, "HTML", replyToMessageID)
+	if err != nil {
+		if !isTelegramEntityParseError(err) {
+			slog.Warn("failed to send telegram html message", "text", text, "error", err)
+			return err
+		}
+		slog.Warn("failed to parse telegram html entities; send plain-text fallback", "text", text, "error", err)
+		return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "", replyToMessageID)
+	}
+	return nil
 }
 
 type telegramRequestError struct {
@@ -392,7 +451,7 @@ func (e *telegramRequestError) Error() string {
 	return "telegram request failed"
 }
 
-func isTelegramMarkdownParseError(err error) bool {
+func isTelegramEntityParseError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -415,7 +474,7 @@ func (api *telegramAPI) sendMessageChunkedReply(ctx context.Context, chatID int6
 	const max = 3500
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return api.sendMessageMarkdownV1Reply(ctx, chatID, "(empty)", true, replyToMessageID)
+		return api.sendMessageHTMLReply(ctx, chatID, "(empty)", true, replyToMessageID)
 	}
 	isFirstChunk := true
 	for len(text) > 0 {
@@ -427,7 +486,7 @@ func (api *telegramAPI) sendMessageChunkedReply(ctx context.Context, chatID int6
 		if isFirstChunk {
 			chunkReplyTo = replyToMessageID
 		}
-		if err := api.sendMessageMarkdownV1Reply(ctx, chatID, chunk, true, chunkReplyTo); err != nil {
+		if err := api.sendMessageHTMLReply(ctx, chatID, chunk, true, chunkReplyTo); err != nil {
 			return err
 		}
 		text = strings.TrimSpace(text[len(chunk):])
