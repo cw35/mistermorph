@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -343,10 +342,6 @@ func (api *telegramAPI) downloadFileTo(ctx context.Context, filePath, dstPath st
 	return n, false, nil
 }
 
-func (api *telegramAPI) sendMessageMarkdownV2(ctx context.Context, chatID int64, text string, disablePreview bool) error {
-	return api.sendMessageMarkdownV2Reply(ctx, chatID, text, disablePreview, 0)
-}
-
 func (api *telegramAPI) sendMessageMarkdownV1(ctx context.Context, chatID int64, text string, disablePreview bool) error {
 	return api.sendMessageMarkdownV1Reply(ctx, chatID, text, disablePreview, 0)
 }
@@ -356,56 +351,14 @@ func (api *telegramAPI) sendMessageMarkdownV1Reply(ctx context.Context, chatID i
 	if text == "" {
 		text = "(empty)"
 	}
-	return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "Markdown", replyToMessageID)
-}
-
-func (api *telegramAPI) sendMessageMarkdownV2Reply(ctx context.Context, chatID int64, text string, disablePreview bool, replyToMessageID int64) error {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		text = "(empty)"
-	}
-
-	err := api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "MarkdownV2", replyToMessageID)
+	err := api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "Markdown", replyToMessageID)
 	if err == nil {
 		return nil
 	}
-	if isTelegramMarkdownParseError(err) {
-		slog.Warn("failed to send with MarkdownV2; retry escaped", "error", err)
-		escaped := escapeTelegramMarkdownV2(text)
-		err = api.sendMessageWithParseModeReply(ctx, chatID, escaped, disablePreview, "MarkdownV2", replyToMessageID)
-		if err == nil {
-			return nil
-		}
-		if !isTelegramMarkdownParseError(err) {
-			slog.Warn("again, failed to send escaped with MarkdownV2", "error", err)
-		}
-	} else {
-		slog.Warn("failed to send with MarkdownV2", "error", err)
+	if !isTelegramMarkdownParseError(err) {
+		return err
 	}
-
-	slog.Warn("failed to send with MarkdownV2; fallback to MarkdownV1", "error", err)
-	v1Err := api.sendMessageMarkdownV1Reply(ctx, chatID, text, disablePreview, replyToMessageID)
-	if v1Err == nil {
-		return nil
-	}
-	slog.Warn("failed to send with MarkdownV1; fallback to plain text", "error", v1Err)
 	return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "", replyToMessageID)
-}
-
-func escapeTelegramMarkdownV2(text string) string {
-	if strings.TrimSpace(text) == "" {
-		return text
-	}
-	var b strings.Builder
-	b.Grow(len(text) * 2)
-	for _, r := range text {
-		switch r {
-		case '\\', '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!':
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 type telegramRequestError struct {
@@ -462,7 +415,7 @@ func (api *telegramAPI) sendMessageChunkedReply(ctx context.Context, chatID int6
 	const max = 3500
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return api.sendMessageMarkdownV2Reply(ctx, chatID, "(empty)", true, replyToMessageID)
+		return api.sendMessageMarkdownV1Reply(ctx, chatID, "(empty)", true, replyToMessageID)
 	}
 	isFirstChunk := true
 	for len(text) > 0 {
@@ -474,7 +427,7 @@ func (api *telegramAPI) sendMessageChunkedReply(ctx context.Context, chatID int6
 		if isFirstChunk {
 			chunkReplyTo = replyToMessageID
 		}
-		if err := api.sendMessageMarkdownV2Reply(ctx, chatID, chunk, true, chunkReplyTo); err != nil {
+		if err := api.sendMessageMarkdownV1Reply(ctx, chatID, chunk, true, chunkReplyTo); err != nil {
 			return err
 		}
 		text = strings.TrimSpace(text[len(chunk):])
